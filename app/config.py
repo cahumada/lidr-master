@@ -73,6 +73,53 @@ class Settings(BaseSettings):
     TENANT_ID: str = "default_tenant"
     DOC_VERSION: str = "unversioned"
 
+    # --- Embedding layer || Capa de embeddings -----------------------------
+
+    # The API key lives in the local .env, never in the repository. Absent, the
+    # deterministic test embedder still works; only the real run needs it.
+    # || La clave de API vive en el .env local, nunca en el repositorio. Si
+    # falta, el embedder determinístico de tests igual funciona; solo la
+    # corrida real la necesita.
+    OPENAI_API_KEY: str = ""
+
+    # 1536 dims, NOT truncated via MRL: 380 MB is not a storage problem here,
+    # and shrinking the dimension is a quality loss that only pays off when the
+    # index does not fit. The value is verified against what the API actually
+    # returns rather than assumed.
+    # || 1536 dims, SIN recortar vía MRL: 380 MB no es un problema de
+    # almacenamiento acá, y recortar la dimensión es una pérdida de calidad que
+    # solo se justifica cuando el índice no entra. El valor se verifica contra
+    # lo que la API realmente devuelve en lugar de asumirlo.
+    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    EMBEDDING_DIMENSIONS: int = 1536
+
+    # Input cap of text-embedding-3-small. Every chunk is checked against this
+    # BEFORE the first call: finding out when the API rejects it means paying
+    # to learn it.
+    # || Tope de entrada de text-embedding-3-small. Cada chunk se controla
+    # contra esto ANTES de la primera llamada: enterarse cuando la API lo
+    # rechaza es pagar por averiguarlo.
+    EMBEDDING_MAX_INPUT_TOKENS: int = 8191
+
+    EMBEDDING_BATCH_SIZE: int = 128
+    EMBEDDING_MAX_RETRIES: int = 5
+
+    # Seconds to wait before the first retry; doubles on each attempt.
+    # || Segundos de espera antes del primer reintento; se duplica en cada intento.
+    EMBEDDING_RETRY_BASE_DELAY: float = 1.0
+
+    # How many batches to embed before persisting progress. A run that has to
+    # start over on every network hiccup never finishes.
+    # || Cuántos lotes se embeben antes de persistir el progreso. Una corrida
+    # que hay que empezar de cero ante cada corte de red no termina nunca.
+    EMBEDDING_CHECKPOINT_EVERY: int = 10
+
+    # Binary sidecars (<module>.npy + <module>.index.json). Generated artifact,
+    # outside the repository.
+    # || Sidecars binarios (<module>.npy + <module>.index.json). Artefacto
+    # generado, fuera del repositorio.
+    EMBEDDINGS_PATH: Path = Path("data/embeddings")
+
 
 @lru_cache
 def get_settings() -> Settings:

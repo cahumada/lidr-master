@@ -370,3 +370,110 @@ class IngestResponse(BaseModel):
         "|| Una entrada por transacción encontrada en el archivo."
     )
     stats: IngestStats
+
+
+# --- Embedding sidecar || Sidecar de embeddings ------------------------------
+
+
+class EmbeddingIndexEntry(BaseModel):
+    """One row of the vector sidecar. || Una fila del sidecar de vectores.
+
+    Row ``n`` of the ``.npy`` belongs to entry ``n`` of the index. The entry
+    identifies its chunk by ``content_hash``, NOT by position: a regenerated
+    corpus can add, move or drop chunks, and binding a vector to its position
+    would silently repoint it at a different text.
+
+    || La fila ``n`` del ``.npy`` corresponde a la entrada ``n`` del índice. La
+    entrada identifica su chunk por ``content_hash``, NO por posición: un corpus
+    regenerado puede agregar, mover o eliminar chunks, y atar un vector a su
+    posición lo reapuntaría a otro texto en silencio.
+    """
+
+    chunk_id: str = Field(
+        description="Locator of the chunk within its document. "
+        "|| Localizador del chunk dentro de su documento."
+    )
+    document_id: str = Field(
+        description="Transaction code the chunk belongs to. "
+        "|| Código de transacción al que pertenece el chunk."
+    )
+    tenant_id: str = Field(description="Client the corpus belongs to. || Cliente dueño del corpus.")
+    doc_version: str = Field(
+        description="Documentation version of the corpus. || Versión de documentación del corpus."
+    )
+    content_hash: str = Field(
+        description="SHA-256 of the exact text that was embedded — the identity of this row. "
+        "|| SHA-256 del texto exacto que se embebió — la identidad de esta fila."
+    )
+    token_count: int = Field(
+        ge=0, description="Tokens billed for this row. || Tokens facturados por esta fila."
+    )
+
+
+class EmbeddingModuleIndex(BaseModel):
+    """Index file paired with one module's ``.npy``.
+
+    || Archivo de índice apareado con el ``.npy`` de un módulo.
+    """
+
+    module: str = Field(description="Module slug. || Slug del módulo.")
+    model: str = Field(description="Embedding model used. || Modelo de embeddings usado.")
+    dimensions: int = Field(gt=0, description="Vector dimension. || Dimensión del vector.")
+    entries: list[EmbeddingIndexEntry] = Field(
+        default_factory=list,
+        description="One entry per row, in row order. || Una entrada por fila, en orden de fila.",
+    )
+
+
+class FailedBatch(BaseModel):
+    """A batch that exhausted its retries. || Un lote que agotó sus reintentos.
+
+    The run does NOT abort: a 99.8%-embedded corpus plus a report of what is
+    missing beats an aborted run. These hashes simply stay out of the index, so
+    the next run picks them up by the same incremental mechanism.
+
+    || La corrida NO aborta: un corpus 99,8% embebido más un reporte de qué
+    falta es mejor que una corrida abortada. Esos hashes simplemente quedan
+    fuera del índice, así que la corrida siguiente los toma por el mismo
+    mecanismo incremental.
+    """
+
+    module: str = Field(description="Module the batch belonged to. || Módulo al que pertenecía el lote.")
+    size: int = Field(ge=0, description="Chunks in the batch. || Chunks en el lote.")
+    error: str = Field(description="Last error seen. || Último error visto.")
+    chunk_ids: list[str] = Field(
+        default_factory=list,
+        description="Chunks left unembedded. || Chunks que quedaron sin embeber.",
+    )
+
+
+class EmbeddingManifest(BaseModel):
+    """Authoritative record of an embedding run.
+
+    || Registro autoritativo de una corrida de embeddings.
+    """
+
+    corpus_id: str = Field(description="Corpus that was embedded. || Corpus que se embebió.")
+    tenant_id: str
+    doc_version: str
+    model: str
+    dimensions: int = Field(gt=0)
+    generated_at: str = Field(description="UTC ISO-8601 timestamp. || Timestamp UTC ISO-8601.")
+    total_rows: int = Field(ge=0, description="Vectors persisted. || Vectores persistidos.")
+    embedded_now: int = Field(
+        ge=0, description="Vectors computed in this run. || Vectores calculados en esta corrida."
+    )
+    reused: int = Field(
+        ge=0,
+        description="Vectors reused because their content_hash was unchanged. "
+        "|| Vectores reutilizados porque su content_hash no cambió.",
+    )
+    dropped: int = Field(
+        ge=0,
+        description="Rows discarded because their chunk no longer exists. "
+        "|| Filas descartadas porque su chunk ya no existe.",
+    )
+    tokens_billed: int = Field(
+        ge=0, description="Tokens sent to the model in this run. || Tokens enviados al modelo."
+    )
+    failed_batches: list[FailedBatch] = Field(default_factory=list)

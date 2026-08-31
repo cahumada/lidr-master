@@ -72,9 +72,36 @@ app/
 
 No repliqué `app/ingestion/` del curso (catálogo YAML + jobs en background +
 Postgres): esa capa es para otro tipo de fuente y trae infraestructura que
-este endpoint no necesita (es síncrono y sin persistencia). Tampoco hay
-embeddings ni persistencia en pgvector todavía — es una capa aparte
-(`generation/rag/embedding/` en el curso), no construida.
+este endpoint no necesita (es síncrono y sin persistencia). La persistencia en
+pgvector todavía no está — es la fase siguiente, con su propio proposal.
+
+## Embeddings
+
+`text-embedding-3-small` (1536 dims) sobre el corpus troceado. Los vectores van
+a un **sidecar binario**, no inline en el corpus JSON: 380 MB en `.npy` float32
+contra ~1,8 GB del mismo dato serializado como texto.
+
+```bash
+uv run python scripts/embed_corpus.py --dry-run
+```
+
+```bash
+uv run python scripts/embed_corpus.py
+```
+
+La corrida es **incremental y reanudable**. Una fila se identifica por su
+`content_hash`, nunca por su posición:
+
+- hash en el sidecar y en el corpus → se reutiliza el vector
+- hash solo en el corpus → se embebe
+- hash solo en el sidecar → se descarta (su chunk ya no existe)
+
+Volver a correr sobre un corpus sin cambios hace **cero** llamadas a la API. Un
+lote que agota sus reintentos se reporta y la corrida sigue; el código de salida
+es distinto de cero para que quien la invoque sepa que falta algo.
+
+Sobre el corpus real: 61.901 chunks → **56.480 filas** (8,8% son texto repetido y
+se embebe una sola vez), 4,76 M tokens, ~US$ 0,10.
 
 ## Uso
 
