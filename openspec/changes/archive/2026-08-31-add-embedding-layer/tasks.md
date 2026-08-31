@@ -58,13 +58,14 @@
 
 - [x] 7.1 `--dry-run` sobre el corpus completo y contraste con la estimación
       del proposal (61.901 chunks, ~US$ 0,10).
-- [ ] 7.2 Corrida real contra OpenAI. **BLOQUEADA**: no hay `OPENAI_API_KEY`.
-      En su lugar se corrió el pipeline completo sobre el corpus real con el
-      `HashEmbedder` (1536 dims, sin red): 56.480 filas en 28 módulos, **348 MB**,
-      0 lotes fallidos, verificación en disco OK. La re-corrida hizo **0**
-      llamadas y reutilizó las 56.480 filas en 1,3 s.
+- [x] 7.2 Corrida real contra OpenAI: **56.480 filas** en 28 módulos, 4.753.946
+      tokens, **348 MB**, 742,7 s, **0 lotes fallidos**. Precedida por un smoke
+      test de un módulo (10 filas) para no descubrir un error de wiring 456
+      llamadas más tarde; esas 10 filas se reutilizaron en la corrida completa,
+      lo que verificó la reanudación contra la API real y no solo contra el
+      doble de tests. Verificación en disco de los 28 módulos: OK.
 - [x] 7.3 Re-corrida inmediata: DEBE hacer cero llamadas.
-- [ ] 7.4 Promover el delta a `openspec/specs/chunk-embedding/spec.md` y
+- [x] 7.4 Promover el delta a `openspec/specs/chunk-embedding/spec.md` y
       archivar el change.
 
 
@@ -86,3 +87,15 @@
 
 - **Números medidos vs. estimados:** 348 MB reales contra los 380 MB del
   proposal (la diferencia es la deduplicación), y US$ 0,0951 contra US$ 0,10.
+  El proposal estimó "decenas de minutos" para 457 lotes: fueron 12,4.
+
+- **Los vectores recuperan.** Sonda descartable sobre las 56.480 filas:
+  *"validaciones de la fecha de vigencia"* devuelve cinco secciones
+  `Validaciones` de campos de fecha (0,708–0,725); *"cálculo de comisiones del
+  productor"* devuelve cinco documentos del módulo `producers` (0,672–0,713).
+
+  Pero *"cómo se emite una póliza nueva"* devuelve **4 de 5 chunks del mismo
+  documento**. El header contextual —que es lo que hace que un chunk suelto se
+  entienda— también empuja a que todos los chunks de un documento se parezcan
+  entre sí. Es un insumo para el diseño de la capa de recuperación (diversidad
+  por documento, o híbrido con BM25), no un defecto de esta capa.
