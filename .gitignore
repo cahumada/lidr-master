@@ -1,0 +1,16 @@
+# Secrets — never commit. The .env is created locally from .env.example.
+.env
+.env.local
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Client data and generated corpus.
+# The source documents and the WINDOWS export belong to a client, and the
+# generated corpus is derived from them (76 MB, reproducible in 12 s).
+# See README for how to point the pipeline at a local corpus.
+data/
