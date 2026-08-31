@@ -251,7 +251,7 @@ malformada.
 
 ### El export de `WINDOWS` ya está disponible y valida esta nota `[VERIFICADO-CORPUS]`
 
-El usuario aportó el export el 2026-08-31 (`Life_Windows.xls`: 3390 filas × 23
+El usuario aportó el export el 2026-08-31 (`Windows.xls`: 3390 filas × 23
 columnas). Convertido a `data/windows_tree.csv` (3389 códigos) con
 `scripts/import_windows_tree.py`. Contrastado contra esta nota:
 

@@ -87,7 +87,7 @@
 
 ## 3. Breadcrumb desde `WINDOWS` — DESBLOQUEADO
 
-El usuario aportó el export (`Life_Windows.xls`, tabla completa: 3390 filas ×
+El usuario aportó el export (`Windows.xls`, tabla completa: 3390 filas ×
 23 columnas) el 2026-08-31. El MCP de DiWork no sirvió para exportarlo —
 Oracle inalcanzable (`NJS-530`, host no resoluble) y Azure Blob con cadena TLS
 rota; ambos son de conectividad del servidor MCP, no de la consulta.

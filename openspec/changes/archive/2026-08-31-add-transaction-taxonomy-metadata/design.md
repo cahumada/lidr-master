@@ -202,7 +202,7 @@ buena parte son ids de fallback por nombre, que no son códigos de transacción)
 
 **Decisión:** el árbol es **opcional**. Sin el export el pipeline corre igual y
 no resuelve breadcrumb. El export es una foto parcial de una instalación
-(`Life_Windows`), no una precondición para trocear — atarle el chunking habría
+(`Windows`), no una precondición para trocear — atarle el chunking habría
 hecho que el pipeline dependiera de un archivo que puede no estar.
 
 ### 7g. `MA6835`: la regla estructural encontró el contraejemplo

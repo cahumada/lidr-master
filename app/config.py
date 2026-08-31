@@ -64,8 +64,14 @@ class Settings(BaseSettings):
     # de la documentación; también se declara en el manifiesto del corpus.
     # Sobreescribible por corrida (--tenant / --doc-version), porque un
     # despliegue sirve a varios clientes en versiones posiblemente distintas.
-    TENANT_ID: str = "life_seguros"
-    DOC_VERSION: str = "DW Funtionals 2026.1"
+    # Generic defaults on purpose: the real client id and documentation
+    # version are deployment data and live in the local .env, not in a
+    # public repository.
+    # || Defaults genéricos a propósito: el id del cliente real y la versión
+    # de la documentación son datos del despliegue y viven en el .env local,
+    # no en un repositorio público.
+    TENANT_ID: str = "default_tenant"
+    DOC_VERSION: str = "unversioned"
 
 
 @lru_cache

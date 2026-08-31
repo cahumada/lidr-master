@@ -7,7 +7,7 @@ columns — of which the tree needs three: `SCODISPL` (code), `SCODMEN` (parent)
 `xlrd` is NOT a project dependency: it is needed once per export, not at
 runtime. Run it transiently instead of adding it to `pyproject.toml`:
 
-    uv run --with xlrd python scripts/import_windows_tree.py "C:\\path\\Life_Windows.xls"
+    uv run --with xlrd python scripts/import_windows_tree.py "C:\\path\\Windows.xls"
 
 Add `--system-certs` if a corporate TLS proxy blocks the download.
 

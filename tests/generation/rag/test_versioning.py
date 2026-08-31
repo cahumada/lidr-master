@@ -18,7 +18,7 @@ def _read(relative: str) -> str:
 
 @pytest.fixture
 def chunker() -> FunctionalSpecChunker:
-    return FunctionalSpecChunker(tenant_id="life_seguros", doc_version="DW Funtionals 2026.1")
+    return FunctionalSpecChunker(tenant_id="acme_seguros", doc_version="DW Funtionals 2026.1")
 
 
 # --- Version identity reaches the row the vector store will filter ----------
@@ -31,7 +31,7 @@ def test_every_chunk_carries_tenant_and_version(chunker):
 
     for document in documents:
         for chunk in document.chunks:
-            assert chunk.metadata.tenant_id == "life_seguros"
+            assert chunk.metadata.tenant_id == "acme_seguros"
             assert chunk.metadata.doc_version == "DW Funtionals 2026.1"
 
 
@@ -63,7 +63,7 @@ def test_a_merged_document_stamps_every_chunk_it_absorbed(chunker):
         for c in document.chunks
     }
     assert len(stamped) == 1, f"chunks of one document disagree on their stamp: {stamped}"
-    assert stamped == {("life_seguros", "DW Funtionals 2026.1", "process_report")}
+    assert stamped == {("acme_seguros", "DW Funtionals 2026.1", "process_report")}
 
 
 def test_two_tenants_produce_distinguishable_chunks():

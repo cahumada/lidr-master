@@ -140,7 +140,7 @@ class ChunkMetadata(BaseModel):
     # documentación, en una consulta.
     tenant_id: str = Field(
         default="default",
-        description="Client this chunk belongs to, e.g. 'life_seguros'. || Cliente al que pertenece este chunk."
+        description="Client this chunk belongs to, e.g. 'acme_seguros'. || Cliente al que pertenece este chunk."
     )
     doc_version: str = Field(
         default="unversioned",

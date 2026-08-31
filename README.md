@@ -3,6 +3,37 @@
 Pipeline de ingesta y chunking de documentos funcionales de Visual Time
 (seguros), como paso previo a indexarlos en un RAG con pgvector.
 
+## Puesta en marcha
+
+```bash
+uv sync
+cp .env.example .env      # completar si vas a usar la capa de embeddings
+uv run pytest
+```
+
+### Los datos NO están en el repo
+
+`data/` está en `.gitignore`. Contiene documentación funcional y un export de
+una tabla de producción que **pertenecen a un cliente**, más el corpus generado
+(76 MB, reproducible en 12 s). El repo trae el pipeline, no los datos.
+
+Para correrlo con un corpus propio:
+
+```bash
+uv run python scripts/chunk_corpus.py --root "RUTA/A/TUS/DOCUMENTOS" --out data/chunks --tenant mi_cliente --doc-version "mi version"
+```
+
+Los tests que usan documentos reales como fixture necesitan esos archivos en
+`data/`; sin ellos fallan por archivo faltante, no por lógica.
+
+Opcional, para resolver el breadcrumb Módulo → Submódulo → Transacción:
+
+```bash
+uv run --with xlrd python scripts/import_windows_tree.py "RUTA/Windows.xls"
+```
+
+Sin ese CSV el pipeline corre igual y deja el breadcrumb sin resolver.
+
 ## Fuente de verdad
 
 Este repo documenta su comportamiento con [OpenSpec](https://github.com/Fission-AI/OpenSpec):

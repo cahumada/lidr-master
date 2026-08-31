@@ -104,7 +104,7 @@ persistencia en pgvector, búsqueda semántica, chunking
 jerárquico/semántico/con overlap, y el backend de negocio.
 
 Existe además, generado fuera de este repo, un corpus JSON enriquecido por
-LLM para el módulo `policies` (`corpus_life_seguros_policies.json`, 174
+LLM para el módulo `policies` (`corpus_<tenant>_policies.json`, 174
 unidades con resumen/keywords/referencias tipadas). No es consumido por este
 pipeline todavía; la decisión de consumirlo o no está pendiente y debe pasar
 por un `proposal.md`.
