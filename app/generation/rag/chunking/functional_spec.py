@@ -530,11 +530,24 @@ def parse_sections(text: str) -> list[tuple[str, str]]:
     return sections
 
 
+# A cell separator is an UNESCAPED pipe. The repair in
+# `normalizer._render_table` escapes a pipe that belongs to a cell's text, and
+# one row of the corpus escapes one by hand (`op008.md`: "la fecha \|de emisión
+# del cheque"). Splitting on every pipe cut those cells in two and dropped
+# whatever fell past the last column.
+# || Un separador de celda es un pipe SIN escapar. La reparación en
+# `normalizer._render_table` escapa un pipe que pertenece al texto de una celda,
+# y una fila del corpus escapa uno a mano. Partir por cada pipe cortaba esas
+# celdas en dos y descartaba lo que caía más allá de la última columna.
+_UNESCAPED_PIPE = re.compile(r"(?<!\\)\|")
+
+
 def _split_row(line: str) -> list[str]:
     line = line.strip()
     line = line.removeprefix("|")
-    line = line.removesuffix("|")
-    return [cell.strip() for cell in line.split("|")]
+    if line.endswith("|") and not line.endswith("\\|"):
+        line = line[:-1]
+    return [cell.strip().replace("\\|", "|") for cell in _UNESCAPED_PIPE.split(line)]
 
 
 def parse_markdown_table(section_text: str) -> tuple[list[str], list[list[str]]]:
@@ -932,8 +945,19 @@ def carries_no_information(body: str) -> bool:
     # || Cada línea es estructura markdown o puntuación.
     if all(_is_structure_only(line) for line in lines):
         return True
-    # A rendered table row: every `header: value` line has an empty value.
-    # || Una fila de tabla renderizada: cada línea `header: valor` tiene el valor vacío.
+    # A rendered table row: every `header: value` line has an empty value. A
+    # row carries one line per column, so a SINGLE line is never one — it is
+    # prose, and prose ending in a colon is a real lead-in
+    # (`La tabla es de valores variables. Algunos posibles valores son:`), not
+    # an empty cell. Without that floor this test deleted the lead-in of five
+    # `Valores posibles` sections.
+    # || Una fila de tabla renderizada: cada línea `header: valor` tiene el
+    # valor vacío. Una fila lleva una línea por columna, así que una ÚNICA
+    # línea nunca es una fila — es prosa, y la prosa que termina en dos puntos
+    # es un lead-in real, no una celda vacía. Sin ese piso, esta prueba borraba
+    # el lead-in de cinco secciones `Valores posibles`.
+    if len(lines) < 2:
+        return False
     labelled = [line for line in lines if ":" in line]
     return len(labelled) == len(lines) and all(
         not line.split(":", 1)[1].strip() for line in labelled

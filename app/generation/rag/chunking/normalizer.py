@@ -5,7 +5,7 @@ are Windows exports, ``\\r\\n``) and repair of a recurring export bug where a
 2-column table lost its ``| --- | --- |`` separator row and had its column
 headers exported as ``####`` headings instead of a table header row.
 
-Two broken shapes show up in the real corpus, both handled by
+Four broken shapes show up in the real corpus, all handled by
 :func:`repair_broken_tables`:
 
 * **Simple** — two ``####`` headers, then every data row on its own
@@ -14,8 +14,19 @@ Two broken shapes show up in the real corpus, both handled by
 * **Paired** — two ``####`` headers, then each row's label repeated as its
   own ``####`` heading followed by a ``|  value`` line with no left cell
   (CA001 "Tipo de inicio de vigencia / Fecha a mostrar", 5 rows).
+* **Split rows** — N headers, then rows spanning several lines: a line with
+  no leading pipe starts a row, one with a leading pipe continues it.
+* **Unpiped** — N non-italic ``####`` headers are the columns, then each
+  row is an italic ``####`` label followed by plain prose, with no pipe
+  anywhere (`cp001.md` "Título / Descripción", 407 files). A row label is
+  italic and a column header is not: that is what separates the two in a run
+  of consecutive ``####``, and what keeps a group divider such as
+  ``_Parte repetitiva_`` from being read as a third column.
 
-Both are reconstructed into a single, valid markdown table.
+All four are reconstructed into a single, valid markdown table. A block whose
+rows do not line up with its columns is NOT repaired: padding a short row at
+the end would put a value under the wrong header, and a row repaired wrong is
+worse than a row left broken. Those are logged instead.
 
 || Normalización de texto para los documentos markdown de especificación
 funcional. Aquí viven dos responsabilidades independientes: normalización de
@@ -24,7 +35,7 @@ reparación de un bug de exportación recurrente donde una tabla de 2 columnas
 perdió su fila separadora ``| --- | --- |`` y sus encabezados de columna
 quedaron exportados como headings ``####`` en vez de fila de tabla.
 
-Aparecen dos formas rotas en el corpus real, ambas manejadas por
+Aparecen cuatro formas rotas en el corpus real, todas manejadas por
 :func:`repair_broken_tables`:
 
 * **Simple** — dos headers ``####``, luego cada fila de datos en su propia
@@ -34,8 +45,19 @@ Aparecen dos formas rotas en el corpus real, ambas manejadas por
   repetida como su propio heading ``####`` seguido de una línea
   ``|  valor`` sin celda izquierda (CA001 "Tipo de inicio de vigencia /
   Fecha a mostrar", 5 filas).
+* **Filas partidas** — N headers, luego filas que abarcan varias líneas: una
+  línea sin pipe inicial empieza una fila, una con pipe inicial la continúa.
+* **Sin pipes** — N headers ``####`` no itálicos son las columnas, y cada
+  fila es una etiqueta ``####`` itálica seguida de prosa pelada, sin ningún
+  pipe (`cp001.md` "Título / Descripción", 407 archivos). Una etiqueta de
+  fila es itálica y un encabezado de columna no: eso es lo que los separa en
+  una corrida de ``####`` consecutivos, y lo que evita leer un divisor de
+  grupo como ``_Parte repetitiva_`` como si fuera una tercera columna.
 
-Ambas se reconstruyen en una única tabla markdown válida.
+Las cuatro se reconstruyen en una única tabla markdown válida. Un bloque cuyas
+filas no se alinean con sus columnas NO se repara: rellenar una fila corta al
+final pondría un valor bajo el encabezado equivocado, y una fila mal reparada
+es peor que una fila rota. Esos casos se registran en el log.
 """
 
 from __future__ import annotations
@@ -49,6 +71,26 @@ log = structlog.get_logger()
 
 HEADER_LINE = re.compile(r"^####\s+(.*\S)\s*$")
 SEPARATOR_ROW = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$")
+
+# The unpiped shape also appears inside blockquotes: the export writes a nested
+# row as ``> ####  _1.1 Especificaciones incorrectas_``. Only the unpiped pass
+# uses this looser header; the three piped shapes keep ``HEADER_LINE``.
+# || La forma sin pipes también aparece adentro de blockquotes: el export
+# escribe una fila anidada como ``> ####  _1.1 Especificaciones incorrectas_``.
+# Solo la pasada sin pipes usa este header más laxo; las tres formas con pipes
+# siguen con ``HEADER_LINE``.
+QUOTED_HEADER_LINE = re.compile(r"^\s*(?:>\s*)*####\s+(.*\S)\s*$")
+
+# A row label is written in italics, a column header is not. That is what tells
+# the two apart in a run of consecutive ``####``: in `cp001.md` the run is
+# ``Título`` / ``Descripción`` / ``_Moneda_``, which is two columns and the
+# first row's label — not three columns. The same marker separates a group
+# divider (``_Parte repetitiva_``) from a real column.
+# || Una etiqueta de fila se escribe en itálica, un encabezado de columna no.
+# Eso es lo que los distingue en una corrida de ``####`` consecutivos: en
+# `cp001.md` la corrida es ``Título`` / ``Descripción`` / ``_Moneda_``, que son
+# dos columnas y la etiqueta de la primera fila — no tres columnas.
+ITALIC_LABEL = re.compile(r"^(_.*_|__.*__|\*_.*_\*)$")
 
 _LineKind = str  # "header" | "data" | "blank" | "other"
 
@@ -318,6 +360,190 @@ def _parse_block(block_lines: list[str]) -> tuple[list[str], list[list[str]], li
     return None
 
 
+def _is_italic_label(text: str) -> bool:
+    return bool(ITALIC_LABEL.match(text.strip()))
+
+
+def _quoted_header(line: str) -> str | None:
+    if "|" in line:
+        return None
+    match = QUOTED_HEADER_LINE.match(line)
+    return match.group(1) if match else None
+
+
+def _read_unpiped_block(
+    lines: list[str], start: int
+) -> tuple[int, list[str], list[tuple[str, list[str]]]] | None:
+    """Read the fourth broken shape starting at ``start``, or return None.
+
+    N non-italic ``####`` headers are the columns; every ``####`` after them is
+    a row label, and the plain lines under a label are that row's cells. No
+    pipe is involved anywhere, which is exactly why the three piped shapes miss
+    it and the section ends up chunked as narrative — one loose chunk per cell,
+    with the field name severed from its description.
+
+    || Lee la cuarta forma rota que empieza en ``start``, o devuelve None. N
+    headers ``####`` no itálicos son las columnas; todo ``####`` posterior es
+    una etiqueta de fila, y las líneas planas bajo una etiqueta son las celdas
+    de esa fila. No hay ningún pipe, que es justo por qué las tres formas con
+    pipes no la ven y la sección termina troceada como narrativa — un chunk
+    suelto por celda, con el nombre del campo separado de su descripción.
+    """
+    total = len(lines)
+    headers: list[str] = []
+    cursor = start
+    while cursor < total:
+        if not lines[cursor].strip():
+            cursor += 1
+            continue
+        text = _quoted_header(lines[cursor])
+        if text is None or _is_italic_label(text):
+            break
+        headers.append(_strip_emphasis(text))
+        cursor += 1
+    if len(headers) < 2 or cursor >= total:
+        return None
+
+    rows: list[tuple[str, list[str]]] = []
+    while cursor < total:
+        if not lines[cursor].strip():
+            cursor += 1
+            continue
+        label = _quoted_header(lines[cursor])
+        if label is None:
+            break
+        cursor += 1
+        values: list[str] = []
+        while cursor < total:
+            line = lines[cursor]
+            if line.strip() and (_quoted_header(line) is not None or line.lstrip().startswith("##")):
+                break
+            if line.strip():
+                values.append(line.strip())
+            cursor += 1
+        rows.append((_strip_emphasis(label), values))
+
+    while rows and not rows[-1][1] and not rows[-1][0]:
+        rows.pop()
+    if len(rows) < 2 or not any(values for _label, values in rows):
+        return None
+    return cursor, headers, rows
+
+
+def _unpiped_value_cells(values: list[str]) -> list[str]:
+    """Split a row's value lines into cells.
+
+    A continuation line often opens with the export's leftover cell separator
+    (``| Se incluye la agencia...``). That pipe is a separator, not content, and
+    a lone ``\\`` between the label and its value is a line-break artifact.
+
+    || Parte las líneas de valor de una fila en celdas. Una línea de
+    continuación suele abrir con el separador de celda que dejó el export; ese
+    pipe es un separador, no contenido, y un ``\\`` solo entre la etiqueta y su
+    valor es un artefacto de salto de línea.
+    """
+    cells: list[str] = []
+    for value in values:
+        text = value.strip().removeprefix("|")
+        for part in text.split("|"):
+            part = part.strip()
+            if part and part.strip("\\"):
+                cells.append(part)
+    return cells
+
+
+def _unpiped_rows_are_symmetric(headers: list[str], rows: list[tuple[str, list[str]]]) -> bool:
+    """Whether the rows line up with the columns well enough to repair.
+
+    A row must supply exactly one value per non-label column, or none at all —
+    a label with no values is a group divider (``_Parte repetitiva_``) and is
+    kept as a label-only row. A two-column table is the easy case: everything
+    under the label is the single description cell.
+
+    Asymmetric blocks are NOT repaired. Padding a short row at the end would
+    put a value in the wrong column — in `mer001.md` the flag ``No`` would land
+    under *Tipo de Raíz del Error* instead of *Temporal*, asserting a business
+    fact the document never states. A row left unrepaired is a gap; a row
+    repaired wrong is a lie.
+
+    || Si las filas se alinean con las columnas lo bastante como para reparar.
+    Una fila debe aportar exactamente un valor por columna que no sea la
+    etiqueta, o ninguno — una etiqueta sin valores es un divisor de grupo y se
+    conserva como fila solo-etiqueta. Una tabla de dos columnas es el caso
+    fácil: todo lo que está bajo la etiqueta es la única celda de descripción.
+
+    Los bloques asimétricos NO se reparan. Rellenar una fila corta al final
+    pondría un valor en la columna equivocada — en `mer001.md` la bandera ``No``
+    caería bajo *Tipo de Raíz del Error* en vez de *Temporal*, afirmando un
+    hecho de negocio que el documento nunca dice. Una fila sin reparar es un
+    hueco; una fila mal reparada es una mentira.
+    """
+    if len(headers) == 2:
+        return True
+    expected = len(headers) - 1
+    return all(len(_unpiped_value_cells(values)) in (0, expected) for _label, values in rows)
+
+
+def _unpiped_row_cells(headers: list[str], label: str, values: list[str]) -> list[str]:
+    cells = _unpiped_value_cells(values)
+    if len(headers) == 2:
+        # Everything under the label is one description cell.
+        # || Todo lo que está bajo la etiqueta es una única celda de descripción.
+        return [label, " ".join(cells)]
+    row = [label, *cells]
+    return row + [""] * (len(headers) - len(row))
+
+
+def _find_unpiped_blocks(
+    lines: list[str], claimed: list[tuple[int, int]]
+) -> list[tuple[int, int, list[str], list[list[str]]]]:
+    """Find every unpiped header/label block outside the regions already claimed.
+
+    Runs as a second pass so the three piped shapes keep the behaviour they
+    have; a region one of them already matched is never looked at again.
+
+    || Encuentra cada bloque sin pipes de header/etiqueta fuera de las regiones
+    ya tomadas. Corre como segunda pasada para que las tres formas con pipes
+    conserven el comportamiento que ya tienen; una región que alguna de ellas
+    ya matcheó no se vuelve a mirar.
+    """
+    found: list[tuple[int, int, list[str], list[list[str]]]] = []
+    index = 0
+    total = len(lines)
+    while index < total:
+        if any(start <= index < end for start, end in claimed):
+            index += 1
+            continue
+        text = _quoted_header(lines[index])
+        if text is None or _is_italic_label(text):
+            index += 1
+            continue
+        read = _read_unpiped_block(lines, index)
+        if read is None:
+            index += 1
+            continue
+        end, headers, rows = read
+        if any(start < end and index < stop for start, stop in claimed):
+            index = end
+            continue
+        if not _unpiped_rows_are_symmetric(headers, rows):
+            # Visible rather than invisible: a table that is still being lost
+            # says so, with the headers that identify it.
+            # || Visible en vez de invisible: una tabla que se sigue perdiendo
+            # lo dice, con los encabezados que la identifican.
+            log.warning(
+                "unpiped_table_not_repaired",
+                headers=headers,
+                rows=len(rows),
+                reason="rows do not line up with the columns; padding would put a value in the wrong column",
+            )
+            index = end
+            continue
+        found.append((index, end, headers, [_unpiped_row_cells(headers, label, values) for label, values in rows]))
+        index = end
+    return found
+
+
 def _render_table(headers: list[str], rows: list[list[str]]) -> str:
     def esc(cell: str) -> str:
         return cell.replace("|", "\\|").replace("\n", " ").strip()
@@ -337,14 +563,28 @@ def repair_broken_tables_with_trace(text: str) -> tuple[str, list[RepairedTable]
     kinds = [_classify_line(line) for line in lines]
     blocks = _find_candidate_blocks(lines, kinds)
 
+    # Second pass for the unpiped shape, over what the first one did not claim,
+    # then both merged in source order so the splice below stays sequential.
+    # || Segunda pasada para la forma sin pipes, sobre lo que la primera no
+    # tomó, y las dos fundidas en orden de la fuente para que el empalme de
+    # abajo siga siendo secuencial.
+    unpiped = {
+        start: (end, headers, rows) for start, end, headers, rows in _find_unpiped_blocks(lines, blocks)
+    }
+    blocks = sorted([*blocks, *((start, end) for start, (end, _h, _r) in unpiped.items())])
+
     traces: list[RepairedTable] = []
     out_lines: list[str] = []
     cursor = 0
     for start, end in blocks:
-        parsed = _parse_block(lines[start:end])
-        if parsed is None:
-            continue
-        headers, rows, warnings = parsed
+        if start in unpiped:
+            _end, headers, rows = unpiped[start]
+            warnings = []
+        else:
+            parsed = _parse_block(lines[start:end])
+            if parsed is None:
+                continue
+            headers, rows, warnings = parsed
         raw_original = "\n".join(lines[start:end])
         repaired_markdown = _render_table(headers, rows)
 
