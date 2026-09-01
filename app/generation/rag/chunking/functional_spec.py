@@ -130,7 +130,15 @@ NARRATIVE_TOKEN_CAP = 500
 # `(CODE)` (2), más una malformada. Los códigos NO son siempre
 # [A-Z]{2,4}\d{3}: los reales incluyen BC005_k, VI7501_A, CA13-1 y la raíz sin
 # dígitos MENU.
-_ID_MARK = r"[\s\\`*]*"
+# `[ \t]` and not `\s`, for the same reason as the heading patterns below: in
+# an anchored MULTILINE pattern a `\s*` at the edges can cross a line break. It
+# matches the same 461 id lines as `\s*` on the current corpus, so this removes
+# the hazard rather than a bug.
+# || `[ \t]` y no `\s`, por lo mismo que los patrones de heading de abajo: en
+# un patrón anclado con MULTILINE un `\s*` en los bordes puede cruzar un salto
+# de línea. Matchea las mismas 461 líneas de id que `\s*` sobre el corpus
+# actual, así que esto saca el peligro, no un bug.
+_ID_MARK = r"[ \t\\`*]*"
 # A code with digits: CA014, CA001k, CPL500, BC005_k, VI7501_A, CA13-1.
 # || Un código con dígitos.
 _CODE_WITH_DIGITS = r"[A-Z]{2,4}\d{1,5}(?:[_-]?[A-Za-z0-9]{1,3})?"
@@ -159,9 +167,22 @@ DOCUMENT_ID_PATTERN = re.compile(rf"\(`?\*{{0,2}}({_CODE_WITH_DIGITS})\*{{0,2}}`
 # transacción principal.
 KEY_REQUEST_SUFFIX = re.compile(r"^(?P<base>.+?)_[kK]$")
 
-TITLE_PATTERN = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
-H1_PATTERN = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
-H2_PATTERN = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
+# The separator between a `#` marker and its heading text is a space or a
+# horizontal tab -- NEVER a newline. `re.MULTILINE` changes where `^` and `$`
+# anchor, but it does not stop `\s+` from consuming a `\n`: with `\s+`, the
+# empty `##` line the export emits swallowed the NEXT heading and used it as
+# its own name (a section ended up called `## Notas al programador`), and an
+# empty `##` followed by prose invented a section named after a body
+# paragraph. 62 files, 68 phantom sections.
+# || El separador entre un marcador `#` y su texto es un espacio o un tab
+# horizontal -- NUNCA un salto de línea. `re.MULTILINE` cambia dónde anclan `^`
+# y `$`, pero no impide que `\s+` consuma un `\n`: con `\s+`, la línea `##`
+# vacía que emite el export se tragaba el heading SIGUIENTE y lo usaba como su
+# propio nombre, y un `##` vacío seguido de prosa inventaba una sección con el
+# nombre de un párrafo del cuerpo. 62 archivos, 68 secciones fantasma.
+TITLE_PATTERN = re.compile(r"^#[ \t]+(.+?)[ \t]*$", re.MULTILINE)
+H1_PATTERN = re.compile(r"^#[ \t]+(.+?)[ \t]*$", re.MULTILINE)
+H2_PATTERN = re.compile(r"^##[ \t]+(.+?)[ \t]*$", re.MULTILINE)
 
 # Inline sibling-transaction references, quoted in backticks: `CA003`, `CAC011`.
 # Deliberately anchored so it never matches the document's own id block
@@ -292,6 +313,117 @@ def _strip_emphasis(text: str) -> str:
     text = text.strip()
     text = re.sub(r"^[*_]+|[*_]+$", "", text)
     return text.strip()
+
+
+# --- heading_text || heading_text -------------------------------------------
+
+# Leading blockquote and `#` markers, for a heading that reaches us carrying
+# its own (a `bullet_path` element taken from a `> ### ...` line). Both are
+# stripped in one alternating run: the export nests them, so handling only one
+# left `> ### Proceso` in 211 headers.
+# || Marcadores de blockquote y `#` iniciales, para un heading que llega con
+# los suyos (un elemento de `bullet_path` tomado de una línea `> ### ...`). Se
+# quitan en una sola corrida alternada: el export los anida, así que atender
+# solo uno dejaba `> ### Proceso` en 211 headers.
+_LEADING_MARKERS = re.compile(r"^(?:[>#]+[ \t]*)+")
+
+# The bullet glyphs Word emits, when they OPEN the heading. `o` is the risky
+# one -- it is also the Spanish word for "or" -- so it is only taken as a glyph
+# when what follows is a capital, a quote or an emphasis marker, which is the
+# shape of every one of the 267 such headings in the corpus. A heading that
+# genuinely began with "o " as a word would keep it.
+# || Los glifos de viñeta que emite Word, cuando ABREN el heading. `o` es el
+# riesgoso —también es la conjunción "o"— así que solo se toma como glifo
+# cuando lo que sigue es una mayúscula, una comilla o un marcador de énfasis,
+# que es la forma de los 267 headings así del corpus. Un heading que empezara
+# de verdad con "o " como palabra lo conserva.
+_LEADING_WORD_GLYPH = re.compile(r"^(?:[·§][ \t]*|o(?=[ \t]*[_*«\u201cA-ZÁÉÍÓÚÜÑ]))[ \t]*")
+
+# `[label](target)` -> `label`. A link with no label collapses to nothing,
+# which is right: there is no human name in it.
+# || `[etiqueta](destino)` -> `etiqueta`. Un link sin etiqueta se colapsa a
+# nada, que es lo correcto: no hay nombre humano adentro.
+_MARKDOWN_LINK = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
+_MARKDOWN_LINK_TARGET = re.compile(r"\[[^\]]*\]\(([^)]*)\)")
+
+# An interior run of `*` is a lost separator: Word exported two adjacent bold
+# runs (`**Función****General**`) and the space between them did not survive.
+# `_` is NOT included -- per CommonMark an underscore inside a word is not
+# emphasis (`foo_bar_baz`), and the corpus has `Conteo de unidades por
+# unit_type`, where treating it as emphasis would break the identifier.
+# || Una corrida interior de `*` es un separador perdido: Word exportó dos
+# corridas en negrita pegadas y el espacio entre ellas no sobrevivió. El `_` NO
+# se incluye — según CommonMark un guion bajo dentro de una palabra no es
+# énfasis, y el corpus tiene `Conteo de unidades por unit_type`, donde tratarlo
+# como énfasis rompería el identificador.
+_INTERIOR_ASTERISKS = re.compile(r"(?<=[^\W_])\*+(?=[^\W_])", re.UNICODE)
+
+# What the export escapes with a backslash. `#` is in the set because the
+# corpus writes a literal hash in report layouts (`\#Número de página`); it is
+# unescaped LAST, after the leading-marker strip, so a real marker is never
+# reintroduced.
+# || Lo que el export escapa con barra. El `#` está en el conjunto porque el
+# corpus escribe un numeral literal en layouts de reporte; se desescapa AL
+# FINAL, después de quitar los marcadores iniciales, así que nunca se
+# reintroduce un marcador real.
+_EXPORT_ESCAPE = re.compile(r"\\([()\[\]_*|~#])")
+
+
+def heading_text(raw: str) -> str:
+    """The human name of a heading, with the Word export's markup removed.
+
+    ``metadata.section`` is a filterable field and the contextual header gets
+    embedded, so neither should carry split emphasis markers, link syntax,
+    bullet glyphs or backslash escapes. The same section existed in three
+    spellings (``Proceso****Batch``, ``Proceso** Batch``,
+    ``Proceso********Batch``), none of which grouped with the ``Proceso batch``
+    of the other 2100 documents.
+
+    || El nombre humano de un heading, sin el marcado del export de Word.
+    ``metadata.section`` es un campo filtrable y el header contextual se
+    embebe, así que ninguno debería llevar marcadores de énfasis partidos,
+    sintaxis de link, glifos de viñeta ni escapes con barra. La misma sección
+    llegó a existir en tres grafías, ninguna de las cuales agrupaba con el
+    ``Proceso batch`` de los otros 2100 documentos.
+    """
+    text = raw.strip()
+    text = _LEADING_MARKERS.sub("", text)
+    text = _LEADING_WORD_GLYPH.sub("", text)
+    text = _MARKDOWN_LINK.sub(r"\1", text)
+    text = _INTERIOR_ASTERISKS.sub(" ", text)
+    # Any asterisk run left is emphasis that closed somewhere other than the
+    # edges (`**Proceso** Batch`). It is dropped rather than turned into a
+    # space: the separator it borders is already there.
+    # || Cualquier corrida de asteriscos que quede es énfasis que cerró en otro
+    # lado que los bordes. Se descarta en vez de volverse espacio: el separador
+    # que la rodea ya está.
+    text = re.sub(r"\*+", "", text)
+    text = _strip_emphasis(text)
+    # A glyph can sit behind the emphasis that was just removed
+    # (``_o Ramo_`` -> ``o Ramo``), so one more pass.
+    # || Un glifo puede quedar detrás del énfasis recién quitado, así que una
+    # pasada más.
+    text = _LEADING_WORD_GLYPH.sub("", text)
+    text = _EXPORT_ESCAPE.sub(r"\1", text)
+    text = re.sub(r"[ \t]+", " ", text).strip()
+
+    # A link whose label the export lost (`## [](../mantenimiento/ma0085.html)`,
+    # `## [.](../seguridad/valschemaoffice.html)`) would clean down to nothing
+    # and be dropped as a junk heading -- taking its body with it. That cost
+    # MS010 its seven validation rules and their error codes. The link target
+    # is the only name left, so it is the name: marking beats dropping.
+    # || Un link cuya etiqueta perdió el export limpiaría a nada y se
+    # descartaría como heading junk — llevándose su cuerpo. Eso le costó a
+    # MS010 sus siete reglas de validación con sus códigos de error. El destino
+    # del link es el único nombre que queda, así que es el nombre: marcar es
+    # mejor que borrar.
+    if _is_junk_heading(text):
+        link = _MARKDOWN_LINK_TARGET.search(raw)
+        if link:
+            stem = link.group(1).rsplit("/", 1)[-1].rsplit(".", 1)[0]
+            if stem:
+                return stem.upper()
+    return text
 
 
 def _block_head(text: str) -> str:
@@ -425,7 +557,7 @@ def extract_document_title(text: str) -> str:
     """
     match = TITLE_PATTERN.search(text)
     if match:
-        return _strip_emphasis(match.group(1))
+        return heading_text(match.group(1))
     for line in text.split("\n"):
         stripped = line.strip()
         if not stripped:
@@ -442,7 +574,7 @@ def extract_document_title(text: str) -> str:
         # chunks, sin decir nada de qué hace la transacción.
         if ID_LINE_PATTERN.match(stripped):
             continue
-        return _strip_emphasis(stripped)
+        return heading_text(stripped)
     return ""
 
 
@@ -482,7 +614,7 @@ def extract_block_title(block_text: str) -> str:
     título del documento.
     """
     match = TITLE_PATTERN.search(block_text)
-    return _strip_emphasis(match.group(1)) if match else ""
+    return heading_text(match.group(1)) if match else ""
 
 
 def parse_sections(text: str) -> list[tuple[str, str]]:
@@ -517,7 +649,7 @@ def parse_sections(text: str) -> list[tuple[str, str]]:
         sections.append((INTRO_SECTION_LABEL, intro_body))
 
     for idx, match in enumerate(matches):
-        raw_name = _strip_emphasis(match.group(1))
+        raw_name = heading_text(match.group(1))
         if _is_junk_heading(raw_name):
             continue
         start = match.end()
@@ -788,7 +920,7 @@ def _segment_prose(text: str) -> list[str]:
 def _label_for(unit_text: str) -> str:
     first_line = unit_text.strip().split("\n", 1)[0]
     label = _BULLET_PREFIX.sub("", first_line).strip()
-    label = _strip_emphasis(label)
+    label = heading_text(label)
     return label[:80]
 
 
