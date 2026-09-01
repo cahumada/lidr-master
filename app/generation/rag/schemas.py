@@ -166,6 +166,32 @@ class ChunkMetadata(BaseModel):
         "(chunk_type='narrative' only). || Breadcrumb de etiquetas de bullets "
         "anidados hasta este chunk (solo chunk_type='narrative').",
     )
+    # A statement the token cap forced apart. The chunker joins a unit that
+    # leaves its statement open with what follows; when the join would exceed
+    # the cap it emits them separately and links them here instead. Marking
+    # beats both alternatives: forcing the join would break the cap the
+    # embedding layer verifies, and dropping either side would delete a
+    # business rule.
+    # || Un enunciado que el techo de tokens obligó a separar. El chunker une
+    # una unidad que deja el enunciado abierto con lo que sigue; cuando la
+    # unión excedería el techo, los emite separados y los enlaza acá. Marcar
+    # le gana a las dos alternativas: unir a la fuerza rompería el techo que
+    # la capa de embeddings verifica, y descartar cualquiera de los dos lados
+    # borraría una regla de negocio.
+    continued_from: str | None = Field(
+        default=None,
+        description="chunk_id where this chunk's statement begins, when the token cap "
+        "forced it apart; absent when the chunk holds a complete statement. "
+        "|| chunk_id donde empieza el enunciado de este chunk, cuando el techo de "
+        "tokens lo obligó a separarse; ausente cuando el chunk tiene un enunciado completo.",
+    )
+    continues_into: str | None = Field(
+        default=None,
+        description="chunk_id where this chunk's statement ends, when the token cap "
+        "forced it apart; absent when the chunk holds a complete statement. "
+        "|| chunk_id donde termina el enunciado de este chunk, cuando el techo de "
+        "tokens lo obligó a separarse; ausente cuando el chunk tiene un enunciado completo.",
+    )
 
 
 class Chunk(BaseModel):

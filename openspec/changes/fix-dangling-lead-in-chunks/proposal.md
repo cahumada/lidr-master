@@ -66,8 +66,11 @@ enunciado, y un subconjunto que se recupera con el sentido invertido.
   spec ya protege — porque esas terminan la oración.
 - **Se une hacia adelante, no se borra.** La unidad colgada se junta con las
   que siguen en la misma sección hasta cerrar el enunciado, respetando el techo
-  de tokens. El chunk resultante contiene el condicional entero, con sus dos
-  ramas.
+  de tokens. Lo que se reconstruye es el ENUNCIADO: `De lo contrario,` viaja
+  con la rama que introduce, y un lead-in viaja con lo que cierra su oración.
+  La condición `§Si <cond>.` de más arriba, que cierra con punto, sigue en su
+  propio chunk — pegarla exigiría la jerarquía de glifos que se midió y se
+  descartó (78,8%, ver `design.md`).
 - **Cuando la unión no entra bajo el techo, se MARCA.** El chunk se emite igual
   y declara en su metadata `continues_into` / `continued_from` con el
   `chunk_id` del vecino. Nunca se descarta: es el mismo principio que hizo
@@ -86,6 +89,27 @@ enunciado, y un subconjunto que se recupera con el sentido invertido.
 | Reducción neta del corpus | −1.066 chunks (−1,72%) |
 | Grupos que entran bajo el techo de 500 tokens | 901 (**94,4%**) |
 | Grupos que exceden el techo → se marcan, no se unen | 53 (5,6%) |
+
+## Resultado medido tras implementar
+
+Corrida completa del chunker sobre los 2169 archivos del corpus, comparada
+contra `data/chunks` generado antes del cambio [VERIFICADO-CORPUS]:
+
+| | Antes | Después |
+|---|---|---|
+| Chunks del corpus | 61.901 | **60.451** (−1.450, −2,34%) |
+| Chunks con enunciado abierto | 1.090 | **92** (−91,6%) |
+| ...enlazados con `continues_into` | — | 70 |
+| ...última unidad de su sección, sin nada adelante | — | 22 |
+| Documentos afectados | 253 | 61 |
+| Documentos que perdieron todos sus chunks | — | **0** |
+| Chunks narrativos sobre el techo de 500 | 0 | **0** |
+| Enlaces que apuntan a un chunk inexistente | — | **0** |
+
+Los 22 sin enlace son legítimos: son la última unidad de su sección y no hay
+nada adelante a lo cual unirlos. Varios son truncamientos del propio export —
+`op714.md` termina su sección `Efecto` con “...estado “Pendiente de
+aprobación,”, sin cerrar la oración en el fuente.
 
 ## Capabilities
 

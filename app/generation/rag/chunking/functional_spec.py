@@ -625,21 +625,106 @@ def _contextual_header(document_id: str, title: str, section: str, bullet_path: 
     return f"[Documento: {document_id} - {title}]\n{section_line}\n"
 
 
+# A unit whose last line ends in a comma or a colon has not closed its
+# statement: it continues in whatever comes next.
+# || Una unidad cuya última línea termina en coma o dos puntos no cerró su
+# enunciado: continúa en lo que venga después.
+_OPEN_STATEMENT_TAIL = (",", ":")
+
+
+def _leaves_statement_open(unit_text: str) -> bool:
+    """True when a unit's text does not close its statement.
+
+    The discriminator is GRAMMAR, not length. ``No aplica.`` and ``A petición
+    del usuario.`` are short but end their sentence and are left alone; ``· De
+    la tabla de Situación impositiva del Cliente se obtiene:`` is long and ends
+    nothing. Emitting an open statement on its own produces two half chunks
+    and, when the statement is a conditional, something worse than half: the
+    ``else`` branch retrieved without its connector reads as the ``then``
+    branch and inverts the business rule.
+
+    || True cuando el texto de una unidad no cierra su enunciado. El
+    discriminador es GRAMATICAL, no de largo. ``No aplica.`` y ``A petición del
+    usuario.`` son cortos pero cierran su oración y quedan intactos; ``· De la
+    tabla de Situación impositiva del Cliente se obtiene:`` es largo y no
+    cierra nada. Emitir un enunciado abierto por su cuenta produce dos medios
+    chunks y, cuando el enunciado es un condicional, algo peor que medio: la
+    rama ``else`` recuperada sin su conector se lee como la rama ``then`` e
+    invierte la regla de negocio.
+    """
+    lines = [line.strip() for line in unit_text.strip().splitlines() if line.strip()]
+    if not lines:
+        return False
+    last = _strip_emphasis(lines[-1]).rstrip("*_`~ ")
+    return last.endswith(_OPEN_STATEMENT_TAIL)
+
+
+def _join_open_statements(segments: list[str]) -> list[str]:
+    """Join each segment that leaves its statement open with what follows.
+
+    The corpus writes its list hierarchy with the bullet glyphs Word emits
+    (``·``, ``o``, ``§``), which ``_BULLET_LINE`` does not recognise, so a
+    conditional arrives here as a flat run of blank-line-separated paragraphs:
+    ``§Si <cond>`` / ``·<then>`` / ``De lo contrario,`` / ``·<else>``. Joining
+    by grammar restores the whole conditional without having to decide which
+    glyph nests under which — a decision the glyph alone only supports ~79% of
+    the time, and a wrong nesting is exactly the inversion this guards against.
+
+    Joining never reorders and never crosses the caller's boundary, so the
+    worst case is a chunk larger than ideal, never one that misstates the rule.
+
+    || Une cada segmento que deja el enunciado abierto con lo que sigue. El
+    corpus escribe su jerarquía de listas con los glifos de viñeta que emite
+    Word (``·``, ``o``, ``§``), que ``_BULLET_LINE`` no reconoce, así que un
+    condicional llega acá como una corrida plana de párrafos separados por
+    línea en blanco. Unir por gramática reconstruye el condicional entero sin
+    tener que decidir qué glifo anida bajo cuál — decisión que el glifo solo
+    sostiene ~79% de las veces, y un anidamiento equivocado es exactamente la
+    inversión que esto evita.
+
+    Unir nunca reordena y nunca cruza el borde que da el llamador, así que el
+    peor caso es un chunk más grande de lo ideal, nunca uno que miente.
+    """
+    joined: list[str] = []
+    pending: list[str] = []
+    for segment in segments:
+        pending.append(segment.strip("\n"))
+        if not _leaves_statement_open(segment):
+            joined.append("\n\n".join(pending))
+            pending = []
+    if pending:
+        # The section ends on an open statement: there is nothing ahead to
+        # join it to, so it is emitted as it stands.
+        # || La sección termina con un enunciado abierto: no hay nada adelante
+        # a lo cual unirlo, así que se emite tal cual.
+        joined.append("\n\n".join(pending))
+    return joined
+
+
 def _segment_prose(text: str) -> list[str]:
     """Split prose into top-level units: one per top-level markdown bullet
     (with all deeper-indented/child content attached), and one per
     blank-line-delimited paragraph for everything that isn't part of a
-    markdown bullet list (plain prose, and the '·'/'§'/'>' conventions the
-    corpus also uses — those never get split mid-statement since each is
-    already its own blank-line-separated block in the source).
+    markdown bullet list (plain prose, and the '·'/'§'/'o' conventions the
+    corpus also uses).
+
+    Those glyph conventions carry a hierarchy this function cannot see — they
+    are not markdown bullets — so each of their lines arrives as its own
+    blank-line-separated paragraph and a statement spanning several of them
+    would be cut apart. :func:`_join_open_statements` puts those back together
+    by grammar before the units are returned.
 
     || Divide la prosa en unidades de primer nivel: una por cada bullet de
     markdown de primer nivel (con todo el contenido hijo/más indentado
     adjunto), y una por cada párrafo delimitado por línea en blanco para
     todo lo que no forma parte de una lista markdown (prosa simple, y las
-    convenciones '·'/'§'/'>' que también usa el corpus — esas nunca se
-    parten a mitad de un enunciado porque cada una ya es su propio bloque
-    separado por línea en blanco en la fuente).
+    convenciones '·'/'§'/'o' que también usa el corpus).
+
+    Esas convenciones de glifos llevan una jerarquía que esta función no ve
+    —no son bullets de markdown— así que cada una de sus líneas llega como su
+    propio párrafo separado por línea en blanco, y un enunciado que abarque
+    varias quedaría partido. :func:`_join_open_statements` los vuelve a unir
+    por gramática antes de devolver las unidades.
     """
     lines = text.split("\n")
     n = len(lines)
@@ -680,7 +765,11 @@ def _segment_prose(text: str) -> list[str]:
                 para = para.strip("\n")
                 if para.strip():
                     final.append(para)
-    return final
+    # Joining happens here, at every level of the descent, so a unit that
+    # leaves its statement open is never handed onwards on its own.
+    # || La unión pasa acá, en cada nivel del descenso, para que una unidad que
+    # deja el enunciado abierto nunca se pase sola hacia adelante.
+    return _join_open_statements(final)
 
 
 def _label_for(unit_text: str) -> str:
@@ -919,20 +1008,30 @@ def _chunk_narrative_section(
     else:
         units = _chunk_units(document_id, title, section, _segment_prose(prose_text), [], cap)
 
-    for path, unit_text in units:
-        if carries_no_information(unit_text):
-            # A leftover heading or an export artifact. Dropped by CONTENT, not
-            # by length: `No aplica.` is short but is a real answer.
-            # || Un heading sobrante o un artefacto del export. Se descarta por
-            # CONTENIDO, no por largo: `No aplica.` es corto pero es una
-            # respuesta real.
-            continue
+    # Units that survive the no-information filter, in order. Dropping happens
+    # before the ids are handed out so the linking below never points at a
+    # chunk that was never emitted.
+    # || Las unidades que sobreviven al filtro de sin-información, en orden. El
+    # descarte pasa antes de repartir los ids para que el enlazado de abajo
+    # nunca apunte a un chunk que no se emitió.
+    kept = [
+        (path, unit_text)
+        for path, unit_text in units
+        # A leftover heading or an export artifact. Dropped by CONTENT, not by
+        # length: `No aplica.` is short but is a real answer.
+        # || Un heading sobrante o un artefacto del export. Se descarta por
+        # CONTENIDO, no por largo: `No aplica.` es corto pero es una respuesta real.
+        if not carries_no_information(unit_text)
+    ]
+
+    narrative_chunks: list[Chunk] = []
+    for offset, (path, unit_text) in enumerate(kept):
         bullet_path = " > ".join(path) if path else None
         header = _contextual_header(document_id, title, section, bullet_path)
         full_text = header + unit_text.strip()
-        chunks.append(
+        narrative_chunks.append(
             Chunk(
-                chunk_id=f"{document_id}::{_slugify(section)}::{idx}",
+                chunk_id=f"{document_id}::{_slugify(section)}::{idx + offset}",
                 text=full_text,
                 metadata=ChunkMetadata(
                     document_id=document_id,
@@ -945,9 +1044,41 @@ def _chunk_narrative_section(
                 references=extract_references(full_text, self_code=document_id),
             )
         )
-        idx += 1
+
+    _link_split_statements(narrative_chunks, [unit_text for _path, unit_text in kept])
+    chunks.extend(narrative_chunks)
 
     return chunks
+
+
+def _link_split_statements(chunks: list[Chunk], unit_texts: list[str]) -> None:
+    """Declare, on both chunks, a statement the token cap forced apart.
+
+    :func:`_join_open_statements` already joined everything it could, so a
+    chunk still left with an open statement is one whose join did not fit under
+    the cap. Forcing the join would break the guarantee that no chunk exceeds
+    the cap — which the embedding layer verifies before its first API call —
+    and dropping either side would delete a business rule. So the two are
+    emitted separately and each names the other, leaving the decision to
+    retrieval: the same MARK-don't-delete rule already applied to index
+    documents and to broken tables.
+
+    || Declara, en los dos chunks, un enunciado que el techo de tokens obligó a
+    separar. :func:`_join_open_statements` ya unió todo lo que pudo, así que un
+    chunk al que le queda un enunciado abierto es uno cuya unión no entró bajo
+    el techo. Unir a la fuerza rompería la garantía de que ningún chunk supera
+    el techo —que la capa de embeddings verifica antes de su primera llamada a
+    la API— y descartar cualquiera de los dos lados borraría una regla de
+    negocio. Así que se emiten separados y cada uno nombra al otro, dejando la
+    decisión al retrieval: la misma regla de MARCAR y no borrar que ya se
+    aplicó a los documentos índice y a las tablas rotas.
+    """
+    for index, unit_text in enumerate(unit_texts[:-1]):
+        if not _leaves_statement_open(unit_text):
+            continue
+        current, following = chunks[index], chunks[index + 1]
+        current.metadata.continues_into = following.chunk_id
+        following.metadata.continued_from = current.chunk_id
 
 
 class FunctionalSpecChunker:

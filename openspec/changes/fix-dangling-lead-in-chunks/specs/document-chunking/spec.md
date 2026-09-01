@@ -6,25 +6,37 @@
 Una unidad narrativa cuyo texto termina en `,` o en `:` no cerró su enunciado:
 continúa en la unidad siguiente. Emitirla sola produce dos chunks incompletos y,
 cuando el enunciado es un condicional, algo peor que incompleto — la rama else
-recuperada sin su conector se lee como la rama then e invierte la regla de
-negocio.
+recuperada sin el conector que la marca como contraria se lee como la rama then
+e invierte la regla de negocio.
 
 El discriminador es **gramatical, no de largo**. `No aplica.` y `A petición del
 usuario.` son cortas pero cierran su oración, y quedan intactas; `· De la tabla
-de Situación impositiva del Cliente se obtiene:` es larga y no cierra nada.
+de Situación impositiva del Cliente se obtiene:` es larga y no cierra nada. Los
+marcadores de énfasis del export se sacan antes de mirar el último carácter: el
+corpus escribe `### o _La información se obtiene de:_`, con los dos puntos
+adentro de la itálica.
 
 La unión avanza hasta que una unidad cierra el enunciado, y NO DEBE cruzar el
 borde de la sección: dos secciones distintas no se continúan una a la otra.
 
-#### Scenario: Conector entre las dos ramas de un condicional
-- **WHEN** una sección contiene `§Si <condición>`, `·<rama then>`,
-  `De lo contrario,` y `·<rama else>` como unidades consecutivas
-- **THEN** las cuatro se emiten como un solo chunk
-- **AND** ninguna rama puede recuperarse sin su condición
+Lo que esta regla reconstruye es el ENUNCIADO, no la lista ni el condicional
+completo. Un lead-in seguido de tres ítems se une con el primero, porque ese ya
+cierra la oración; una condición `§Si <cond>.` que cierra con punto no se pega a
+sus ramas. Recuperar el bloque entero exigiría la jerarquía de glifos que el
+corpus no lleva de forma confiable — ver `design.md` del cambio y su medición de
+78,8%.
 
-#### Scenario: Lead-in con contenido seguido de sus hijos
-- **WHEN** una unidad termina en `:` y las siguientes son sus ítems
-- **THEN** el lead-in y sus ítems quedan en el mismo chunk
+#### Scenario: Conector que separa las dos ramas de un condicional
+- **WHEN** una sección contiene `·<rama then>`, `De lo contrario,` y
+  `·<rama else>` como unidades consecutivas
+- **THEN** `De lo contrario,` y la rama else quedan en el mismo chunk
+- **AND** el conector no se emite nunca como chunk propio
+
+#### Scenario: Lead-in seguido de lo que cierra su enunciado
+- **WHEN** una unidad termina en `:` y la siguiente cierra la oración
+- **THEN** las dos quedan en el mismo chunk
+- **AND** un segundo ítem hermano, que ya cierra su propia oración, queda como
+  chunk propio
 
 #### Scenario: Respuesta corta que sí cierra su oración
 - **WHEN** el contenido de una unidad es `No aplica.` o `A petición del usuario.`
@@ -33,6 +45,7 @@ borde de la sección: dos secciones distintas no se continúan una a la otra.
 #### Scenario: Enunciado colgado al final de la sección
 - **WHEN** la última unidad de una sección deja el enunciado colgado
 - **THEN** se emite tal cual, porque no hay unidad siguiente en esa sección
+- **AND** no lleva `continues_into`, porque no hay a qué apuntar
 
 ### Requirement: Un enunciado que no entra bajo el techo DEBE marcarse, no partirse en silencio
 Cuando unir las unidades de un enunciado excedería
