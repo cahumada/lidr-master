@@ -54,12 +54,6 @@ from app.generation.rag.embedding.sidecar import load_sidecar
 from app.generation.rag.schemas import EmbeddingManifest
 
 # Console output stays ASCII: the Windows console this runs on is cp1252 and
-# a single "→" aborted a completed run at the last line. The report file is
-# UTF-8 and carries the accents.
-# || La salida de consola se mantiene ASCII: la consola de Windows donde esto
-# corre es cp1252 y un solo "→" abortó una corrida ya terminada en el último
-# renglón. El archivo de reporte es UTF-8 y lleva los acentos.
-# Console output stays ASCII: the Windows console this runs on is cp1252 and
 # a single non-ASCII arrow aborted an already-finished run at its last line.
 # The report file is UTF-8 and carries the accents.
 # || La salida de consola se mantiene ASCII: la consola de Windows donde esto
