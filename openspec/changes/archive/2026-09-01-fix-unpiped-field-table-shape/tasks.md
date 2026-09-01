@@ -66,6 +66,10 @@
 ## 6. Cierre
 
 - [x] 6.1 `pytest` (224), `ruff check .` y `validate_specs.py` en verde.
-- [ ] 6.2 Integrar los deltas en `openspec/specs/` y archivar el cambio.
+- [x] 6.2 Deltas integrados en `openspec/specs/` y cambio archivado.
+- [x] 6.4 Corregido de paso: el mensaje de commit dijo que la spec
+      documentaba dos formas cuando el código ya tenía tres. Falso — la de
+      filas multi-línea ya estaba, en su propio requirement. El delta
+      duplicaba esa descripción y quedó limpio.
 - [ ] 6.3 Regenerar `data/chunks` y volver a correr embeddings — decisión del
       dueño del repo.

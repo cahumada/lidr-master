@@ -70,6 +70,6 @@
 ## 6. Cierre
 
 - [x] 6.1 `pytest` (217), `ruff check .` y `validate_specs.py` en verde.
-- [ ] 6.2 Integrar los deltas en `openspec/specs/` y archivar el cambio.
+- [x] 6.2 Deltas integrados en `openspec/specs/` y cambio archivado.
 - [ ] 6.3 Regenerar `data/chunks` y volver a correr embeddings — decisión del
       dueño del repo, porque invalida ~2.000 filas del sidecar actual.

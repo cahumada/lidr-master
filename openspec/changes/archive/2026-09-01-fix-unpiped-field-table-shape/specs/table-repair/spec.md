@@ -93,7 +93,8 @@ el parseo tienen que coincidir: uno escapa y el otro desescapa.
 Three broken shapes carry a pipe in their body, and all SHALL be reconstructed
 into a single valid markdown table with a header row and a `---` separator row,
 so the chunker sees one table instead of orphaned headings and pipe-bearing
-lines. (La cuarta forma, sin ningún pipe, tiene su propio requirement.)
+lines. Las dos primeras se describen acá; la de filas multi-línea y la cuarta,
+sin ningún pipe, tienen cada una su propio requirement más abajo.
 
 The **simple** shape is two or more `####` headers followed by data rows, each
 row a `label |  value` line (e.g. CA014 "Ramos generales"/"Vida", CA001 "Tipo
@@ -102,12 +103,6 @@ de registro / Transacción").
 The **paired** shape is two `####` headers for the real columns, then each
 row's label as its own `####` heading followed by a `|  value` line with no
 left cell (e.g. CA001 "Tipo de inicio de vigencia / Fecha a mostrar").
-
-The **split-rows** shape is N headers followed by rows that span several lines:
-a line WITHOUT a leading pipe starts a new row, a line WITH one continues the
-row in progress. This is what recovers the search-condition and validation
-tables whose first cell sits alone on its line. Esta forma ya estaba en el
-código y no en la spec; queda asentada acá.
 
 #### Scenario: Simple shape
 - **WHEN** a block opens with two or more consecutive `####` headers and every
@@ -121,11 +116,6 @@ código y no en la spec; queda asentada acá.
 - **THEN** the first two headers become the table's two columns
 - **AND** each subsequent heading becomes a row label with its paired value as
   the second cell
-
-#### Scenario: Split-rows shape
-- **WHEN** N headers are followed by rows whose first cell sits alone on its
-  line and whose remaining cells continue on lines opening with `|`
-- **THEN** each pipe-less line starts a row and each `|`-leading line continues it
 
 #### Scenario: Surrounding content is untouched
 - **WHEN** a repaired block sits between ordinary prose or bullets
