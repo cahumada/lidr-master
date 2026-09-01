@@ -34,6 +34,39 @@ uv run --with xlrd python scripts/import_windows_tree.py "RUTA/Windows.xls"
 
 Sin ese CSV el pipeline corre igual y deja el breadcrumb sin resolver.
 
+## Persistencia en pgvector
+
+```bash
+docker compose up -d
+uv run alembic upgrade head
+uv run python scripts/load_pgvector.py --dry-run
+uv run python scripts/load_pgvector.py
+```
+
+Dos tablas: `chunks` con el texto, el vector y los campos filtrables en
+columnas, y `corpus_versions`, donde un índice único parcial hace **imposible**
+que un cliente tenga dos versiones activas.
+
+La carga es por `COPY` (el ORM define el esquema y responde consultas; mover
+57.101 filas de 1536 floats es del driver) e idempotente por
+`(tenant_id, doc_version, content_hash)`: volver a correrla no inserta nada.
+`--prune` borra las filas cuyo texto ya no está en el corpus.
+
+**Un detalle que cuesta caro no saber:** una búsqueda por similitud con filtros
+puede devolver **cero resultados** aunque miles de filas cumplan el filtro. HNSW
+recorre sus candidatos más cercanos y recién después aplica el `WHERE`. La
+configuración `hnsw.iterative_scan` se fija en la conexión, no en cada consulta.
+
+### Tests
+
+```bash
+uv run pytest
+```
+
+Corre sin base: los tests que la necesitan se saltean diciendo por qué. Con
+`docker compose up -d` corren de verdad — son los que verifican lo que no se
+puede emular: el stemming español, el índice parcial y la búsqueda filtrada.
+
 ## Fuente de verdad
 
 Este repo documenta su comportamiento con [OpenSpec](https://github.com/Fission-AI/OpenSpec):
@@ -58,22 +91,33 @@ Replica la arquitectura por capas del curso (rama `session_16` de
 ```
 app/
 ├── config.py                                # Settings (pydantic-settings)
-├── dependencies.py                          # composition root: singleton del chunker
+├── dependencies.py                          # composition root: chunker y embedder
 ├── main.py                                  # FastAPI app, structlog, routers
 ├── api/
 │   └── documents.py                         # POST /documents/ingest (router delgado)
+├── foundation/persistence/
+│   └── database.py                          # Base, engine sync (psycopg) y async (asyncpg)
 └── generation/rag/
-    ├── schemas.py                           # Chunk, ChunkMetadata, Reference, IngestRequest/Response
-    └── chunking/
-        ├── base.py                          # count_tokens() (tiktoken, compartido)
-        ├── normalizer.py                    # \r\n → \n, reparación de tablas rotas (export bug)
-        └── functional_spec.py               # FunctionalSpecChunker: filas de tabla vs. bullets narrativos
+    ├── schemas.py                           # Chunk, ChunkMetadata, Reference, manifiestos
+    ├── chunking/
+    │   ├── base.py                          # count_tokens() (tiktoken, compartido)
+    │   ├── normalizer.py                    # fin de línea + reparación de tablas rotas
+    │   └── functional_spec.py               # FunctionalSpecChunker
+    ├── embedding/
+    │   ├── embedder.py                      # protocolo Embedder, OpenAI, HashEmbedder
+    │   ├── sidecar.py                       # IO del .npy + .index.json
+    │   └── runner.py                        # planificación incremental y verificación
+    └── store/
+        ├── models.py                        # chunks, corpus_versions
+        ├── loader.py                        # COPY masivo e idempotente
+        └── repository.py                    # búsqueda por similitud con filtros
 ```
 
 No repliqué `app/ingestion/` del curso (catálogo YAML + jobs en background +
-Postgres): esa capa es para otro tipo de fuente y trae infraestructura que
-este endpoint no necesita (es síncrono y sin persistencia). La persistencia en
-pgvector todavía no está — es la fase siguiente, con su propio proposal.
+Postgres): esa capa es para otro tipo de fuente y trae infraestructura que este
+endpoint no necesita. Tampoco repliqué su tabla de chunks por tipo de fuente
+(`budget_chunks`, `transcript_chunks`, ...): el curso ingiere tres clases de
+documento y este proyecto una sola.
 
 ## Embeddings
 

@@ -1,0 +1,211 @@
+"""The tables: one for the chunks, one for what version is live.
+
+The course (``session_16``) has one chunk table per source kind -- budgets,
+transcripts, technical docs -- because it ingests three. This project ingests
+one: functional specifications. A mixin with a single implementation is the
+same empty abstraction already turned down in ``chunking/base.py``.
+
+The course also keeps its filterable metadata in a JSONB column with a GIN
+index, which is right when the metadata is open-ended. Ours is not:
+:class:`~app.generation.rag.schemas.ChunkMetadata` has fixed fields and they are
+exactly what gets filtered. In columns they can be indexed in pairs, the planner
+has real statistics, and a mistyped field name is a SQL error instead of a
+filter that silently matches nothing.
+
+|| Las tablas: una para los chunks, otra para qué versión está vigente.
+
+El curso (``session_16``) tiene una tabla de chunks por clase de fuente porque
+ingiere tres. Este proyecto ingiere una: especificaciones funcionales. Un mixin
+con una sola implementación es la misma abstracción vacía que ya se descartó en
+``chunking/base.py``.
+
+El curso además guarda su metadata filtrable en una columna JSONB con índice
+GIN, que es lo correcto cuando la metadata es abierta. La nuestra no lo es:
+:class:`~app.generation.rag.schemas.ChunkMetadata` tiene campos fijos y son
+justamente los que se filtran. En columnas se indexan de a pares, el planner
+tiene estadísticas reales y un nombre de campo mal escrito es un error de SQL en
+vez de un filtro que no matchea nada en silencio.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    BigInteger,
+    Computed,
+    DateTime,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.config import get_settings
+from app.foundation.persistence.database import Base
+
+# Hard-coded rather than read from Settings: the column type is baked into the
+# schema by a migration, so it cannot follow a runtime setting. It must match
+# `Settings.EMBEDDING_DIMENSIONS`, and a test asserts that it does.
+# || Fijo en vez de leído de Settings: el tipo de columna queda grabado en el
+# esquema por una migración, así que no puede seguir a un setting de runtime.
+# Tiene que coincidir con `Settings.EMBEDDING_DIMENSIONS`, y hay un test que lo
+# verifica.
+EMBEDDING_DIMENSIONS = 1536
+
+# `vector` and not `halfvec`: pgvector's HNSW index takes up to 2000 dimensions
+# with `vector` and up to 4000 with `halfvec`, and the course casts to halfvec
+# for that headroom. 1536 fits comfortably, and halfvec is half precision --
+# the 175 MB saved buys nothing here. This is the lever if the dimension ever
+# grows.
+# || `vector` y no `halfvec`: el índice HNSW de pgvector tolera hasta 2000
+# dimensiones con `vector` y hasta 4000 con `halfvec`, y el curso castea a
+# halfvec por ese margen. 1536 entra holgado, y halfvec es media precisión — los
+# 175 MB que ahorra no compran nada acá. Esta es la palanca si algún día sube la
+# dimensión.
+_FTS_REGCONFIG = get_settings().FTS_REGCONFIG
+
+
+class ChunkRow(Base):
+    """One embedded chunk of the corpus. || Un chunk embebido del corpus."""
+
+    __tablename__ = "chunks"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+
+    # --- Identity || Identidad ----------------------------------------------
+
+    # The row's identity is (tenant, version, content_hash), NOT chunk_id.
+    # chunk_id shifts when the corpus is regenerated; binding identity to a
+    # locator would silently repoint rows at a different text. This is also
+    # what makes the load idempotent.
+    # || La identidad de la fila es (tenant, versión, content_hash), NO
+    # chunk_id. El chunk_id se corre cuando el corpus se regenera; atar la
+    # identidad a un localizador reapuntaría filas a otro texto en silencio.
+    # Es además lo que hace idempotente la carga.
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    doc_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    # Traceability back to the source document, not identity.
+    # || Trazabilidad al documento fuente, no identidad.
+    chunk_id: Mapped[str] = mapped_column(Text, nullable=False)
+    document_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    document_title: Mapped[str | None] = mapped_column(Text)
+
+    # --- What gets embedded and searched || Lo que se embebe y se busca ------
+
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS), nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # STORED and generated by the database, not written by the loader and not
+    # maintained by a trigger: that is what makes it impossible for the lexemes
+    # to drift out of sync with the text.
+    # || STORED y generada por la base, no escrita por el cargador ni mantenida
+    # por un trigger: es lo que hace imposible que los lexemas se
+    # desincronicen del texto.
+    content_tsv: Mapped[str] = mapped_column(
+        TSVECTOR,
+        Computed(f"to_tsvector('{_FTS_REGCONFIG}', text)", persisted=True),
+        nullable=False,
+    )
+
+    # --- Filterable metadata || Metadata filtrable ---------------------------
+
+    chunk_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    section: Mapped[str | None] = mapped_column(Text)
+    bullet_path: Mapped[str | None] = mapped_column(Text)
+    field: Mapped[str | None] = mapped_column(Text)
+    transaction_type: Mapped[str | None] = mapped_column(String(32))
+    document_kind: Mapped[str | None] = mapped_column(String(32))
+    module_code: Mapped[str | None] = mapped_column(String(32))
+    module_name: Mapped[str | None] = mapped_column(Text)
+    submodule_code: Mapped[str | None] = mapped_column(String(32))
+    submodule_name: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "doc_version", "content_hash", name="uq_chunks_tenant_version_hash"
+        ),
+        # The operator class MUST match the operator the query uses (`<=>`).
+        # When they disagree Postgres does not fail -- it ignores the index and
+        # scans sequentially, which is an invisible degradation.
+        # || El operator class DEBE coincidir con el operador que usa la
+        # consulta (`<=>`). Cuando no coinciden Postgres no falla: ignora el
+        # índice y hace scan secuencial, que es una degradación invisible.
+        Index(
+            "ix_chunks_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+            postgresql_with={
+                "m": get_settings().HNSW_M,
+                "ef_construction": get_settings().HNSW_EF_CONSTRUCTION,
+            },
+        ),
+        Index("ix_chunks_content_tsv", "content_tsv", postgresql_using="gin"),
+        # The pre-filter every query carries, so it leads the composite index.
+        # || El pre-filtro que lleva toda consulta, así que encabeza el índice
+        # compuesto.
+        Index("ix_chunks_tenant_version", "tenant_id", "doc_version"),
+        Index("ix_chunks_document_id", "document_id"),
+        Index("ix_chunks_module_code", "module_code"),
+    )
+
+
+class CorpusVersionRow(Base):
+    """Which documentation version is live for a client.
+
+    || Qué versión de la documentación está vigente para un cliente.
+    """
+
+    __tablename__ = "corpus_versions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    doc_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    corpus_id: Mapped[str | None] = mapped_column(String(64))
+
+    # 'loaded' | 'active' | 'retired'. Kept as text rather than an enum type so
+    # adding a state is a data change, not a migration on a Postgres type.
+    # || 'loaded' | 'active' | 'retired'. Texto en vez de un tipo enum para que
+    # agregar un estado sea un cambio de datos y no una migración sobre un tipo
+    # de Postgres.
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="loaded")
+
+    loaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Deliberately NO foreign key to `chunks`: a version can be declared before
+    # its rows finish loading, and a half-loaded version must not be able to
+    # activate itself. Activation is explicit.
+    # || A propósito SIN foreign key contra `chunks`: una versión puede
+    # declararse antes de terminar de cargar sus filas, y una versión a medias
+    # no debe poder activarse sola. Activar es explícito.
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "doc_version", name="uq_corpus_versions_tenant_version"),
+        # At most one active version per client, enforced by the database. The
+        # same rule held only in application code breaks under two concurrent
+        # processes.
+        # || A lo sumo una versión activa por cliente, garantizado por la base.
+        # La misma regla sostenida solo en el código de la aplicación se rompe
+        # con dos procesos concurrentes.
+        Index(
+            "uq_corpus_versions_one_active_per_tenant",
+            "tenant_id",
+            unique=True,
+            postgresql_where="status = 'active'",
+        ),
+    )

@@ -120,6 +120,61 @@ class Settings(BaseSettings):
     # generado, fuera del repositorio.
     EMBEDDINGS_PATH: Path = Path("data/embeddings")
 
+    # --- pgvector store || Store pgvector ----------------------------------
+
+    # One URL for both stacks: the async engine swaps the driver token. The
+    # default points at the local docker-compose service, whose credentials are
+    # development-only; a deployment overrides this from its own environment.
+    # || Una sola URL para los dos stacks: el engine async le cambia el driver.
+    # El default apunta al servicio local de docker-compose, cuyas credenciales
+    # son solo de desarrollo; un despliegue la sobreescribe desde su entorno.
+    DATABASE_URL: str = "postgresql+psycopg://visualtime:visualtime@localhost:5432/visualtime_rag"
+
+    # Postgres text-search configuration. Part of the schema, not a knob: the
+    # generated column and its GIN index are built with it, so changing it means
+    # a migration. Spanish because the corpus is Spanish -- with the English
+    # stemmer `pólizas` and `póliza` do not collapse.
+    # || Configuración de búsqueda de texto de Postgres. Es parte del esquema,
+    # no una perilla: la columna generada y su índice GIN se construyen con
+    # ella, así que cambiarla es una migración. Español porque el corpus es
+    # español — con el stemmer inglés `pólizas` y `póliza` no colapsan.
+    FTS_REGCONFIG: str = "spanish"
+
+    # HNSW build parameters. pgvector's defaults (16 / 64); named here so a
+    # rebuild is a settings change and not an edit inside a migration.
+    # || Parámetros de construcción de HNSW. Los defaults de pgvector (16 / 64);
+    # se nombran acá para que reconstruir sea un cambio de settings y no una
+    # edición adentro de una migración.
+    HNSW_M: int = 16
+    HNSW_EF_CONSTRUCTION: int = 64
+
+    # Rows per COPY batch when loading the corpus into Postgres.
+    # || Filas por lote de COPY al cargar el corpus en Postgres.
+    DB_COPY_BATCH_SIZE: int = 5000
+
+    # WITHOUT this, a filtered similarity search returns WRONG results, not slow
+    # ones. HNSW walks its nearest candidates and only then applies the WHERE:
+    # a query filtered by `transaction_type='query'` came back with 0 rows while
+    # 7461 matched, because the filter discarded every candidate the index had
+    # visited. Iterative scan (pgvector 0.8+) keeps scanning until it has enough
+    # rows that pass. `strict_order` preserves exact distance ordering;
+    # `relaxed_order` is faster but may not.
+    # || SIN esto, una búsqueda por similitud con filtros devuelve resultados
+    # EQUIVOCADOS, no lentos. HNSW recorre sus candidatos más cercanos y recién
+    # después aplica el WHERE: una consulta filtrada por
+    # `transaction_type='query'` devolvió 0 filas mientras 7461 cumplían, porque
+    # el filtro descartó todos los candidatos que el índice había visitado. El
+    # escaneo iterativo (pgvector 0.8+) sigue buscando hasta juntar suficientes
+    # filas que pasen. `strict_order` conserva el orden exacto por distancia;
+    # `relaxed_order` es más rápido pero puede no conservarlo.
+    HNSW_ITERATIVE_SCAN: str = "strict_order"
+
+    # Bounds the iterative scan so a filter that matches almost nothing cannot
+    # walk the whole index.
+    # || Acota el escaneo iterativo para que un filtro que casi no matchea nada
+    # no pueda recorrer el índice entero.
+    HNSW_MAX_SCAN_TUPLES: int = 20000
+
 
 @lru_cache
 def get_settings() -> Settings:

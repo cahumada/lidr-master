@@ -17,6 +17,18 @@ dependencies = [
     # sidecar (61901 x 1536 float32 = 380 MB; the same data as JSON is ~1.8 GB).
     "openai>=1.40",
     "numpy>=1.26",
+    # pgvector store: SQLAlchemy 2.0 + Alembic as on the course's session_16.
+    # psycopg3 drives the bulk COPY, asyncpg the query path; greenlet is what
+    # SQLAlchemy's async engine needs outside Docker.
+    # || Store pgvector: SQLAlchemy 2.0 + Alembic como en la session_16 del
+    # curso. psycopg3 mueve el COPY masivo, asyncpg el camino de consulta;
+    # greenlet es lo que el engine async de SQLAlchemy necesita fuera de Docker.
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "psycopg[binary]>=3.1",
+    "asyncpg>=0.29",
+    "pgvector>=0.3",
+    "greenlet>=3.0",
 ]
 
 [dependency-groups]
@@ -29,6 +41,25 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Alembic writes these itself; reformatting them adds churn on every
+# autogenerate and would break env.py, whose app imports MUST come after the
+# sys.path insert.
+# || Alembic los escribe solo; reformatearlos agrega ruido en cada autogenerate
+# y rompería env.py, cuyos imports de la app TIENEN que ir después del insert en
+# sys.path.
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/env.py" = ["I001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `integration` needs a reachable Postgres with pgvector. Those tests skip
+# themselves, saying so, when there is none: `pytest` stays fast and green with
+# nothing installed, and `pytest -m integration` runs them for real.
+# || `integration` necesita un Postgres con pgvector alcanzable. Esos tests se
+# saltean, diciendolo, cuando no hay ninguno: `pytest` sigue rapido y verde sin
+# nada instalado, y `pytest -m integration` los corre de verdad.
+markers = [
+    "integration: needs a reachable Postgres with pgvector (docker compose up -d)",
+]

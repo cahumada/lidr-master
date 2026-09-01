@@ -1,0 +1,45 @@
+# Postgres with the pgvector extension, for local development and for the
+# integration tests. The suite does NOT require this to be up: the tests that
+# need a database skip themselves, saying so, when none is reachable.
+#
+# || Postgres con la extensión pgvector, para desarrollo local y para los tests
+# de integración. La suite NO exige que esto esté levantado: los tests que
+# necesitan base se saltean, diciéndolo, cuando no hay ninguna alcanzable.
+#
+#   docker compose up -d
+#   uv run alembic upgrade head
+#   uv run python scripts/load_pgvector.py
+
+services:
+  postgres:
+    # The pgvector image is the official Postgres image plus the extension, so
+    # nothing has to be compiled on first run.
+    # || La imagen de pgvector es la oficial de Postgres más la extensión, así
+    # que no hay que compilar nada en la primera corrida.
+    image: pgvector/pgvector:pg17
+    container_name: visual-time-rag-postgres
+    environment:
+      POSTGRES_USER: visualtime
+      # Local development only. The deployment's real password lives in its own
+      # environment, never here.
+      # || Solo desarrollo local. La contraseña real del despliegue vive en su
+      # propio entorno, nunca acá.
+      POSTGRES_PASSWORD: visualtime
+      POSTGRES_DB: visualtime_rag
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `alembic upgrade` right after `up -d` fails against a server that is
+      # still starting, so the healthcheck is what makes the sequence usable.
+      # || Un `alembic upgrade` inmediatamente después de `up -d` falla contra
+      # un servidor que todavía arranca; el healthcheck es lo que hace usable
+      # la secuencia.
+      test: ["CMD-SHELL", "pg_isready -U visualtime -d visualtime_rag"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
