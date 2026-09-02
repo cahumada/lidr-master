@@ -71,19 +71,28 @@ def test_codes_the_domain_note_calls_folders_are_nodes(code, tree):
     assert tree.locate(code).is_menu_node is True
 
 
-@pytest.mark.parametrize("code", ["MEGAA", "MCO511"])
+@pytest.mark.parametrize("code", ["MCO511"])
 def test_codes_the_domain_note_calls_leaves_are_leaves(code, tree):
+    """MEGAA used to be in this list and is deliberately out of it now: the
+    domain note called it a leaf because nothing hangs off it, but the export
+    DECLARES it window type 8, "Menu". A declaration beats an inference drawn
+    from absence. See test_an_empty_menu_is_still_a_menu."""
     assert tree.locate(code).is_menu_node is False
 
 
-def test_the_tree_overrides_the_code_pattern_for_ma6835(tree):
-    """MA6835 is indistinguishable by pattern from the 941 maintenance leaves,
-    and is in fact a menu folder. The structural fact must win — this is the
-    counterexample that justifies loading the tree at all."""
-    assert classify_transaction_type("MA6835").transaction_type == "maintenance"
+def test_ma6835_is_not_a_folder_it_is_a_self_loop(tree):
+    """This test used to assert MA6835 was a menu folder, on the strength of the
+    has-children heuristic. It is not: the row is its OWN parent -- a self-loop,
+    and one of the two cycles the process map detects -- so the only "child" it
+    has is itself. Its declared window type is 10, "Tabla general".
 
-    location = tree.locate("MA6835")
-    assert location.is_menu_node is True
+    The domain note recorded the artifact as a domain fact, which is exactly
+    what an authoritative field is for."""
+    assert classify_transaction_type("MA6835").transaction_type == "maintenance"
+    assert tree.parent_of("MA6835") == "MA6835", "the self-loop is the whole point"
+    assert tree.has_children("MA6835") is False
+    assert tree.window_type_name("MA6835") == "Tabla general"
+    assert tree.locate("MA6835").is_menu_node is False
     assert (
         classify_transaction_type("MA6835", is_menu_node=True).transaction_type == "menu_node"
     )
@@ -153,3 +162,28 @@ def test_the_breadcrumb_reaches_the_chunk_metadata(tree):
     document = documents[0]
     for chunk in document.chunks:
         assert chunk.metadata.module_code == document.chunks[0].metadata.module_code
+
+
+def test_an_empty_menu_is_still_a_menu(tree):
+    """16 codes are declared window type 8 with nothing hanging off them. The
+    has-children heuristic called them executable transactions; the export says
+    they are folders. An empty folder is still a folder, and
+    `classify_transaction_type` reads this, so the 16 were propagating."""
+    assert tree.window_type_name("MEGAA") == "Menu"
+    assert tree.has_children("MEGAA") is False
+    assert tree.is_menu_node("MEGAA") is True
+
+
+def test_the_declared_type_only_yields_to_the_heuristic_when_absent(tree):
+    """Two of the 3389 rows carry no window type. For those, and for anything the
+    export does not list at all, the heuristic is still the answer."""
+    without_type = [code for code in tree.codes() if tree.window_type(code) is None]
+    assert without_type, "the export has rows with no declared type"
+    for code in without_type:
+        assert tree.is_menu_node(code) == tree.has_children(code)
+
+
+def test_the_window_type_travels_by_name_not_by_code(tree):
+    """`6` tells nobody anything; the chunk gets embedded for a model to read."""
+    assert tree.window_type_name("MENU") == "Menu"
+    assert tree.window_type_name("NO_EXISTE") is None

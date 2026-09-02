@@ -68,6 +68,7 @@ def make_row(tenant: str, body: str, *, index: int, **overrides) -> tuple:
         "module_name": "Cartera",
         "submodule_code": None,
         "submodule_name": None,
+        "window_type_name": "Masivo con encabezado",
     }
     values.update(overrides)
     return tuple(values[c] for c in COPY_COLUMNS)
@@ -94,15 +95,53 @@ def count(engine, tenant: str) -> int:
 # --- Identity and idempotency -------------------------------------------------
 
 
-def test_loading_twice_inserts_nothing_the_second_time(clean_tables, tenant):
+def test_loading_twice_adds_no_rows_the_second_time(clean_tables, tenant):
+    """Idempotent in the sense that matters: the row COUNT does not grow. The
+    second run does write every row -- it refreshes the metadata columns to the
+    same values -- because a metadata-only change has to be able to reach an
+    existing row."""
     rows = [make_row(tenant, f"regla {i}", index=i) for i in range(5)]
 
-    copied, inserted = load(clean_tables, rows)
-    assert (copied, inserted) == (5, 5)
+    copied, written = load(clean_tables, rows)
+    assert (copied, written) == (5, 5)
 
-    copied, inserted = load(clean_tables, rows)
-    assert inserted == 0
+    load(clean_tables, rows)
     assert count(clean_tables, tenant) == 5
+
+
+def test_a_metadata_only_change_reaches_an_existing_row(clean_tables, tenant):
+    """`DO NOTHING` made the load idempotent on content and silently blind to
+    metadata: adding `window_type_name` to 46613 chunks would have inserted
+    nothing and left the column null."""
+    load(clean_tables, [make_row(tenant, "regla", index=0)])
+    load(
+        clean_tables,
+        [make_row(tenant, "regla", index=0, window_type_name="Puntual sin encabezado")],
+    )
+
+    with clean_tables.connect() as connection:
+        value = connection.execute(
+            text("SELECT window_type_name FROM chunks WHERE tenant_id = :t"), {"t": tenant}
+        ).scalar_one()
+    assert value == "Puntual sin encabezado"
+
+
+def test_the_embedding_is_not_refreshed_on_conflict(clean_tables, tenant):
+    """The embedding is tied to the text, and the text is what `content_hash`
+    covers. A conflict means the text did not change, so re-writing the vector
+    would be pointless work."""
+    load(clean_tables, [make_row(tenant, "regla", index=0)])
+    with clean_tables.connect() as connection:
+        before = connection.execute(
+            text("SELECT embedding::text FROM chunks WHERE tenant_id = :t"), {"t": tenant}
+        ).scalar_one()
+
+    load(clean_tables, [make_row(tenant, "regla", index=0, window_type_name="Menu")])
+    with clean_tables.connect() as connection:
+        after = connection.execute(
+            text("SELECT embedding::text FROM chunks WHERE tenant_id = :t"), {"t": tenant}
+        ).scalar_one()
+    assert before == after
 
 
 def test_a_repeated_text_is_one_row(clean_tables, tenant):
@@ -110,9 +149,9 @@ def test_a_repeated_text_is_one_row(clean_tables, tenant):
     way, and returning the same text ten times would be worse retrieval."""
     rows = [make_row(tenant, "De lo contrario,", index=i) for i in range(4)]
 
-    _, inserted = load(clean_tables, rows)
+    _, written = load(clean_tables, rows)
 
-    assert inserted == 1
+    assert written == 1, "DISTINCT ON collapses the duplicates before the insert"
     assert count(clean_tables, tenant) == 1
 
 
@@ -121,9 +160,13 @@ def test_only_the_new_hashes_are_inserted(clean_tables, tenant):
 
     updated = [make_row(tenant, f"regla {i}", index=i) for i in range(2)]
     updated.append(make_row(tenant, "regla nueva", index=9))
-    _, inserted = load(clean_tables, updated)
+    _, written = load(clean_tables, updated)
 
-    assert inserted == 1
+    # 3 rows written: 1 inserted and 2 refreshed. What must not grow is the
+    # count.
+    # || 3 filas escritas: 1 insertada y 2 refrescadas. Lo que no debe crecer es
+    # el conteo.
+    assert written == 3
     assert count(clean_tables, tenant) == 4
 
 

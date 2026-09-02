@@ -88,6 +88,12 @@ de..." (`MCONTA`, `MERCP`, `MCAJBA`, `MGENER`, ...) — y 2 resultaron hojas
 no depende de adivinar convenciones de nomenclatura. Preferirla siempre que
 haya datos de `WINDOWS` disponibles.
 
+**Actualización:** el export trae `NWINDOWTY`, y el tipo 8 **declara** que un
+código es un menú. Eso es mejor que esta regla estructural, que acierta 192 de
+205 y falla en 19. La heurística de hijos queda como respaldo para los códigos
+sin tipo declarado. Ver
+[visualtime-window-types.md](visualtime-window-types.md).
+
 ## 4. Clasificación de tipos de transacción `[TÁCITO]`
 
 Convención de nomenclatura confirmada por el usuario. **No está documentada en
@@ -281,10 +287,17 @@ están en el árbol y **1199 (54,2%) resuelven camino hasta `MENU`**.
 Antes de tener el árbol se infirió que `M<letras><dígitos>` = hoja de
 mantenimiento y `M` sin dígitos = carpeta. Verificado contra el árbol:
 
-- `M` con dígitos: 942 códigos, **941 hojas y 1 nodo** — el contraejemplo es
-  `MA6835`, carpeta de menú indistinguible por patrón.
-- `M` sin dígitos: 112 códigos, 102 nodos y **10 hojas** (`MEGAA`, `MACPER`,
-  `MATARILE`, `MCLA`, ...).
+- `M` con dígitos: 942 códigos, **942 hojas**. Esta nota decía "941 hojas y 1
+  nodo", con `MA6835` como "carpeta de menú indistinguible por patrón". **Era un
+  artefacto de datos**: esa fila es su propio padre —un self-loop, y uno de los
+  dos ciclos que detecta el mapa de procesos— así que el único "hijo" que tiene
+  es él mismo. Su tipo de ventana declarado es 10, "Tabla general". Ver
+  [visualtime-window-types.md](visualtime-window-types.md).
+- `M` sin dígitos: 112 códigos, 102 nodos y 10 que la heurística de hijos daba
+  por hojas (`MEGAA`, `MACPER`, `MATARILE`, `MCLA`, ...). **`MEGAA` no es una
+  hoja**: el export lo declara tipo 8, "Menú". Es un menú vacío, y una
+  declaración le gana a una inferencia sacada de la ausencia de hijos. Son 16 los
+  casos así.
 
 Confirma lo que la sección 3 ya decía: la regla estructural es preferible al
 patrón del código. La precisión del patrón, cuando no hay árbol, es 941/942.

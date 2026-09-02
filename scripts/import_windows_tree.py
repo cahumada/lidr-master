@@ -1,8 +1,9 @@
 """Convert an export of the `WINDOWS` table into the CSV the pipeline reads.
 
 The export arrives as a legacy `.xls` (OLE2/BIFF) with the full table — 23
-columns — of which the tree needs three: `SCODISPL` (code), `SCODMEN` (parent),
-`SDESCRIPT` (description). Values come CHAR-padded, so they are trimmed.
+columns — of which the tree needs five: `SCODISPL` (code), `SCODMEN` (parent),
+`SDESCRIPT` (description), `NWINDOWTY` (window type) and `SSHORT_DES`. Values
+come CHAR-padded, so they are trimmed.
 
 `xlrd` is NOT a project dependency: it is needed once per export, not at
 runtime. Run it transiently instead of adding it to `pyproject.toml`:
@@ -14,9 +15,9 @@ Add `--system-certs` if a corporate TLS proxy blocks the download.
 || Convierte un export de la tabla `WINDOWS` al CSV que lee el pipeline.
 
 El export llega como un `.xls` legacy (OLE2/BIFF) con la tabla completa — 23
-columnas — de las cuales el árbol necesita tres: `SCODISPL` (código),
-`SCODMEN` (padre), `SDESCRIPT` (descripción). Los valores vienen con relleno
-CHAR, así que se recortan.
+columnas — de las cuales el árbol necesita cinco: `SCODISPL` (código),
+`SCODMEN` (padre), `SDESCRIPT` (descripción), `NWINDOWTY` (tipo de ventana) y
+`SSHORT_DES`. Los valores vienen con relleno CHAR, así que se recortan.
 
 `xlrd` NO es dependencia del proyecto: se necesita una vez por export, no en
 runtime. Correrlo de forma transitoria en vez de agregarlo a `pyproject.toml`.
@@ -31,6 +32,17 @@ import sys
 from pathlib import Path
 
 REQUIRED_COLUMNS = ("SCODISPL", "SCODMEN", "SDESCRIPT")
+
+# `NWINDOWTY` is the window type, and type 8 IS "Menu" -- an authoritative
+# answer to the node-vs-leaf question that was being derived from "does anything
+# hang off this code". The heuristic gets 189 of 194 right and misses 21,
+# including 16 empty menus it called executable transactions.
+# `SSHORT_DES` is a short description, useful where the long one is empty.
+# || `NWINDOWTY` es el tipo de ventana, y el tipo 8 ES "Menu" — una respuesta
+# autoritativa a la pregunta nodo-vs-hoja que se venia derivando de "cuelga algo
+# de este codigo". La heuristica acierta 189 de 194 y falla en 21, incluidos 16
+# menus vacios que llamaba transacciones ejecutables.
+OPTIONAL_COLUMNS = ("NWINDOWTY", "SSHORT_DES")
 
 
 def main() -> int:
@@ -60,7 +72,15 @@ def main() -> int:
         print(f"export is missing required column(s): {', '.join(missing)}", file=sys.stderr)
         print(f"columns found: {', '.join(header)}", file=sys.stderr)
         return 1
-    index = {name: header.index(name) for name in REQUIRED_COLUMNS}
+    available = [name for name in OPTIONAL_COLUMNS if name in header]
+    index = {name: header.index(name) for name in (*REQUIRED_COLUMNS, *available)}
+    if len(available) < len(OPTIONAL_COLUMNS):
+        print(
+            "note: this export lacks "
+            f"{', '.join(n for n in OPTIONAL_COLUMNS if n not in available)}; "
+            "those columns are written empty and the window type stays unresolved.",
+            file=sys.stderr,
+        )
 
     def value(row: int, name: str) -> str:
         cell = sheet.cell_value(row, index[name])
@@ -72,26 +92,42 @@ def main() -> int:
             return str(int(cell))
         return str(cell).strip()
 
-    rows: list[tuple[str, str, str]] = []
+    rows: list[tuple[str, str, str, str, str]] = []
     for row in range(1, sheet.nrows):
         code = value(row, "SCODISPL")
         if not code:
             continue
-        rows.append((code, value(row, "SCODMEN"), value(row, "SDESCRIPT")))
+        rows.append(
+            (
+                code,
+                value(row, "SCODMEN"),
+                value(row, "SDESCRIPT"),
+                value(row, "NWINDOWTY") if "NWINDOWTY" in index else "",
+                value(row, "SSHORT_DES") if "SSHORT_DES" in index else "",
+            )
+        )
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with out_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["code", "parent_code", "description"])
+        writer.writerow(
+            ["code", "parent_code", "description", "window_type", "short_description"]
+        )
         writer.writerows(rows)
 
-    parents = {parent for _code, parent, _d in rows if parent}
-    codes = {code for code, _p, _d in rows}
+    parents = {row[1] for row in rows if row[1]}
+    codes = {row[0] for row in rows}
+    import collections
+
+    types = collections.Counter(row[3] for row in rows if row[3])
     print(f"{out_path}: {len(rows)} rows")
     print(f"  nodes with children: {len(parents & codes)}")
     print(f"  leaves             : {len(codes - parents)}")
     print(f"  dangling parents   : {len(parents - codes)}")
+    print(f"  with window type   : {sum(types.values())}")
+    if types:
+        print(f"  declared as menu (type 8): {types.get('8', 0)}")
     return 0
 
 

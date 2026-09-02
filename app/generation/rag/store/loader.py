@@ -5,10 +5,15 @@ objects, tracks them in the identity map and emits that many INSERTs. The ORM
 defines the schema and answers the queries; moving the bulk is the driver's job.
 
 ``COPY`` goes into a temporary table and from there into the real one with
-``ON CONFLICT DO NOTHING``. Copying straight into the final table would be one
-step shorter but ``COPY`` has no conflict clause, and idempotency is worth the
-extra step: re-running after regenerating the corpus must insert what is new and
-leave what did not change alone.
+``ON CONFLICT DO UPDATE`` on the metadata columns. Copying straight into the
+final table would be one step shorter but ``COPY`` has no conflict clause.
+
+Idempotent in the sense that matters -- the row COUNT does not grow -- but NOT
+blind to metadata: a second run rewrites the metadata columns of every row it
+sees. ``DO NOTHING`` was blind, and adding `window_type_name` to 46613 chunks
+under it would have inserted nothing and left the column null. The embedding is
+never rewritten: it is tied to the text, and if the text changed then so did
+``content_hash`` and this is a new row rather than a conflict.
 
 || Carga masiva: corpus JSON más el sidecar de vectores a Postgres, por ``COPY``.
 
@@ -17,10 +22,15 @@ ORM, los rastrea en la identity map y emite esa cantidad de INSERTs. El ORM
 define el esquema y responde las consultas; mover el bulto es del driver.
 
 ``COPY`` va a una tabla temporal y de ahí a la real con ``ON CONFLICT DO
-NOTHING``. Copiar directo a la tabla final sería un paso menos, pero ``COPY`` no
-tiene cláusula de conflicto, y la idempotencia vale el paso extra: volver a
-correr después de regenerar el corpus tiene que insertar lo nuevo y dejar
-tranquilo lo que no cambió.
+UPDATE`` sobre las columnas de metadata. Copiar directo a la tabla final sería un
+paso menos, pero ``COPY`` no tiene cláusula de conflicto.
+
+Idempotente en el sentido que importa —el CONTEO de filas no crece— pero NO
+ciega a la metadata: una segunda corrida reescribe las columnas de metadata de
+cada fila que ve. ``DO NOTHING`` era ciega, y agregar `window_type_name` a 46613
+chunks con ella no habría insertado nada y habría dejado la columna en null. El
+embedding nunca se reescribe: está atado al texto, y si el texto cambió entonces
+cambió el ``content_hash`` y esto es una fila nueva y no un conflicto.
 """
 
 from __future__ import annotations
@@ -59,6 +69,7 @@ COPY_COLUMNS = (
     "module_name",
     "submodule_code",
     "submodule_name",
+    "window_type_name",
 )
 
 
@@ -120,6 +131,7 @@ def iter_rows(
                     metadata.get("module_name"),
                     metadata.get("submodule_code"),
                     metadata.get("submodule_name"),
+                    metadata.get("window_type_name"),
                 )
             )
     return module, rows, without_vector
@@ -138,7 +150,8 @@ CREATE TEMPORARY TABLE chunks_staging (
     text text, embedding vector({dimensions}), token_count integer,
     chunk_type text, section text, bullet_path text, field text,
     transaction_type text, document_kind text,
-    module_code text, module_name text, submodule_code text, submodule_name text
+    module_code text, module_name text, submodule_code text, submodule_name text,
+    window_type_name text
 ) ON COMMIT DROP
 """
 
@@ -164,10 +177,55 @@ WHERE tenant_id = %s AND doc_version = %s
   AND content_hash NOT IN (SELECT content_hash FROM corpus_hashes)
 """
 
+# The metadata columns, which are everything that is NOT the row's identity and
+# NOT the embedded text. A change in any of these has to reach an existing row:
+# `DO NOTHING` made the load idempotent on content and silently blind to
+# metadata, so adding `window_type_name` to 46613 chunks would have inserted
+# nothing and left the column null.
+# || Las columnas de metadata, que son todo lo que NO es la identidad de la fila
+# ni el texto embebido. Un cambio en cualquiera de estas tiene que llegar a una
+# fila existente: `DO NOTHING` hacia la carga idempotente en contenido y ciega a
+# la metadata, asi que agregar `window_type_name` a 46613 chunks no habria
+# insertado nada y habria dejado la columna en null.
+_METADATA_COLUMNS = (
+    "chunk_id",
+    "document_id",
+    "document_title",
+    "chunk_type",
+    "section",
+    "bullet_path",
+    "field",
+    "transaction_type",
+    "document_kind",
+    "module_code",
+    "module_name",
+    "submodule_code",
+    "submodule_name",
+    "window_type_name",
+)
+
+# The embedding is NOT refreshed: it is tied to the text, and the text is what
+# `content_hash` covers. If the text changed, the hash changed, and this is a
+# new row rather than a conflict.
+# || El embedding NO se refresca: esta atado al texto, y el texto es lo que cubre
+# `content_hash`. Si el texto cambio, cambio el hash, y esto es una fila nueva y
+# no un conflicto.
+# DISTINCT ON is required, not cosmetic: `ON CONFLICT DO UPDATE` refuses to
+# affect the same target row twice in one command, and the staging table has
+# 5127 duplicate hashes -- a repeated text is a repeated hash by construction.
+# `DO NOTHING` tolerated that silently; `DO UPDATE` raises CardinalityViolation.
+# || El DISTINCT ON es necesario, no cosmetico: `ON CONFLICT DO UPDATE` se niega
+# a afectar la misma fila destino dos veces en un comando, y la staging tiene
+# 5127 hashes duplicados — un texto repetido es un hash repetido por
+# construccion. `DO NOTHING` lo toleraba en silencio; `DO UPDATE` levanta
+# CardinalityViolation.
 _INSERT_SQL = """
 INSERT INTO chunks ({columns})
-SELECT {columns} FROM chunks_staging
-ON CONFLICT (tenant_id, doc_version, content_hash) DO NOTHING
+SELECT DISTINCT ON (tenant_id, doc_version, content_hash) {columns}
+FROM chunks_staging
+ORDER BY tenant_id, doc_version, content_hash, chunk_id
+ON CONFLICT (tenant_id, doc_version, content_hash) DO UPDATE SET
+{updates}
 """
 
 
@@ -193,7 +251,7 @@ def prune_corpus(
 
 
 def load_module(connection, rows: list[tuple], *, dimensions: int) -> tuple[int, int]:
-    """``COPY`` into a staging table, then insert what is not already there.
+    """``COPY`` into a staging table, then write. Returns ``(copied, written)``.
 
     Takes a raw psycopg connection, not a Session: this is the one path that
     deliberately goes around the ORM.
@@ -212,6 +270,15 @@ def load_module(connection, rows: list[tuple], *, dimensions: int) -> tuple[int,
         with cursor.copy(copy_sql) as copy:
             for row in rows:
                 copy.write_row(row)
-        cursor.execute(_INSERT_SQL.format(columns=columns))
-        inserted = cursor.rowcount
-    return len(rows), inserted
+        updates = ",\n".join(f"    {name} = EXCLUDED.{name}" for name in _METADATA_COLUMNS)
+        cursor.execute(_INSERT_SQL.format(columns=columns, updates=updates))
+        # rowcount counts inserts AND updates, so this is "rows written", never
+        # "rows inserted". Naming it honestly matters: a second run over an
+        # unchanged corpus now writes every row (refreshing metadata to the same
+        # values) instead of writing none.
+        # || rowcount cuenta inserts Y updates, asi que esto es "filas escritas"
+        # y nunca "filas insertadas". Nombrarlo con honestidad importa: una
+        # segunda corrida sobre un corpus sin cambios ahora escribe todas las
+        # filas (refrescando la metadata a los mismos valores) en vez de ninguna.
+        written = cursor.rowcount
+    return len(rows), written

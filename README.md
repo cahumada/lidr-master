@@ -34,6 +34,12 @@ uv run --with xlrd python scripts/import_windows_tree.py "RUTA/Windows.xls"
 
 Sin ese CSV el pipeline corre igual y deja el breadcrumb sin resolver.
 
+Ese export trae además el **tipo de ventana** (`NWINDOWTY`), que dice cómo se
+opera cada transacción —puntual, secuencia o masiva, con o sin encabezado— y cuyo
+tipo 8 **declara** que un código es un menú. Eso reemplazó una heurística que
+acertaba 192 de 205: ver
+[`openspec/domain/visualtime-window-types.md`](openspec/domain/visualtime-window-types.md).
+
 ## Persistencia en pgvector
 
 ```bash
@@ -51,6 +57,12 @@ La carga es por `COPY` (el ORM define el esquema y responde consultas; mover
 57.101 filas de 1536 floats es del driver) e idempotente por
 `(tenant_id, doc_version, content_hash)`: volver a correrla no inserta nada.
 `--prune` borra las filas cuyo texto ya no está en el corpus.
+
+La carga es idempotente en el sentido que importa —el conteo de filas no crece—
+pero **no es ciega a la metadata**: refresca las columnas de metadata de las filas
+que ve, que es lo que permite que un campo nuevo llegue a filas que ya existen. El
+embedding nunca se reescribe: está atado al texto, y si el texto cambió entonces
+cambió el hash y es una fila nueva.
 
 **Un detalle que cuesta caro no saber:** una búsqueda por similitud con filtros
 puede devolver **cero resultados** aunque miles de filas cumplan el filtro. HNSW

@@ -178,6 +178,7 @@ def _write_corpus(tmp_path, texts: list[str]) -> tuple:
                 "chunk_type": "table",
                 "section": "Campos",
                 "module_code": "DMECAR",
+                "window_type_name": "Masivo con encabezado",
             },
         }
 

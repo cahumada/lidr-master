@@ -1459,6 +1459,7 @@ class FunctionalSpecChunker:
             chunk.metadata.module_name = location.module_name
             chunk.metadata.submodule_code = location.submodule_code
             chunk.metadata.submodule_name = location.submodule_name
+            chunk.metadata.window_type_name = location.window_type_name
             chunk.metadata.tenant_id = self._tenant_id
             chunk.metadata.doc_version = self._doc_version
             # The chunk's hash covers exactly the bytes that get embedded, so a

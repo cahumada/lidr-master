@@ -43,6 +43,9 @@ class SearchFilters:
     document_kind: str | None = None
     chunk_type: str | None = None
     document_id: str | None = None
+    # "las transacciones masivas con encabezado" as a filter, not a read.
+    # || "las transacciones masivas con encabezado" como filtro, no como lectura.
+    window_type_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -112,6 +115,7 @@ def _apply(statement: Select, filters: SearchFilters) -> Select:
         ChunkRow.document_kind: filters.document_kind,
         ChunkRow.chunk_type: filters.chunk_type,
         ChunkRow.document_id: filters.document_id,
+        ChunkRow.window_type_name: filters.window_type_name,
     }
     for column, value in optional.items():
         if value is not None:

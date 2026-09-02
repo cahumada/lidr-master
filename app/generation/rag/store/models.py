@@ -128,6 +128,12 @@ class ChunkRow(Base):
     module_name: Mapped[str | None] = mapped_column(Text)
     submodule_code: Mapped[str | None] = mapped_column(String(32))
     submodule_name: Mapped[str | None] = mapped_column(Text)
+    # How the transaction is operated, DECLARED by the WINDOWS export: puntual,
+    # secuencia or masiva, with or without a header. A filter, not a read.
+    # || Cómo se opera la transacción, DECLARADO por el export de WINDOWS:
+    # puntual, secuencia o masiva, con o sin encabezado. Un filtro, no una
+    # lectura.
+    window_type_name: Mapped[str | None] = mapped_column(String(48))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -160,6 +166,7 @@ class ChunkRow(Base):
         Index("ix_chunks_tenant_version", "tenant_id", "doc_version"),
         Index("ix_chunks_document_id", "document_id"),
         Index("ix_chunks_module_code", "module_code"),
+        Index("ix_chunks_window_type", "tenant_id", "doc_version", "window_type_name"),
     )
 
 

@@ -142,6 +142,15 @@ class ChunkMetadata(BaseModel):
         default="default",
         description="Client this chunk belongs to, e.g. 'acme_seguros'. || Cliente al que pertenece este chunk."
     )
+    window_type_name: str | None = Field(
+        default=None,
+        description="How the transaction is operated, from the WINDOWS export: puntual, "
+        "secuencia or masiva, with or without a header. The name and not the code: `6` "
+        "tells nobody anything. Absent when the export does not declare it. "
+        "|| Cómo se opera la transacción, del export de WINDOWS: puntual, secuencia o "
+        "masiva, con o sin encabezado. El nombre y no el código: `6` no le dice nada a "
+        "nadie. Ausente cuando el export no lo declara.",
+    )
     doc_version: str = Field(
         default="unversioned",
         description="Documentation set version, e.g. 'DW Funtionals 2026.1'. "
