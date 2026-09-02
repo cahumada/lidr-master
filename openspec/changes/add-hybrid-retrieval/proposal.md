@@ -42,27 +42,58 @@ chunks vengan de `AGL009` es correcto. La concentración es un problema para una
 pregunta general y una virtud para una específica, así que se controla con un
 parámetro, no con una regla.
 
-## Se puede medir, y hay una línea base
+## Cómo se mide: como lo mide el curso, más un atajo para iterar
 
-1.871 documentos tienen un título **único** [VERIFICADO-CORPUS]. Eso da un
-conjunto etiquetado gratis: usar el título como consulta y esperar que vuelvan
-los chunks de ese documento.
+El curso (rama `session_16`) ya resolvió esto y esta propuesta lo sigue:
 
-Línea base con la búsqueda vectorial actual, sobre una muestra de 60:
+- **`evals/golden_retrieval.json`** — un golden set **anotado a mano**, donde cada
+  pregunta lleva los documentos que son genuinamente relevantes, y **distractores
+  deliberados**: documentos "parecidos pero irrelevantes".
+- **`scripts/eval_retrieval_s10.py`** — reporta **precision@k** (`hits / k`) y
+  latencia, comparando **configuraciones con nombre** una al lado de la otra.
+
+Vale la pena citar para qué armaron ese golden set, porque nombra los tres fallos
+que yo medí acá por separado:
+
+> *"averaged multi-topic queries, the dominant collection flooding the top-k,
+> **lexical identifiers diluted by embeddings**"*
+
+El tercero es exactamente el caso `CAC011`, y el segundo es la concentración en un
+solo documento. No estoy proponiendo una arquitectura nueva: estoy reconstruyendo
+la del curso sobre este corpus, y los fallos coinciden.
+
+### El golden set lo tiene que revisar alguien que conozca el negocio
+
+Anotar a mano es el punto: un golden set escrito solo por el modelo que después se
+evalúa contra él es un número que no se sostiene. Lo que se hace acá es
+**borradorear** 20-30 preguntas a partir de secciones reales del corpus
+(`Función general`, `Validaciones`, `Requisitos`) con su documento esperado, y
+dejarlas para revisión antes de reportar nada.
+
+### Y un proxy gratis, para iterar mientras se ajusta la fusión
+
+1.871 documentos tienen título **único**, lo que da un conjunto etiquetado sin
+anotar nada: el título como consulta, ese documento como respuesta. Como hay
+exactamente un documento correcto por consulta, la métrica es una **tasa de
+acierto** en los primeros k.
+
+Línea base con la búsqueda vectorial actual, muestra de 60:
 
 | | |
 |---|---:|
-| recall@1 | **70%** |
-| recall@5 | **88%** |
-| recall@10 | **92%** |
+| acierto@1 | **70%** |
+| acierto@5 | **88%** |
+| acierto@10 | **92%** |
 
-No está saturado, así que sirve para comparar antes y después.
+**Es un proxy y NO reemplaza al golden set.** Un título no es una pregunta, y la
+métrica premia parecerse al título. Su valor es que corre en segundos: sirve para
+ver si un cambio en la fusión mejora o empeora mientras se itera, no para
+reportar la calidad del sistema. Su techo tampoco es 100%: 349 documentos
+comparten título con otro, y `VIC014_k` "falla" devolviendo `SGC001_k`, que tiene
+el título **idéntico**.
 
-**Es un proxy, no la verdad del dominio.** Un título no es una pregunta real, y
-la métrica premia parecerse al título. Sirve para saber si un cambio mejora o
-empeora la recuperación; no para afirmar que la recuperación es buena. La
-evaluación con preguntas reales necesita a alguien que conozca el negocio, y eso
-queda anotado, no simulado.
+Los dos números conviven: el proxy para iterar, precision@k sobre el golden set
+para reportar.
 
 ## What Changes
 
@@ -73,14 +104,20 @@ queda anotado, no simulado.
   - **exacto**: para identificadores (`CAC011`, `premium_mo`, `10208`), que la
     tokenización del full-text destroza. Por `document_id`, `field` y coincidencia
     literal.
-- **Fusión por Reciprocal Rank Fusion.** La distancia coseno y el `ts_rank_cd` no
+- **Fusión por Reciprocal Rank Fusion, sin pesos por rama.** `k = 60`, el mismo
+  constante del curso (Cormack et al.). La distancia coseno y el `ts_rank_cd` no
   son comparables ni normalizables de forma estable; RRF combina **posiciones**,
-  no puntajes, y no tiene que calibrar nada.
+  no puntajes, y no calibra nada. **Sin pesos**: el curso deliberadamente no los
+  tiene, y meterlos reintroduce la calibración manual que RRF justamente evita.
 - **Diversidad opcional**, como tope de chunks por documento. Parámetro, con
   default que no la fuerza.
 - **`GET /search`** — la primera consulta que el servicio expone.
-- **`scripts/eval_retrieval.py`** — recall@k sobre los 1.871 documentos de título
-  único, para que "mejoró" sea un número.
+- **`evals/golden_retrieval.json`** — el golden set, borradoreado del corpus y
+  **pendiente de revisión** antes de reportar nada, con distractores deliberados.
+- **`scripts/eval_retrieval.py`** — precision@k y latencia por configuración con
+  nombre, como el `eval_retrieval_s10.py` del curso.
+- **`scripts/eval_retrieval_proxy.py`** — la tasa de acierto sobre los títulos
+  únicos, para iterar en segundos.
 
 ## Capabilities
 
@@ -103,9 +140,11 @@ queda anotado, no simulado.
 
 - **No genera respuestas.** Devuelve chunks con su procedencia. La generación
   —prompt, llamada al LLM, citas— es la capability siguiente.
-- **No hace reranking con un modelo.** Un cross-encoder mejora el orden y cuesta
-  una llamada por consulta; primero hay que ver cuánto da la fusión sola, con la
-  métrica ya puesta.
+- **No hace reranking, ni transformación de consulta, ni ruteo.** El curso tiene
+  las tres (`retrieval/reranker.py`, `query_transform.py`, `router.py`) y este
+  cambio ninguna. Cada una mejora el resultado y cuesta una llamada más por
+  consulta; el orden sensato es medir cuánto da la fusión sola —con la métrica ya
+  puesta— y recién entonces agregar. Quedan nombradas para que no se pierdan.
 - **No arma el mapa de procesos.** Quedó planteado al principio del proyecto
   (relacionar transacciones entre sí para un CAG) y sigue pendiente; necesita las
   `references` que el chunker ya extrae, y es su propio cambio.

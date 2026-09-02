@@ -9,10 +9,20 @@ suma ponderada de puntajes incomparables produce un orden que nadie puede
 explicar.
 
 **Reciprocal Rank Fusion** combina posiciones: cada resultado aporta
-`peso / (k + posición)`. No hay nada que calibrar, el `k` amortigua las
-diferencias entre los primeros puestos, y un documento que sale bien en dos
-caminos le gana a uno que sale muy bien en uno solo — que es exactamente lo que
-se quiere de una fusión.
+`1 / (k + posición)`. No hay nada que calibrar, el `k` amortigua las diferencias
+entre los primeros puestos, y un documento que sale bien en dos caminos le gana a
+uno que sale muy bien en uno solo — que es exactamente lo que se quiere de una
+fusión.
+
+`k = 60`, el mismo constante que usa el curso, de Cormack et al. Un `k` grande
+achata la curva y obliga a rankear bien en varias ramas; uno chico deja que un
+solo primer puesto domine.
+
+**Sin pesos por rama.** La primera versión de esta propuesta los tenía; el curso
+deliberadamente no. Y tiene razón: el punto de RRF es que el consenso posicional
+decida, y un peso por rama reintroduce exactamente la calibración manual que RRF
+evita — con el agravante de que un peso mal elegido es invisible, porque el orden
+resultante sigue pareciendo razonable.
 
 **Alternativa descartada:** normalizar por min-max sobre el conjunto devuelto.
 Es sensible a un outlier y hace que el puntaje de un resultado dependa de con
@@ -57,24 +67,46 @@ Forzar diversidad rompería el segundo caso para arreglar el primero. Se expone
 como tope de chunks por documento, con un default que no recorta, y queda medido
 qué le hace a la métrica.
 
-## 5. La métrica antes que la mejora
+## 5. Dos métricas, y cada una para lo que sirve
 
-Sin número, "mejoró la recuperación" es una opinión. La línea base ya está
-tomada (recall@1 70%, @5 88%, @10 92% con el vector solo), y el script de
-evaluación se escribe **antes** de tocar la búsqueda, para que cada decisión de
-fusión se contraste en lugar de argumentarse.
+Sin número, "mejoró la recuperación" es una opinión. Pero un solo número mal
+elegido es peor, porque parece una respuesta.
 
-**Los límites de la métrica quedan escritos, no implícitos:**
+**`precision@k` sobre un golden set anotado a mano** es lo que se reporta. Es lo
+que hace el curso (`scripts/eval_retrieval_s10.py`: `hits / k`, por configuración
+con nombre, más latencia) y mide lo que importa: de los k que van a entrar al
+contexto del generador, cuántos sirven. Necesita varios documentos relevantes por
+pregunta, y por eso hay que anotarlos.
 
-- Un título no es una pregunta. La métrica premia parecerse al título, así que un
-  cambio que ayude a los títulos y no a las preguntas se vería como una mejora.
-- Su techo no es 100%: hay 349 documentos cuyo título comparten con otro, por eso
-  se usan solo los 1.871 únicos.
-- Un "fallo" puede ser correcto. `VIC014_k` → `SGC001_k` cuenta como error, y los
-  dos documentos tienen el título *idéntico*.
+El golden set del curso además incluye **distractores deliberados** —documentos
+parecidos pero irrelevantes— para atacar los fallos concretos que enumera. Ese
+detalle no es decorativo: un golden set sin distractores mide si el sistema
+encuentra, no si sabe descartar.
 
-Sirve para comparar dos versiones del mismo sistema. No para afirmar que el
-sistema es bueno.
+**La tasa de acierto sobre títulos únicos** es el atajo para iterar. Corre en
+segundos, no necesita anotación, y sirve para ver si un ajuste de la fusión mejora
+o empeora. Sus límites, escritos y no implícitos:
+
+- Un título no es una pregunta. Premia parecerse al título, así que un cambio que
+  ayude a los títulos y no a las preguntas se vería como una mejora.
+- Su techo no es 100%: 349 documentos comparten título con otro, por eso se usan
+  solo los 1.871 únicos.
+- Un "fallo" puede ser correcto: `VIC014_k` → `SGC001_k`, y los dos tienen el
+  título *idéntico*.
+
+El proxy nunca se reporta como calidad del sistema. Sirve para comparar dos
+versiones del mismo sistema mientras se lo construye.
+
+## 5b. El golden set se borradorea, no se inventa
+
+Las preguntas salen de secciones reales del corpus, y quedan **pendientes de
+revisión** por alguien que conozca el negocio antes de reportar cualquier número
+contra ellas.
+
+Un golden set escrito por el mismo sistema que después se evalúa contra él no mide
+nada: mide si el sistema coincide consigo mismo. Que el borrador venga del corpus
+y no de la imaginación ayuda, pero no alcanza — hace falta que alguien diga "esta
+pregunta la haría un usuario" y "este documento es el que la responde".
 
 ## 6. `GET` y no `POST` para la búsqueda
 

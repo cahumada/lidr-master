@@ -49,8 +49,12 @@ longitud del texto. No son comparables, y normalizarlos exige mínimos y máximo
 que cambian con cada consulta: el puntaje de un resultado terminaría dependiendo
 de con quiénes salió.
 
-Reciprocal Rank Fusion combina posiciones (`peso / (k + posición)`). No hay nada
-que calibrar.
+Reciprocal Rank Fusion combina posiciones (`1 / (k + posición)`), con `k = 60`,
+el mismo constante que usa el curso (Cormack et al.). No hay nada que calibrar.
+
+**Sin pesos por rama.** El curso deliberadamente no los tiene, y un peso
+reintroduce la calibración manual que RRF evita — con el agravante de que un peso
+mal elegido es invisible, porque el orden resultante sigue pareciendo razonable.
 
 #### Scenario: Aparecer en dos caminos vale más que ganar en uno
 - **WHEN** un chunk sale segundo en el vectorial y segundo en el léxico, y otro
@@ -64,6 +68,11 @@ que calibrar.
 #### Scenario: Sin duplicados
 - **WHEN** el mismo chunk sale en más de un camino
 - **THEN** aparece una sola vez en el resultado
+
+#### Scenario: Todas las ramas pesan igual
+- **WHEN** se fusiona
+- **THEN** la contribución de un resultado depende solo de su posición y de `k`,
+  nunca de un peso por rama
 
 ### Requirement: La diversidad por documento DEBE ser un parámetro, no una regla
 Medido sobre 8 preguntas reales: el documento dominante se lleva 4,5 de 10 hits
@@ -93,29 +102,57 @@ camino entró.
 - **THEN** lleva `document_id`, `section`, el breadcrumb y los caminos que lo
   encontraron
 
-### Requirement: La calidad de la recuperación DEBE ser un número, con sus límites escritos
-Sin métrica, "mejoró" es una opinión. 1.871 documentos tienen título único, lo
-que da un conjunto etiquetado: el título como consulta, sus chunks como respuesta
-esperada. Línea base con el vector solo: recall@1 70%, recall@5 88%,
-recall@10 92%.
+### Requirement: Lo que se reporta DEBE ser precision@k sobre un golden set anotado
+Es lo que hace el curso (`scripts/eval_retrieval_s10.py`: `hits / k`, por
+configuración con nombre, más latencia) y mide lo que importa: de los k que van a
+entrar al contexto del generador, cuántos sirven.
 
-Los límites se declaran junto al número, porque un número sin sus límites se
-convierte en una afirmación que no se sostiene:
+El golden set DEBE llevar **distractores deliberados** —documentos parecidos pero
+irrelevantes—. Sin ellos se mide si el sistema encuentra, no si sabe descartar, y
+los fallos que este cambio ataca son justamente de descarte.
 
-- Un título no es una pregunta real; la métrica premia parecerse al título.
-- El techo no es 100%: por eso se usan solo los títulos únicos.
-- Un fallo contado puede ser correcto: `VIC014_k` devolvió `SGC001_k`, que tiene
-  el título idéntico.
-
-Sirve para comparar dos versiones del mismo sistema, no para afirmar que el
-sistema es bueno. La evaluación con preguntas reales necesita conocimiento del
-negocio y queda pendiente, no simulada.
+#### Scenario: Reporte por configuración
+- **WHEN** se corre la evaluación
+- **THEN** informa precision@k y latencia por cada configuración con nombre,
+  para poder compararlas
 
 #### Scenario: Medición reproducible
-- **WHEN** se corre la evaluación sobre el mismo corpus y la misma configuración
-- **THEN** da el mismo recall
+- **WHEN** se corre sobre el mismo corpus y la misma configuración
+- **THEN** da el mismo resultado
 
-#### Scenario: El reporte lleva los límites
-- **WHEN** la evaluación escribe su reporte
-- **THEN** incluye qué mide, sobre cuántos documentos, y qué no se puede
-  concluir de él
+### Requirement: El golden set NO DEBE darse por válido sin revisión humana
+Un golden set escrito por el mismo sistema que después se evalúa contra él no
+mide nada: mide si el sistema coincide consigo mismo.
+
+Las preguntas se borradorean de secciones reales del corpus, y el archivo DEBE
+declarar que está pendiente de revisión hasta que alguien que conozca el negocio
+lo confirme.
+
+#### Scenario: Borrador sin revisar
+- **WHEN** el golden set todavía no fue revisado
+- **THEN** el archivo lo declara, y el reporte de la evaluación lo repite
+
+#### Scenario: Una pregunta lleva sus documentos relevantes
+- **WHEN** se agrega una pregunta al golden set
+- **THEN** lleva la lista de documentos que la responden, no uno solo
+
+### Requirement: El proxy de títulos NUNCA DEBE reportarse como calidad del sistema
+1.871 documentos tienen título único, lo que da un conjunto etiquetado sin anotar
+nada. Corre en segundos y sirve para ver si un ajuste de la fusión mejora o
+empeora mientras se itera.
+
+Pero un título no es una pregunta, y la métrica premia parecerse al título: un
+cambio que ayude a los títulos y no a las preguntas se vería como una mejora. Su
+techo tampoco es 100% —349 documentos comparten título— y un fallo contado puede
+ser correcto: `VIC014_k` devolvió `SGC001_k`, que tiene el título idéntico.
+
+Línea base con el vector solo: acierto@1 70%, @5 88%, @10 92%.
+
+#### Scenario: El proxy dice qué es
+- **WHEN** el proxy escribe su reporte
+- **THEN** declara que es un proxy para comparar versiones, no la calidad del
+  sistema, y enumera sus límites
+
+#### Scenario: Sirve para comparar
+- **WHEN** se corre el proxy antes y después de un cambio en la fusión
+- **THEN** la diferencia dice si ese cambio mejoró o empeoró la recuperación
