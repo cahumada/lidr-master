@@ -69,6 +69,18 @@
          `SIC001` en el 18. Solo `SIC002` está genuinamente afuera del top-60.
          Tres de los cuatro documentos que "faltan" están entre los puestos 11
          y 20 — exactamente el rango que un reranker recupera.
+      5. Sobre los 85 pares pregunta-documento de las 35 preguntas humanas:
+         **21 son problema de rango** (puestos 11-60, los rescata) y **15 son
+         problema de recall** (afuera del top-60, no los puede rescatar). Ver
+         `design.md` §4c: son conjuntos disjuntos y hacen falta dos arreglos.
+
+- [ ] 6.0b Descomposición de consulta, con la evidencia que la reactiva.
+      Medida antes sobre 5 preguntas dio 1/5 → 2/5 y quedó postergada. Sobre 35:
+      las **15 fallas de recall son todas de preguntas compuestas, cero en
+      simples**, y **10 de los documentos que faltan en una compuesta son la
+      respuesta anotada de una simple** — `CA003` sale 1º solo y no aparece en el
+      top-60 de la compuesta que lo tiene anotado. El documento es recuperable;
+      la consulta compuesta lo entierra.
 
       `window_type_name` ya viaja en cada fila y es señal utilizable: ante un
       "¿en qué pantalla?", una transacción puntual le gana a un proceso masivo.

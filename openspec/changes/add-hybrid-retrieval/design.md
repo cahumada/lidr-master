@@ -99,6 +99,57 @@ la ventaja desaparece.
 Sobre las 56 preguntas del golden set, `vector+exact cap1` pasó de p@10 0,170 a
 **0,177** y de 91% a **93%** de hallazgo.
 
+## 4c. Rango y recall son dos fallas distintas, y solo una la arregla un reranker
+
+Con 35 preguntas escritas por una persona sobre los cuatro módulos del foco hay
+material para separar algo que se venía mezclando. De los **85 pares
+pregunta-documento**, buscando en un candidato de 60 [VERIFICADO-CORPUS]:
+
+| | pares | |
+|---|---:|---|
+| ya en el top-10 | 49 (58%) | nada que hacer |
+| **rango**: puesto 11 a 60 | 21 (25%) | un reranker los rescata |
+| **recall**: afuera del top-60 | 15 (18%) | un reranker **no puede** |
+
+Reordenar no trae lo que no vino. Los dos tercios que un reranker arregla y el
+tercio que no son conjuntos **disjuntos**, así que hacen falta dos arreglos y no
+uno mejor.
+
+### Las preguntas simples ya están resueltas
+
+El desglose por tipo de pregunta es más nítido que el total:
+
+| | top-10 | rango | recall |
+|---|---:|---:|---:|
+| pregunta simple (1 documento) | 12 | 2 | **0** |
+| pregunta compuesta (3+) | 37 | 19 | 15 |
+
+**Las 15 fallas de recall son todas de preguntas compuestas. Cero en simples.**
+12 de 14 pares simples entran al top-10.
+
+### Y el documento que falta no es el problema
+
+Diez de los documentos que faltan en una pregunta compuesta son **la respuesta
+anotada de una pregunta simple**: `CA003`, `CA908`, `CO001`, `CO501`, `COL001`,
+`COL003`, `COL005`, `COL502`, `COL520`, `SI012`.
+
+`CA003` sale en el **puesto 1** de la pregunta sobre dígitos de la CBU y está
+**afuera del top-60** de la compuesta de domiciliación PAC/TRANSBANK, que lo
+tiene anotado como relevante. `CA025` y `CO001` salen 1º y 3º solos, y
+desaparecen juntos en la compuesta de conversión de propuesta.
+
+El documento es recuperable. **La consulta compuesta es lo que lo entierra**, y
+eso es descomposición de consulta, no reordenamiento.
+
+### Lo que esto corrige
+
+La descomposición se había medido antes sobre 5 preguntas, dio 1/5 → 2/5 y por
+eso quedó postergada frente al reranker. Con 35 preguntas la lectura cambia: el
+reranker sigue siendo el que más pares mueve (21), pero es **estructuralmente
+incapaz** de tocar los 15 que ni aparecen, y esos 15 son exactamente los que la
+descomposición ataca. La prioridad no es una lista ordenada: son dos trabajos
+para dos mitades distintas del problema.
+
 ## 5. Dos métricas, y cada una para lo que sirve
 
 Sin número, "mejoró la recuperación" es una opinión. Pero un solo número mal

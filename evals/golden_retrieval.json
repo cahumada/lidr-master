@@ -1,6 +1,6 @@
 {
   "status": "PARTIALLY_REVIEWED",
-  "reviewed_questions": 26,
+  "reviewed_questions": 35,
   "focus_modules": [
     "policies",
     "claims",
@@ -8,13 +8,13 @@
     "designer"
   ],
   "questions_by_module": {
-    "collections": 21,
-    "policies": 16,
+    "collections": 23,
+    "policies": 19,
     "claims": 12,
-    "designer": 7
+    "designer": 11
   },
   "questions_by_type": {
-    "user_question": 26,
+    "user_question": 35,
     "declared_precedence": 2,
     "field_validations": 16,
     "by_code": 12
@@ -474,6 +474,160 @@
       ],
       "distractor_document_ids": [],
       "provenance": "Pregunta real de usuario, compuesta. Documentos anotados por el dueño del repo, con el motivo de cada uno: CA014 = coberturas de la póliza individual o certificado, límites de capital y edad; CA014A = coberturas de la póliza matriz; CA908 = jerarquía de productores, los intermediarios comisionables.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-CA003-cbu-tipo-cuenta",
+      "module": "policies",
+      "type": "user_question",
+      "question": "¿Cuántos dígitos componen la CBU y qué valores están reservados y excluidos para el «Tipo de cuenta» al configurar los datos bancarios?",
+      "relevant_document_ids": [
+        "CA003"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: ca003.md (Vía de cobro). Llegó en el lote del diseñador pero el documento es del módulo de pólizas (policies) y así queda clasificada.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-CO001-unit-linked-documentos",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿Cuáles son los únicos tipos de documentos permitidos si intento realizar una relación de cobranzas para una póliza de un producto Unit Linked (VNT)?",
+      "relevant_document_ids": [
+        "CO001"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: co001.md (Documentos de una relación). Llegó en el lote del diseñador pero el documento es del módulo de cobranzas (collections) y así queda clasificada.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-DP001-borrar-ramo-comercial",
+      "module": "designer",
+      "type": "user_question",
+      "question": "¿Qué códigos de error me arrojará el sistema si intento eliminar un ramo comercial que todavía tiene pólizas o productos asociados?",
+      "relevant_document_ids": [
+        "DP001"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: dp001.md (Ramos comerciales).",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-definicion-producto",
+      "module": "designer",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Cómo se realiza el proceso completo de definición de un nuevo producto, desde la asignación de su clave primaria y fecha de transacción, pasando por sus características generales, hasta la secuencia de ventanas requeridas en su instalación?",
+      "relevant_document_ids": [
+        "DP003_k",
+        "DP003",
+        "DP003_A"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. Documentos anotados por el dueño del repo, con el motivo de cada uno: DP003_k = clave para el tratamiento de un producto, la transacción de encabezado; DP003 = información general, reglas; DP003_A = características de los productos, las secuencias. DP003_A tiene solo 5 chunks y compite contra 43 y 19; es el caso duro de este bloque, como SI001_A en siniestros.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-cobertura-vida-instalacion",
+      "module": "designer",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Qué datos generales se configuran en el ciclo de vida de una cobertura de vida, cómo se registra su clave genérica y de qué manera se integran e instalan estas coberturas dentro de los módulos específicos de un producto?",
+      "relevant_document_ids": [
+        "DP018G_K",
+        "DP018G",
+        "DP033"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. Documentos anotados por el dueño del repo, con el motivo de cada uno: DP018G_K = clave de cobertura genérica de vida, la transacción de encabezado (8 chunks); DP018G = información general de la cobertura; DP033 = coberturas de un producto, la instalación.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-consultas-disenador",
+      "module": "designer",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Cómo puedo consultar de forma estructurada los planes definidos para un producto, las exclusiones parametrizadas entre sus coberturas y la escala de comisiones por año asignada a los intermediarios?",
+      "relevant_document_ids": [
+        "DPC982",
+        "DPC926",
+        "DPC925"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. Documentos anotados por el dueño del repo, con el motivo de cada uno: DPC982 = consulta de planes según ramo/subramo/producto; DPC926 = consulta de exclusión entre coberturas; DPC925 = consulta de comisiones por plan. Los tres archivos llevan el código DENTRO del título y no en línea propia, así que el pipeline cayó al nombre del archivo; acertó, pero por otro camino.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-conversion-propuesta-primera-prima",
+      "module": "policies",
+      "type": "user_question",
+      "compound": true,
+      "question": "Al realizar la conversión de una propuesta o cotización a póliza definitiva, ¿cómo interactúa la exigencia del pago de la primera prima en caja, el rol del cliente pagador y el registro del abono correspondiente en la cuenta corriente?",
+      "relevant_document_ids": [
+        "CA001k",
+        "CA025",
+        "CO001"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta y CRUZADA entre módulos (pólizas y cobranzas). Documentos anotados por el dueño del repo, con el motivo de cada uno: CA001k (archivo ca001_k.md) = validaciones de primera prima 55507 y 60017 en la conversión; CA025 = configuración de la figura del pagador y actualización de facturación; CO001 = registro del pago de propuestas y abonos en cuenta corriente.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-domiciliacion-pac-transbank",
+      "module": "collections",
+      "type": "user_question",
+      "compound": true,
+      "question": "Si un recibo tiene configurada una vía de cobro automática como PAC o TRANSBANK, ¿cómo se gestiona esta domiciliación bancaria, de qué manera afecta a la generación manual de su boletín de cobro y qué controles existen si necesito traspasar ese pago a otro recibo?",
+      "relevant_document_ids": [
+        "CA003",
+        "CO632",
+        "CO632_k",
+        "CO634"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta y CRUZADA entre módulos. Documentos anotados por el dueño del repo, con el motivo de cada uno: CA003 = registro de la domiciliación y vía de cobro PAC/TRANSBANK; CO632 = generación de boletines, validación de vía de pago y estados; CO634 = traspaso de pago de recibos con vía de pago PAC/TRANSBANK. co632.md declara DOS ids (CO632_k y CO632) y el pipeline lo indexa como dos documentos de 41 y 45 chunks; los dos van como relevantes porque son el mismo archivo fuente, igual que si501.md.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-colectivo-innominado",
+      "module": "policies",
+      "type": "user_question",
+      "compound": true,
+      "question": "Si una póliza colectiva está definida como innominada, ¿cómo se autogeneran sus clientes asegurados en la emisión, cómo se asocia su vía de cobro por cliente y de qué manera muestra el sistema sus recibos pendientes al momento de procesar una relación de cobros?",
+      "relevant_document_ids": [
+        "CA025",
+        "CA003",
+        "CO001"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta y CRUZADA entre módulos. Documentos anotados por el dueño del repo, con el motivo de cada uno: CA025 = autogeneración de asegurados con código del contratante en colectivos innominados; CA003 = vía de cobro domiciliada por cliente; CO001 = muestra de todos los recibos pendientes según titular o pagador en la relación de cobros.",
       "review": {
         "question_is_realistic": true,
         "annotation_is_correct": true

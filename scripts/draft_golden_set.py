@@ -436,9 +436,18 @@ async def run(modules) -> int:
     print("  por tipo:")
     for kind, count in sorted(payload["questions_by_type"].items()):
         print(f"    {kind:<22}{count:>3}")
-    relevant = sum(len(q["relevant_document_ids"]) for q in questions)
-    distractors = sum(len(q["distractor_document_ids"]) for q in questions)
-    print(f"\n  relevantes anotados: {relevant}")
+    # Over the MERGED set, never over `questions` alone: that counted only the
+    # drafted ones and left out every human-authored relevant, which is why the
+    # total sat at 130 while the file grew from 56 questions to 65.
+    # || Sobre el conjunto FUSIONADO, nunca sobre `questions` solo: eso contaba
+    # unicamente las borradoreadas y dejaba afuera todos los relevantes escritos
+    # por una persona, y por eso el total se quedaba en 130 mientras el archivo
+    # crecia de 56 preguntas a 65.
+    everything = curated + questions
+    relevant = sum(len(q["relevant_document_ids"]) for q in everything)
+    relevant_curated = sum(len(q["relevant_document_ids"]) for q in curated)
+    distractors = sum(len(q["distractor_document_ids"]) for q in everything)
+    print(f"\n  relevantes anotados: {relevant} ({relevant_curated} en las curadas)")
     print(f"  distractores:        {distractors}")
     print(f"  precedencia disponible por modulo: {notes['precedence_available_by_module']}")
     return 0
