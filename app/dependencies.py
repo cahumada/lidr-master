@@ -68,3 +68,19 @@ def get_embedder() -> OpenAIEmbedder:
         max_retries=settings.EMBEDDING_MAX_RETRIES,
         retry_base_delay=settings.EMBEDDING_RETRY_BASE_DELAY,
     )
+
+
+def get_hybrid_retriever(session):
+    """Retriever for one session. || Retriever para una sesión.
+
+    Not cached: it holds the session, whose lifetime is the request's. The
+    embedder inside it IS cached, so the OpenAI client is built once.
+
+    || Sin cachear: sostiene la sesión, cuya vida es la del request. El embedder
+    que tiene adentro SÍ está cacheado, así que el cliente de OpenAI se arma una
+    sola vez.
+    """
+    from app.generation.rag.retrieval.hybrid import HybridRetriever
+    from app.generation.rag.store.repository import ChunkRepository
+
+    return HybridRetriever(ChunkRepository(session), get_embedder())

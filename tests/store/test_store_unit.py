@@ -140,7 +140,7 @@ def test_an_absent_filter_adds_no_predicate():
 
 
 def test_similarity_is_the_complement_of_distance():
-    hit = SearchHit("c", "CA014", None, None, None, None, "texto", distance=0.25)
+    hit = SearchHit("h", "c", "CA014", None, None, None, None, "texto", distance=0.25)
     assert hit.similarity == pytest.approx(0.75)
 
 
