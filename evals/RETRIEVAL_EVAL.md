@@ -1,7 +1,7 @@
 # Evaluación de recuperación — precision@k sobre el golden set
 
 > **El golden set está PENDIENTE DE REVISIÓN.**
-> 22 de 22 preguntas no fueron revisadas por nadie que
+> 30 de 30 preguntas no fueron revisadas por nadie que
 > conozca el negocio. Un golden set borradoreado por el mismo sistema que se
 > evalúa contra él no mide la calidad del sistema: mide si el sistema coincide
 > consigo mismo. Los números de acá abajo sirven para **comparar
@@ -27,21 +27,26 @@ se come más distractores.
 
 | Config | precision@10 | techo | % del techo | distractores | ms/consulta |
 |---|---:|---:|---:|---:|---:|
-| `vector+exact` | 0.150 | 0.427 | 35% | 3 | 787.8 |
-| `vector+exact cap1` | 0.227 | 0.427 | 53% | 7 | 642.1 |
-| `vector+exact cap2` | 0.195 | 0.427 | 46% | 6 | 594.9 |
-| `vector+exact cap3` | 0.182 | 0.427 | 43% | 4 | 572.1 |
+| `vector` | 0.150 | 0.433 | 35% | 7 | 644.0 |
+| `lexical` | 0.030 | 0.433 | 7% | 3 | 238.5 |
+| `vector+exact` | 0.167 | 0.433 | 38% | 3 | 516.9 |
+| `fused` | 0.120 | 0.433 | 28% | 5 | 740.0 |
+| `vector+exact cap1` | 0.197 | 0.433 | 45% | 9 | 453.6 |
+| `vector+exact cap2` | 0.187 | 0.433 | 43% | 7 | 473.8 |
+| `vector+exact cap3` | 0.180 | 0.433 | 42% | 6 | 513.4 |
+| `fused cap1` | 0.140 | 0.433 | 32% | 8 | 735.8 |
+| `vector cap1` | 0.183 | 0.433 | 42% | 9 | 482.0 |
 
 ## Por tipo de pregunta
 
-| Tipo | preguntas | `vector+exact` | `vector+exact cap1` | `vector+exact cap2` | `vector+exact cap3` |
-|---|---:|---:|---:|---:|---:|
-| `by_code` | 6 | 0.100 | 0.100 | 0.100 | 0.100 |
-| `declared_precedence` | 10 | 0.100 | 0.190 | 0.180 | 0.170 |
-| `field_validations` | 6 | 0.283 | 0.417 | 0.317 | 0.283 |
+| Tipo | preguntas | `vector` | `lexical` | `vector+exact` | `fused` | `vector+exact cap1` | `vector+exact cap2` | `vector+exact cap3` | `fused cap1` | `vector cap1` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `by_code` | 12 | 0.058 | 0.025 | 0.100 | 0.100 | 0.100 | 0.100 | 0.100 | 0.100 | 0.067 |
+| `declared_precedence` | 2 | 0.100 | 0.200 | 0.100 | 0.100 | 0.200 | 0.200 | 0.200 | 0.200 | 0.200 |
+| `field_validations` | 16 | 0.225 | 0.013 | 0.225 | 0.138 | 0.269 | 0.250 | 0.237 | 0.163 | 0.269 |
 
 ### Qué significa cada tipo
 
 - **`declared_precedence`**: El corpus declara la dependencia. Es el tipo mejor fundado.
-- **`field_validations`**: Relevancia por metadata.field exacto. Ojo: favorece a la búsqueda léxica, porque el nombre del campo aparece literalmente en el texto.
-- **`by_code`**: Un solo relevante. Es el caso que la búsqueda vectorial no puede responder y por el que existe la rama exacta.
+- **`field_validations`**: Relevancia por metadata.field exacto. Ojo: favorece a la busqueda lexica, porque el nombre del campo aparece literalmente en el texto.
+- **`by_code`**: Un solo relevante. Es el caso que la busqueda vectorial no puede responder y por el que existe la rama exacta.

@@ -194,3 +194,81 @@ El tope queda expuesto como parámetro, la curva medida y documentada, y la
 decisión del default es del dueño del repo con la evidencia a la vista. Agregar
 4-6 preguntas profundas de un solo documento es lo más valioso que se le puede
 hacer al conjunto, y quedó anotado en `how_to_review`.
+
+
+## Segunda tanda del golden set: enfocada por modulo
+
+El dueno del repo definio el foco: **polizas, siniestros, cobranzas y
+disenador**. El generador pasa a estar manejado por modulo y no por el material.
+
+30 preguntas, 130 relevantes anotados, 85 distractores:
+
+| modulo | preguntas | relevantes |
+|---|---:|---:|
+| Cobranzas | 9 | 41 |
+| Polizas | 7 | 27 |
+| Siniestros | 7 | 32 |
+| Disenador | 7 | 30 |
+
+### Por que el primer borrador salio sesgado
+
+Dejaba que el material eligiera: tomaba las cadenas de precedencia mas largas, y
+todas viven en reaseguros. Resultado, 27% de los relevantes en un modulo de **36
+documentos sobre 2211**, y 55% de tipo `process_report` cuando el corpus es
+mayoritariamente `maintenance`. Siniestros, interfaces y disenador no aparecian.
+
+### Un problema que hubo que resolver primero: con que se filtra un modulo
+
+El `module_name` del breadcrumb resuelve para el 54% del corpus, asi que filtrar
+por el se perdia **75 de los 127 documentos de siniestros y 106 de los 134 de
+disenador** — justo dos de los cuatro modulos pedidos.
+
+El modulo del corpus (el JSON en el que se troceo el documento) es la unica
+agrupacion completa, y **no es una columna de `chunks`**. El generador lo lee de
+los JSON. Queda anotado como hueco: la recuperacion no puede filtrar por el.
+
+### Y un hallazgo sobre el alcance del mapa
+
+Las cadenas de precedencia **casi no existen en estos cuatro modulos**: 2 en
+cobranzas, 0 en polizas, siniestros y disenador. Las declaraciones viven en los
+procesos batch de reaseguros y margen de solvencia. Se registra en
+`known_gaps` en vez de rellenar con preguntas de modulos que nadie pidio.
+
+## Los hallazgos REPLICAN en el conjunto nuevo
+
+Que dos golden sets distintos —uno pesado en reaseguros, otro en el nucleo del
+negocio— den las mismas conclusiones es la mejor senal de que no eran artefactos
+del primero.
+
+| config | precision@10 | % del techo | distractores |
+|---|---:|---:|---:|
+| `vector` | 0,150 | 35% | 7 |
+| `lexical` | 0,030 | 7% | 3 |
+| `vector+exact` | 0,167 | 39% | **3** |
+| `fused` | 0,120 | 28% | 5 |
+| **`vector+exact` cap 1** | **0,197** | **45%** | 9 |
+| `vector+exact` cap 2 | 0,187 | 43% | 7 |
+| `vector+exact` cap 3 | 0,180 | 42% | 6 |
+
+| tipo | techo | `vector` | `vector+exact` | `v+exact` cap1 | `vector` cap1 |
+|---|---:|---:|---:|---:|---:|
+| `by_code` (12) | 0,100 | 0,058 | **0,100** | **0,100** | 0,067 |
+| `field_validations` (16) | alto | 0,225 | 0,225 | **0,269** | **0,269** |
+| `declared_precedence` (2) | alto | 0,100 | 0,100 | 0,200 | 0,200 |
+
+**1. La rama exacta resuelve `by_code` entero, ahora sobre 12 preguntas** y no 6:
+0,058 → 0,100, el 100% del techo. Y `vector` cap1, con tope pero sin rama
+exacta, se queda en 0,067.
+
+**2. La curva del tope sigue monotona** (0,197 > 0,187 > 0,180 > 0,167) y los
+distractores al reves.
+
+**3. La rama lexica sigue restando** (`fused` 0,120 contra `vector+exact` 0,167).
+
+### Un matiz nuevo que el foco por modulo hizo visible
+
+El beneficio del tope es **mas chico** en estos modulos (+0,030) que en el
+conjunto pesado en reaseguros (+0,077). Tiene sentido: alla las preguntas de
+precedencia tenian cadenas de hasta 7 documentos relevantes, donde la
+concentracion en uno solo hace mas dano. El valor del tope depende del tipo de
+pregunta, no es una constante del sistema.
