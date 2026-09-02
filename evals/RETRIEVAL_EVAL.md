@@ -1,5 +1,8 @@
 # Evaluación de recuperación — precision@k sobre el golden set
 
+> Si la terminología de acá abajo no te dice nada, empezá por
+> [COMO_LEER.md](COMO_LEER.md): explica cada término sobre una pregunta real.
+
 > **El golden set está PENDIENTE DE REVISIÓN.**
 > 30 de 30 preguntas no fueron revisadas por nadie que
 > conozca el negocio. Un golden set borradoreado por el mismo sistema que se
@@ -27,23 +30,15 @@ se come más distractores.
 
 | Config | precision@10 | techo | % del techo | distractores | ms/consulta |
 |---|---:|---:|---:|---:|---:|
-| `vector` | 0.150 | 0.433 | 35% | 7 | 644.0 |
-| `lexical` | 0.030 | 0.433 | 7% | 3 | 238.5 |
-| `vector+exact` | 0.167 | 0.433 | 38% | 3 | 516.9 |
-| `fused` | 0.120 | 0.433 | 28% | 5 | 740.0 |
-| `vector+exact cap1` | 0.197 | 0.433 | 45% | 9 | 453.6 |
-| `vector+exact cap2` | 0.187 | 0.433 | 43% | 7 | 473.8 |
-| `vector+exact cap3` | 0.180 | 0.433 | 42% | 6 | 513.4 |
-| `fused cap1` | 0.140 | 0.433 | 32% | 8 | 735.8 |
-| `vector cap1` | 0.183 | 0.433 | 42% | 9 | 482.0 |
+| `vector+exact` | 0.167 | 0.433 | 38% | 3 | 707.8 |
 
 ## Por tipo de pregunta
 
-| Tipo | preguntas | `vector` | `lexical` | `vector+exact` | `fused` | `vector+exact cap1` | `vector+exact cap2` | `vector+exact cap3` | `fused cap1` | `vector cap1` |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `by_code` | 12 | 0.058 | 0.025 | 0.100 | 0.100 | 0.100 | 0.100 | 0.100 | 0.100 | 0.067 |
-| `declared_precedence` | 2 | 0.100 | 0.200 | 0.100 | 0.100 | 0.200 | 0.200 | 0.200 | 0.200 | 0.200 |
-| `field_validations` | 16 | 0.225 | 0.013 | 0.225 | 0.138 | 0.269 | 0.250 | 0.237 | 0.163 | 0.269 |
+| Tipo | preguntas | `vector+exact` |
+|---|---:|---:|
+| `by_code` | 12 | 0.100 |
+| `declared_precedence` | 2 | 0.100 |
+| `field_validations` | 16 | 0.225 |
 
 ### Qué significa cada tipo
 

@@ -106,6 +106,27 @@ transacción no existe cuando lo que pasa es que no está en el menú.
 Si el contexto supera el techo, el build **falla** en vez de truncar: medio mapa
 se lee como uno entero.
 
+## Evaluación de la recuperación
+
+```bash
+uv run python scripts/draft_golden_set.py    # borradorea el golden set del corpus
+uv run python scripts/eval_retrieval.py      # precision@k y latencia por configuración
+uv run python scripts/eval_retrieval_proxy.py --limit 60   # proxy rápido, para iterar
+```
+
+30 preguntas enfocadas en pólizas, siniestros, cobranzas y diseñador, con 130
+documentos relevantes anotados y 85 distractores deliberados. Cada pregunta lleva
+en `provenance` el criterio verificable del que salió, y está
+**`PENDING_REVIEW`**: un golden set derivado por el mismo sistema que se evalúa
+contra él compara configuraciones, no mide calidad.
+
+**[`evals/COMO_LEER.md`](evals/COMO_LEER.md) explica cada término** —
+`precision@k`, techo, distractores, ramas, tope por documento, RRF — sobre una
+pregunta real y con los resultados que dio.
+
+En una frase: la mejor configuración encuentra alrededor del **45% de los
+documentos relevantes que podría encontrar**.
+
 ## Fuente de verdad
 
 Este repo documenta su comportamiento con [OpenSpec](https://github.com/Fission-AI/OpenSpec):
@@ -146,6 +167,9 @@ app/
     │   ├── embedder.py                      # protocolo Embedder, OpenAI, HashEmbedder
     │   ├── sidecar.py                       # IO del .npy + .index.json
     │   └── runner.py                        # planificación incremental y verificación
+    ├── retrieval/
+    │   ├── fusion.py                        # RRF por posición, tope por documento
+    │   └── hybrid.py                        # las tres ramas y el detector de identificadores
     ├── process_map/
     │   ├── graph.py                         # nodos, aristas, deteccion de ciclos
     │   ├── requisites.py                    # precedencia declarada en Requisitos

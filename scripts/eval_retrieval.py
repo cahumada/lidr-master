@@ -202,7 +202,13 @@ async def run(args) -> int:
 
 def render_report(results, golden, k, pending, unreviewed) -> str:
     questions = golden["questions"]
-    lines = ["# Evaluación de recuperación — precision@k sobre el golden set", ""]
+    lines = [
+        "# Evaluación de recuperación — precision@k sobre el golden set",
+        "",
+        "> Si la terminología de acá abajo no te dice nada, empezá por",
+        "> [COMO_LEER.md](COMO_LEER.md): explica cada término sobre una pregunta real.",
+        "",
+    ]
 
     if pending:
         lines += [
