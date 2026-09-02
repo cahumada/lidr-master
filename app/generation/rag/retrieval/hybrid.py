@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 
 import structlog
 
+from app.generation.rag.retrieval.decomposition import decompose
 from app.generation.rag.retrieval.fusion import (
     DEFAULT_RRF_K,
     cap_per_group,
@@ -159,6 +160,24 @@ class RetrievalResult:
     identifier_terms: list[str] = field(default_factory=list)
 
 
+@dataclass
+class _BranchRun:
+    """One query's branches, fused, with what each branch contributed.
+
+    Exists because decomposition runs this same work several times per call and
+    the caller still has to report the branch counts of the WHOLE query.
+
+    || Existe porque la descomposición corre este mismo trabajo varias veces por
+    llamada y quien llama igual tiene que reportar los conteos por rama de la
+    consulta ENTERA.
+    """
+
+    fused: list
+    by_document: dict[str, str]
+    branch_counts: dict[str, int]
+    terms: list[str]
+
+
 class HybridRetriever:
     """Runs the branches, fuses, and optionally caps per document.
 
@@ -184,18 +203,57 @@ class HybridRetriever:
         # 10 desperdicia el consenso, que es todo el punto.
         self._branch_limit = branch_limit
 
-    async def retrieve(
+    async def _append_sub_queries(
         self,
         query: str,
         filters: SearchFilters,
-        *,
-        limit: int = 10,
-        max_per_document: int | None = None,
-        branches: tuple[str, ...] = DEFAULT_BRANCHES,
-    ) -> RetrievalResult:
-        """The chunks relevant to ``query``, within ``filters``.
+        branches: tuple[str, ...],
+        fused: list,
+        by_document: dict[str, str],
+    ) -> tuple[list, dict[str, str]]:
+        """What the sub-questions find that the whole question missed, appended.
 
-        || Los chunks relevantes a ``query``, dentro de ``filters``.
+        Nothing is removed and nothing is reordered: the returned list starts
+        with ``fused`` exactly as it came in. That is what makes the change
+        unable to regress, and `test_decomposing_never_changes_the_prefix`
+        pins it.
+
+        || Lo que las subpreguntas encuentran y la pregunta entera no, agregado
+        al final. No se saca nada ni se reordena: la lista devuelta empieza con
+        ``fused`` exactamente como llegó. Eso es lo que hace que el cambio no
+        pueda regresar, y `test_decomposing_never_changes_the_prefix` lo fija.
+        """
+        sub_queries = decompose(query)
+        if not sub_queries:
+            return fused, by_document
+
+        sub_rankings: dict[str, list[str]] = {}
+        for position, sub_query in enumerate(sub_queries):
+            run = await self._fuse_branches(sub_query, filters, branches)
+            # The whole query's mapping wins on collision: same hash, same
+            # document, so either is right, and preferring the first keeps this
+            # step from touching anything the prefix depends on.
+            # || El mapeo de la consulta entera gana en colisión: mismo hash,
+            # mismo documento, así que cualquiera sirve, y preferir el primero
+            # evita que este paso toque algo de lo que dependa el prefijo.
+            by_document = {**run.by_document, **by_document}
+            sub_rankings[f"sub{position}"] = [item.key for item in run.fused]
+
+        already = {item.key for item in fused}
+        extra = reciprocal_rank_fusion(sub_rankings, key=lambda key: key, k=self._rrf_k)
+        appended = [item for item in extra if item.key not in already]
+        logger.info(
+            "query_decomposed",
+            sub_queries=len(sub_queries),
+            candidates_before=len(fused),
+            candidates_appended=len(appended),
+        )
+        return fused + appended, by_document
+
+    async def _fuse_branches(self, query: str, filters: SearchFilters, branches) -> _BranchRun:
+        """Run the branches for one query and fuse them.
+
+        || Corre las ramas de una consulta y las fusiona.
         """
         terms = identifier_terms(query) if EXACT in branches else []
 
@@ -221,10 +279,49 @@ class HybridRetriever:
             key=lambda hit: hit.content_hash,
             k=self._rrf_k,
         )
+        return _BranchRun(
+            fused=list(fused),
+            by_document={
+                hit.content_hash: hit.document_id for hits in rankings.values() for hit in hits
+            },
+            branch_counts={name: len(hits) for name, hits in rankings.items()},
+            terms=terms,
+        )
 
-        by_document = {
-            hit.content_hash: hit.document_id for hits in rankings.values() for hit in hits
-        }
+    async def retrieve(
+        self,
+        query: str,
+        filters: SearchFilters,
+        *,
+        limit: int = 10,
+        max_per_document: int | None = None,
+        branches: tuple[str, ...] = DEFAULT_BRANCHES,
+        decompose_query: bool = False,
+    ) -> RetrievalResult:
+        """The chunks relevant to ``query``, within ``filters``.
+
+        With ``decompose_query`` a compound question is also asked in parts, and
+        what the parts find is APPENDED to what the whole question found. The
+        prefix is untouched on purpose -- see the class docstring of
+        ``decomposition`` and §1 of that change's design: the two variants that
+        reorder both broke documents the whole query already had, because RRF
+        over sub-queries dilutes. Appending cannot regress by construction.
+
+        || Con ``decompose_query`` una pregunta compuesta se pregunta además por
+        partes, y lo que las partes encuentran se AGREGA a lo que encontró la
+        pregunta entera. El prefijo no se toca a propósito: las dos variantes
+        que reordenan rompieron documentos que la consulta completa ya tenía,
+        porque RRF sobre subconsultas diluye. Agregar no puede regresar por
+        construcción.
+        """
+        whole = await self._fuse_branches(query, filters, branches)
+        fused, by_document = whole.fused, whole.by_document
+
+        if decompose_query:
+            fused, by_document = await self._append_sub_queries(
+                query, filters, branches, fused, by_document
+            )
+
         capped = cap_per_group(
             fused,
             lambda content_hash: by_document.get(content_hash, content_hash),
@@ -272,6 +369,12 @@ class HybridRetriever:
 
         return RetrievalResult(
             chunks=chunks,
-            branch_counts={name: len(hits) for name, hits in rankings.items()},
-            identifier_terms=terms,
+            # The WHOLE query's branches, never the sub-queries': this is what
+            # the caller asked, and a count mixing both would report a branch
+            # activity that no single query had.
+            # || Las ramas de la consulta ENTERA, nunca las de las subconsultas:
+            # es lo que preguntó quien llama, y un conteo que mezclara las dos
+            # reportaría una actividad de rama que ninguna consulta tuvo.
+            branch_counts=whole.branch_counts,
+            identifier_terms=whole.terms,
         )
