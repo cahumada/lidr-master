@@ -23,20 +23,20 @@ se come más distractores.
 
 | Config | precision@10 | techo | % del techo | distractores | ms/consulta |
 |---|---:|---:|---:|---:|---:|
-| `vector` | 0.136 | 0.378 | 36% | 7 | 633.9 |
-| `lexical` | 0.033 | 0.378 | 9% | 3 | 272.4 |
-| `vector+exact` | 0.150 | 0.378 | 40% | 3 | 513.7 |
-| `fused` | 0.111 | 0.378 | 29% | 5 | 809.7 |
-| `vector+exact cap1` | 0.175 | 0.378 | 46% | 9 | 520.7 |
+| `vector` | 0.134 | 0.376 | 36% | 7 | 504.1 |
+| `vector+exact` | 0.146 | 0.376 | 39% | 3 | 523.0 |
+| `fused` | 0.115 | 0.376 | 31% | 5 | 1239.6 |
+| `vector+exact cap1` | 0.176 | 0.376 | 47% | 9 | 524.4 |
+| `vector+exact cap2` | 0.166 | 0.376 | 44% | 7 | 595.8 |
 
 ## Por tipo de pregunta
 
-| Tipo | preguntas | `vector` | `lexical` | `vector+exact` | `fused` | `vector+exact cap1` |
+| Tipo | preguntas | `vector` | `vector+exact` | `fused` | `vector+exact cap1` | `vector+exact cap2` |
 |---|---:|---:|---:|---:|---:|---:|
-| `by_code` | 12 | 0.058 | 0.025 | 0.100 | 0.100 | 0.100 |
-| `declared_precedence` | 2 | 0.100 | 0.200 | 0.100 | 0.100 | 0.200 |
-| `field_validations` | 16 | 0.225 | 0.013 | 0.225 | 0.138 | 0.269 |
-| `user_question` | 6 | 0.067 | 0.050 | 0.067 | 0.067 | 0.067 |
+| `by_code` | 12 | 0.058 | 0.100 | 0.100 | 0.100 | 0.100 |
+| `declared_precedence` | 2 | 0.100 | 0.100 | 0.100 | 0.200 | 0.200 |
+| `field_validations` | 16 | 0.225 | 0.225 | 0.138 | 0.269 | 0.250 |
+| `user_question` | 11 | 0.091 | 0.091 | 0.100 | 0.118 | 0.109 |
 
 ### Qué significa cada tipo
 

@@ -1,6 +1,6 @@
 {
   "status": "PARTIALLY_REVIEWED",
-  "reviewed_questions": 6,
+  "reviewed_questions": 11,
   "focus_modules": [
     "policies",
     "claims",
@@ -8,13 +8,13 @@
     "designer"
   ],
   "questions_by_module": {
-    "collections": 15,
+    "collections": 20,
     "policies": 7,
     "claims": 7,
     "designer": 7
   },
   "questions_by_type": {
-    "user_question": 6,
+    "user_question": 11,
     "declared_precedence": 2,
     "field_validations": 16,
     "by_code": 12
@@ -123,6 +123,99 @@
       ],
       "distractor_document_ids": [],
       "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: CO501. Nota: el usuario lo llamó 'Rechazo de cobros automáticos', que es su nombre de MENÚ; el título del documento es 'Documentos a rechazar'. Los 35 chunks del documento contienen 'rechaz', así que el término de la consulta sí está en el texto.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-lote-pac-rechazos",
+      "module": "collections",
+      "type": "user_question",
+      "compound": true,
+      "question": "Si un lote de cobranza PAC tiene problemas de pago, ¿cómo se originan esos boletines en el sistema, cómo puedo registrar sus rechazos (manual o automáticamente) y en qué pantalla valido el monto neto que realmente se va a notificar como cobrado?",
+      "relevant_document_ids": [
+        "COL500",
+        "CO501",
+        "COL704",
+        "COL520"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta (tres sub-preguntas). Documentos anotados por el dueño del repo, con el motivo de cada uno: COL500 = generación de boletines agrupando recibos por vía de pago PAC; CO501 = marcación manual individual de boletines rechazados; COL704 = carga masiva automática del archivo plano de rechazos bancarios; COL520 = resumen consolidado del lote (solicitado, anulado, rechazado) para validar la cifra neta antes de registrar la recaudación.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-rechazo-cuenta-corriente",
+      "module": "collections",
+      "type": "user_question",
+      "compound": true,
+      "question": "Si un cliente reclama por un recibo que figura como rechazado, ¿cómo registran las tablas de recibos y de cuenta corriente este rechazo (manual o automático) y de qué manera impacta este saldo en el reporte diario de cuadre de cobranzas?",
+      "relevant_document_ids": [
+        "CO501",
+        "COL502",
+        "COL005"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. CO501 = qué campos se actualizan en premium y premium_mo al marcar un rechazo manual; COL502 = el rechazo detectado en la imputación automática PAC/Transbank genera un movimiento de crédito con código 421 en move_acc; COL005 = el cuadre diario compara las relaciones de cobro con la sumatoria de move_acc para calcular el importe faltante en caja.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-cartera-pendientes",
+      "module": "collections",
+      "type": "user_question",
+      "compound": true,
+      "question": "Para controlar la cartera de cobros pendientes de la compañía, ¿cómo se agrupan los cobros automáticos al generarse, por qué el reporte general de recibos por estado los excluye y con qué informe controlo específicamente los cheques a fecha y tarjetas pendientes?",
+      "relevant_document_ids": [
+        "COL500",
+        "COL003",
+        "COL007"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. COL500 = parámetros de agrupación de cobranzas automáticas (por recibo, póliza o cliente) para PAC o Transbank; COL003 = el listado de recibos pendientes EXCLUYE explícitamente los domiciliados en bancos y los cargos automáticos de tarjeta; COL007 = el reporte de cheques a fecha y movimientos de tarjeta en estado pendiente o efectivo a una fecha de corte.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-desmarcar-y-repaso",
+      "module": "collections",
+      "type": "user_question",
+      "compound": true,
+      "question": "Si desmarco por error un boletín rechazado para volver a enviarlo en un proceso de repaso posterior, ¿cómo se restablece su estado en el recibo, cómo se reprocesa esa cobranza y en qué listado audito el historial de todos estos movimientos?",
+      "relevant_document_ids": [
+        "CO501",
+        "COL500",
+        "COL001"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. CO501 = desmarcar un rechazo blanquea la causa en premium y genera un registro histórico en premium_mo; COL500 = el proceso de Repasos regenera la cobranza para documentos pendientes con más de 30 días de morosidad, anulando el boletín anterior; COL001 = el reporte histórico de operaciones de cobranza, leyendo los movimientos de premium_mo.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-financiamiento-cuotas",
+      "module": "collections",
+      "type": "user_question",
+      "compound": true,
+      "question": "Si una póliza cuenta con cuotas de financiamiento pendientes, ¿bajo qué condiciones de antigüedad se incluyen en la generación de cobros, cómo se registran sus rechazos en las tablas de giros y cómo se liquida el recibo total al imputar la última cuota?",
+      "relevant_document_ids": [
+        "COL500",
+        "CO501",
+        "COL704",
+        "COL502",
+        "COL520"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta y la mas amplia del conjunto (5 documentos). COL500 = lee los giros de financiamiento (financ_dra) y las reglas de morosidad anterior y 'Tomar lo más antiguo'; CO501 y COL704 = actualizan la cuota como rechazada en financ_dra y generan el movimiento histórico en draft_hist, manual y automáticamente; COL502 y COL520 = la imputación marca la cuota como cobrada en financ_dra y, si es el último giro, cambia el estado del recibo principal a cobrado en premium.",
       "review": {
         "question_is_realistic": true,
         "annotation_is_correct": true

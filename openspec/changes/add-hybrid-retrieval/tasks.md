@@ -340,3 +340,83 @@ reranker no sirve: el puesto 41 sigue sin ser un top-10.
 
 **Los dos van juntos:** ensanchar el candidato es el prerequisito del reranker,
 no una mejora por si sola.
+
+
+## Preguntas compuestas: el hallazgo mas fuerte, y el que cambio las prioridades
+
+El dueno del repo aporto 5 preguntas mas de cobranzas, **compuestas**: cada una
+tiene tres sub-preguntas y necesita entre 3 y 5 documentos, con la justificacion
+de por que cada uno hace falta. El conjunto queda en 41 preguntas, 11 de ellas
+escritas por una persona.
+
+Esto es exactamente el modo de falla que el golden set del curso nombra primero
+—*"averaged multi-topic queries"*— y el que ningun criterio automatico podia
+generar.
+
+### La recuperacion falla en la mitad
+
+| pregunta | requeridos | sin tope | cap 1 |
+|---|---:|---:|---:|
+| lote PAC y rechazos | 4 | 2/4 | **4/4** |
+| rechazo y cuenta corriente | 3 | 1/3 | 1/3 |
+| cartera de pendientes | 3 | 1/3 | 1/3 |
+| desmarcar y repaso | 3 | 1/3 | 2/3 |
+| financiamiento por cuotas | 5 | 1/5 | 1/5 |
+| **TOTAL** | **18** | **6/18** | **9/18** |
+
+Una sola consulta que promedia tres temas cae "entre" los tres y recupera
+documentos cercanos a ese promedio, que suelen no ser ninguno de los tres.
+
+### La descomposicion NO lo arregla, y lo verifique antes de recomendarla
+
+La hipotesis obvia es partir la pregunta compuesta en sus sub-preguntas y unir
+por round-robin —que es para lo que el curso tiene `round_robin_merge()` al lado
+de RRF: cuando las sub-consultas cubren temas distintos, importa la **cobertura**
+y no el **acuerdo**—.
+
+Probado a mano sobre la peor pregunta: **1/5 pasa a 2/5**. Mucho menos de lo
+esperado.
+
+La razon se ve mirando un caso: `COL704` se titula *"Parametros para la carga
+automatica"*. Nada en su texto la conecta con "rechazos de cuotas de
+financiamiento". Esa relacion no esta en el texto de ningun documento — esta
+**entre** los documentos.
+
+Si hubiera recomendado descomposicion sin medirla, habria vendido una mejora de
+1/5 a 2/5 como si fuera la solucion.
+
+### Lo que SI lo arregla: expandir por el mapa de procesos
+
+El mapa conecta esos nueve documentos con 14 aristas. Y `COL500` —que la busqueda
+**si** encuentra— es requerido por `CO501`, `COL502`, `COL520` y `COL704`: los
+cuatro que faltaban.
+
+Medido, expandiendo desde los documentos recuperados por las aristas `requires` y
+`references`:
+
+| pregunta | sin expansion | con expansion |
+|---|---:|---:|
+| lote PAC y rechazos | 4/4 | 4/4 |
+| rechazo y cuenta corriente | 1/3 | **2/3** |
+| cartera de pendientes | 1/3 | 1/3 |
+| desmarcar y repaso | 2/3 | 2/3 |
+| financiamiento por cuotas | 1/5 | **5/5** |
+| **TOTAL** | **9/18** | **14/18** |
+
+**De 50% a 78% de cobertura**, y la peor pregunta pasa de 1/5 a 5/5.
+
+Es el pago de haber construido el mapa antes de la recuperacion, que era
+exactamente el argumento de ese orden.
+
+## Las prioridades, ahora medidas y no supuestas
+
+1. **Expandir por el mapa** — 9/18 a 14/18 medido. El mayor salto disponible, y
+   el mapa y su tabla `process_map_edges` indexada en las dos puntas ya existen.
+2. **Reranker** — para `COL502` y `COL520`, que estan en los puestos 41 y 52. La
+   fusion las mete en el candidato y no las sube.
+3. **Descomposicion de consulta** — medida en 1/5 a 2/5. Mucho mas abajo de lo
+   que habria supuesto sin medir.
+
+Dos preguntas no mejoran con expansion (`cartera de pendientes` y
+`desmarcar y repaso`): les falta `COL007` y `COL001`, que no tienen aristas hacia
+los documentos que si se recuperan. La expansion tampoco es una bala de plata.
