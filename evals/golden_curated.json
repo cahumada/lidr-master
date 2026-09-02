@@ -1,0 +1,78 @@
+{
+  "status": "HUMAN_AUTHORED",
+  "description": "Preguntas REALES de usuarios, con el documento que las responde anotado por una persona que conoce el negocio. Este archivo NO lo genera ningún script: se escribe a mano y `draft_golden_set.py` lo mezcla con su borrador. Separado a propósito, porque regenerar el borrador borraría estas preguntas, que son las más valiosas del conjunto.",
+  "why_this_file_matters": [
+    "Son preguntas que un usuario hizo, no derivadas de un criterio del corpus. La diferencia se ve al leerlas: nadie pregunta '¿qué validaciones existen sobre el campo Código?', pregunta '¿por qué no me cuadra la caja diaria?'.",
+    "Son de UN SOLO documento relevante, que es el tipo que el generador automático no podía producir: sus criterios daban siempre varios. Sin este tipo, la métrica premia traer muchos documentos y no se puede ver qué rompe el tope por documento.",
+    "La anotación la hizo alguien que conoce el negocio, así que estas 6 sí miden calidad y no solo comparan configuraciones."
+  ],
+  "how_to_add_more": [
+    "Copiar un bloque y cambiar `question` y `relevant_document_ids`.",
+    "El `id` tiene que ser único en todo el conjunto; el prefijo `U-` marca que es de usuario.",
+    "`module` es el módulo del corpus: policies, claims, collections, designer, ...",
+    "Si la respuesta está repartida en varios documentos, poner todos en `relevant_document_ids`.",
+    "`distractor_document_ids` es opcional: documentos parecidos que NO responden la pregunta. Sirven para distinguir dos configuraciones que puntúan igual."
+  ],
+  "questions": [
+    {
+      "id": "U-COL005-cuadre",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿Por qué no me cuadra la caja diaria y cómo puedo ver las relaciones de cobro aprobadas que no registran ingreso de dinero real?",
+      "relevant_document_ids": ["COL005"],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: COL005 (Cuadre de cobranzas).",
+      "review": { "question_is_realistic": true, "annotation_is_correct": true }
+    },
+    {
+      "id": "U-COL003-pendientes",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿Cómo obtengo un listado de recibos con estado 'pendiente' que no tengan ningún boletín de cobranza generado?",
+      "relevant_document_ids": ["COL003"],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: COL003 (Recibos por estado).",
+      "review": { "question_is_realistic": true, "annotation_is_correct": true }
+    },
+    {
+      "id": "U-COL502-comision-banco",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿Qué hago si el depósito de la recaudación PAC es menor al total real de la cobranza porque el banco descontó su comisión?",
+      "relevant_document_ids": ["COL502"],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: COL502 (Imputación automática de PAC y Transbank).",
+      "review": { "question_is_realistic": true, "annotation_is_correct": true }
+    },
+    {
+      "id": "U-COL520-totales-lote",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿Cómo puedo revisar los totales de cobranza solicitada, anulada y rechazada de un lote antes de registrar el cobro definitivo?",
+      "relevant_document_ids": ["COL520"],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: COL520 (Notificación de cobranza PAC y Transbank).",
+      "review": { "question_is_realistic": true, "annotation_is_correct": true }
+    },
+    {
+      "id": "U-COL001-historico",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿Cómo puedo extraer un listado histórico de todos los movimientos de cobranza realizados en un rango específico de fechas?",
+      "relevant_document_ids": ["COL001"],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: COL001 (Operaciones de cobranzas).",
+      "review": { "question_is_realistic": true, "annotation_is_correct": true }
+    },
+    {
+      "id": "U-CO501-desmarcar-rechazo",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿En qué pantalla puedo desmarcar manualmente el rechazo de un boletín para volver a cobrarlo?",
+      "relevant_document_ids": ["CO501"],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: CO501. Nota: el usuario lo llamó 'Rechazo de cobros automáticos', que es su nombre de MENÚ; el título del documento es 'Documentos a rechazar'. Los 35 chunks del documento contienen 'rechaz', así que el término de la consulta sí está en el texto.",
+      "review": { "question_is_realistic": true, "annotation_is_correct": true }
+    }
+  ]
+}

@@ -3,13 +3,6 @@
 > Si la terminología de acá abajo no te dice nada, empezá por
 > [COMO_LEER.md](COMO_LEER.md): explica cada término sobre una pregunta real.
 
-> **El golden set está PENDIENTE DE REVISIÓN.**
-> 30 de 30 preguntas no fueron revisadas por nadie que
-> conozca el negocio. Un golden set borradoreado por el mismo sistema que se
-> evalúa contra él no mide la calidad del sistema: mide si el sistema coincide
-> consigo mismo. Los números de acá abajo sirven para **comparar
-> configuraciones entre sí**, no para afirmar que la recuperación es buena.
-
 ## Cómo leer estos números
 
 `precision@10 = aciertos / 10`, contado por documento y sin duplicados: varios
@@ -30,15 +23,20 @@ se come más distractores.
 
 | Config | precision@10 | techo | % del techo | distractores | ms/consulta |
 |---|---:|---:|---:|---:|---:|
-| `vector+exact` | 0.167 | 0.433 | 38% | 3 | 707.8 |
+| `vector` | 0.136 | 0.378 | 36% | 7 | 633.9 |
+| `lexical` | 0.033 | 0.378 | 9% | 3 | 272.4 |
+| `vector+exact` | 0.150 | 0.378 | 40% | 3 | 513.7 |
+| `fused` | 0.111 | 0.378 | 29% | 5 | 809.7 |
+| `vector+exact cap1` | 0.175 | 0.378 | 46% | 9 | 520.7 |
 
 ## Por tipo de pregunta
 
-| Tipo | preguntas | `vector+exact` |
-|---|---:|---:|
-| `by_code` | 12 | 0.100 |
-| `declared_precedence` | 2 | 0.100 |
-| `field_validations` | 16 | 0.225 |
+| Tipo | preguntas | `vector` | `lexical` | `vector+exact` | `fused` | `vector+exact cap1` |
+|---|---:|---:|---:|---:|---:|---:|
+| `by_code` | 12 | 0.058 | 0.025 | 0.100 | 0.100 | 0.100 |
+| `declared_precedence` | 2 | 0.100 | 0.200 | 0.100 | 0.100 | 0.200 |
+| `field_validations` | 16 | 0.225 | 0.013 | 0.225 | 0.138 | 0.269 |
+| `user_question` | 6 | 0.067 | 0.050 | 0.067 | 0.067 | 0.067 |
 
 ### Qué significa cada tipo
 

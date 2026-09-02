@@ -1,5 +1,6 @@
 {
-  "status": "PENDING_REVIEW",
+  "status": "PARTIALLY_REVIEWED",
+  "reviewed_questions": 6,
   "focus_modules": [
     "policies",
     "claims",
@@ -7,12 +8,13 @@
     "designer"
   ],
   "questions_by_module": {
-    "collections": 9,
+    "collections": 15,
     "policies": 7,
     "claims": 7,
     "designer": 7
   },
   "questions_by_type": {
+    "user_question": 6,
     "declared_precedence": 2,
     "field_validations": 16,
     "by_code": 12
@@ -36,6 +38,96 @@
     "by_code": "Un solo relevante. Es el caso que la busqueda vectorial no puede responder y por el que existe la rama exacta."
   },
   "questions": [
+    {
+      "id": "U-COL005-cuadre",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿Por qué no me cuadra la caja diaria y cómo puedo ver las relaciones de cobro aprobadas que no registran ingreso de dinero real?",
+      "relevant_document_ids": [
+        "COL005"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: COL005 (Cuadre de cobranzas).",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-COL003-pendientes",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿Cómo obtengo un listado de recibos con estado 'pendiente' que no tengan ningún boletín de cobranza generado?",
+      "relevant_document_ids": [
+        "COL003"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: COL003 (Recibos por estado).",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-COL502-comision-banco",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿Qué hago si el depósito de la recaudación PAC es menor al total real de la cobranza porque el banco descontó su comisión?",
+      "relevant_document_ids": [
+        "COL502"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: COL502 (Imputación automática de PAC y Transbank).",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-COL520-totales-lote",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿Cómo puedo revisar los totales de cobranza solicitada, anulada y rechazada de un lote antes de registrar el cobro definitivo?",
+      "relevant_document_ids": [
+        "COL520"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: COL520 (Notificación de cobranza PAC y Transbank).",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-COL001-historico",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿Cómo puedo extraer un listado histórico de todos los movimientos de cobranza realizados en un rango específico de fechas?",
+      "relevant_document_ids": [
+        "COL001"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: COL001 (Operaciones de cobranzas).",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-CO501-desmarcar-rechazo",
+      "module": "collections",
+      "type": "user_question",
+      "question": "¿En qué pantalla puedo desmarcar manualmente el rechazo de un boletín para volver a cobrarlo?",
+      "relevant_document_ids": [
+        "CO501"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: CO501. Nota: el usuario lo llamó 'Rechazo de cobros automáticos', que es su nombre de MENÚ; el título del documento es 'Documentos a rechazar'. Los 35 chunks del documento contienen 'rechaz', así que el término de la consulta sí está en el texto.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
     {
       "id": "A-COL502",
       "module": "collections",

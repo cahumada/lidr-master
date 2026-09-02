@@ -272,3 +272,71 @@ conjunto pesado en reaseguros (+0,077). Tiene sentido: alla las preguntas de
 precedencia tenian cadenas de hasta 7 documentos relevantes, donde la
 concentracion en uno solo hace mas dano. El valor del tope depende del tipo de
 pregunta, no es una constante del sistema.
+
+
+## Preguntas reales de usuario, y lo que midieron
+
+El dueno del repo aporto **6 preguntas reales de usuarios de cobranzas**, cada
+una con el documento que la responde. Son las mas valiosas del conjunto por dos
+razones: las hizo una persona, y son de **un solo documento relevante** — el tipo
+que el generador automatico no podia producir porque sus criterios daban siempre
+varios.
+
+Viven en `evals/golden_curated.json`, separado del borrador, porque regenerar el
+borrador las borraria. `draft_golden_set.py` las mezcla y nunca las sobreescribe.
+El conjunto pasa a tener 36 preguntas y el status a `PARTIALLY_REVIEWED`: las 6
+curadas estan revisadas, las 30 borradoreadas no, y un status unico tendria que
+mentir sobre una de las dos mitades.
+
+### Dos metricas nuevas, porque `precision@k` no servia para estas
+
+Con un solo relevante, `precision@10` tiene techo 0,100 y no dice nada. Se
+agregaron `encontro` (aparecio entre los 10) y `en top3` (aparecio entre los 3
+primeros, que es lo que un usuario realmente lee).
+
+| config | p@10 | encontro | en top3 | distr | ms |
+|---|---:|---:|---:|---:|---:|
+| `vector` | 0,136 | 78% | 67% | 7 | 634 |
+| `lexical` | 0,033 | 28% | 11% | 3 | 272 |
+| `vector+exact` | 0,150 | **92%** | **86%** | **3** | 514 |
+| `fused` | 0,111 | 86% | 75% | 5 | 810 |
+| `vector+exact` cap1 | **0,175** | **92%** | **86%** | 9 | 521 |
+
+`encontro 92% / en top3 86%` se lee sin explicacion, que es mas de lo que se
+puede decir de `precision@10 = 0,150`.
+
+### 4 de las 6 en el puesto 1
+
+Con `vector` y con `vector+exact`, cuatro preguntas devuelven su documento
+**primero**: COL005, COL003, COL001 y CO501.
+
+Y la rama lexica vuelve a restar, ahora de forma visible: con `fused`, tres de
+esas cuatro **bajan del puesto 1 al 2**.
+
+### Las dos que falla, y por que — el mejor argumento para el reranker
+
+`COL502` y `COL520` no aparecen en el top-10. Pero **no es que no se encuentren**:
+
+| pregunta | documento | puesto real |
+|---|---|---:|
+| deposito PAC menor por comision del banco | `COL502` | **41** |
+| totales de un lote antes del cobro | `COL520` | **52** |
+
+Y los terminos estan en el texto: `PAC` en 39 chunks de COL502 y 73 de COL520,
+`banco` en 13, `deposito` en 6, y `anulada`/`rechazada`/`lote`/`solicitada` en 2-3
+chunks de COL520.
+
+En COL502 se ve el mecanismo del fallo: la consulta dice "comision" y la
+similitud lleva a `PRODUCERS_AGL009`, que es sobre comision de **productores**, no
+comision **bancaria**. La palabra secuestro la consulta.
+
+Verificado que con un conjunto candidato mas ancho (`branch_limit` 80 en vez de
+30) **los dos entran al candidato**, en los puestos 41 y 52.
+
+Eso es la tercera evidencia independiente de que **falta el reranker**, y la mas
+concreta: el trabajo de la fusion es meter la respuesta en el conjunto candidato
+—y lo hace— y el de subirla arriba es del reranker. Ensanchar el candidato sin
+reranker no sirve: el puesto 41 sigue sin ser un top-10.
+
+**Los dos van juntos:** ensanchar el candidato es el prerequisito del reranker,
+no una mejora por si sola.

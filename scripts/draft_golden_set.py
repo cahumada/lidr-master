@@ -46,6 +46,14 @@ from app.foundation.persistence.database import get_async_session_factory
 OUTPUT = Path("evals/golden_retrieval.json")
 CHUNKS_DIR = Path("data/chunks")
 
+# Human-authored questions, merged in and never overwritten. They live in their
+# own file because regenerating the draft would wipe them, and they are the most
+# valuable questions in the set: real user questions with a human annotation.
+# || Preguntas escritas por una persona, que se mezclan y nunca se sobreescriben.
+# Viven en su propio archivo porque regenerar el borrador las borraria, y son las
+# mas valiosas del conjunto: preguntas reales de usuario con anotacion humana.
+CURATED = Path("evals/golden_curated.json")
+
 # The modules the golden set focuses on: the core of the business.
 # || Los modulos en los que se enfoca el golden set: el nucleo del negocio.
 FOCUS_MODULES = ("policies", "claims", "collections", "designer")
@@ -307,6 +315,16 @@ async def build(session, tenant: str, version: str, modules) -> tuple[list[dict]
     return questions, {"precedence_available_by_module": precedence_by_module}
 
 
+def load_curated() -> list[dict]:
+    """The human-authored questions, or an empty list when there are none.
+
+    || Las preguntas escritas por una persona, o lista vacia si no hay.
+    """
+    if not CURATED.exists():
+        return []
+    return json.loads(CURATED.read_text(encoding="utf-8"))["questions"]
+
+
 def _payload(questions: list[dict], modules, notes: dict) -> dict:
     by_module: dict[str, int] = {}
     by_type: dict[str, int] = {}
@@ -315,7 +333,14 @@ def _payload(questions: list[dict], modules, notes: dict) -> dict:
         by_type[question["type"]] = by_type.get(question["type"], 0) + 1
 
     return {
-        "status": "PENDING_REVIEW",
+        # Mixed on purpose: the curated ones are reviewed, the drafted ones are
+        # not. A single status would have to lie about one half.
+        # || Mixto a proposito: las curadas estan revisadas y las borradoreadas
+        # no. Un status unico tendria que mentir sobre una de las dos mitades.
+        "status": "PARTIALLY_REVIEWED",
+        "reviewed_questions": sum(
+            1 for q in questions if q.get("review", {}).get("annotation_is_correct") is True
+        ),
         "focus_modules": list(modules),
         "questions_by_module": by_module,
         "questions_by_type": by_type,
@@ -393,11 +418,18 @@ async def run(modules) -> int:
         print("No material found. Is the corpus loaded and the map built?", file=sys.stderr)
         return 1
 
-    payload = _payload(questions, modules, notes)
+    curated = load_curated()
+    # Curated first: they are the ones a human vouched for, and reading the file
+    # top-down should start with those.
+    # || Las curadas primero: son las que una persona avalo, y leer el archivo de
+    # arriba hacia abajo deberia empezar por esas.
+    payload = _payload(curated + questions, modules, notes)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(f"Wrote {OUTPUT} - {len(questions)} preguntas, PENDING_REVIEW\n")
+    print(f"Wrote {OUTPUT} - {len(curated) + len(questions)} preguntas")
+    print(f"  {len(curated):>3} escritas por una persona (evals/golden_curated.json), revisadas")
+    print(f"  {len(questions):>3} borradoreadas del corpus, PENDIENTES DE REVISION\n")
     print("  por modulo:")
     for module, count in sorted(payload["questions_by_module"].items()):
         print(f"    {MODULE_LABELS.get(module, module):<14}{count:>3}")

@@ -107,6 +107,25 @@ def precision_at_k(document_ids: list[str], relevant: set[str], k: int) -> float
     return hits / k
 
 
+def rank_of_first_hit(document_ids: list[str], relevant: set[str]) -> int | None:
+    """The position of the first relevant document, 1-based, or ``None``.
+
+    For a question with ONE relevant document, ``precision@10`` caps at 0.10 and
+    says almost nothing. What matters there is whether the document came back at
+    all and how high: a user reading the first three results either finds their
+    answer or does not.
+
+    || La posicion del primer documento relevante, desde 1, o ``None``. Para una
+    pregunta con UN solo relevante, ``precision@10`` tiene techo 0,10 y no dice
+    casi nada. Lo que importa ahi es si el documento volvio y que tan arriba: un
+    usuario que lee los primeros tres resultados encuentra su respuesta o no.
+    """
+    for position, document_id in enumerate(document_ids, start=1):
+        if document_id in relevant:
+            return position
+    return None
+
+
 def ceiling_at_k(relevant: set[str], k: int) -> float:
     """The best precision@k this question allows.
 
@@ -119,6 +138,7 @@ async def evaluate(name, branches, cap, questions, filters, retriever, *, k: int
     precisions: list[float] = []
     ceilings: list[float] = []
     latencies: list[float] = []
+    ranks: list[int | None] = []
     per_question: dict[str, dict] = {}
 
     for question in questions:
@@ -136,9 +156,12 @@ async def evaluate(name, branches, cap, questions, filters, retriever, *, k: int
         ceiling = ceiling_at_k(relevant, k)
         precisions.append(precision)
         ceilings.append(ceiling)
+        rank = rank_of_first_hit(found, relevant)
+        ranks.append(rank)
         per_question[question["id"]] = {
             "precision": precision,
             "ceiling": ceiling,
+            "rank_of_first_hit": rank,
             # How many of the deliberate distractors it fell for. A config that
             # scores the same but takes fewer distractors is the better one.
             # || Cuántos distractores deliberados se comió. Una config que
@@ -146,12 +169,20 @@ async def evaluate(name, branches, cap, questions, filters, retriever, *, k: int
             "distractors_hit": len({d for d in found[:k] if d in distractors}),
         }
 
+    found_at_all = [r for r in ranks if r is not None]
     return {
         "config": name,
         "cap": cap,
         "precision": statistics.fmean(precisions),
         "ceiling": statistics.fmean(ceilings),
         "latency_ms": statistics.fmean(latencies),
+        # Did anything relevant come back at all, and how high. For a question
+        # with one relevant document this is the number that means something.
+        # || Si volvio algo relevante y que tan arriba. Para una pregunta con un
+        # solo relevante, este es el numero que dice algo.
+        "found_rate": len(found_at_all) / len(ranks) if ranks else 0.0,
+        "top3_rate": sum(1 for r in found_at_all if r <= 3) / len(ranks) if ranks else 0.0,
+        "mean_rank": statistics.fmean(found_at_all) if found_at_all else None,
         "distractors_hit": sum(v["distractors_hit"] for v in per_question.values()),
         "per_question": per_question,
     }
@@ -186,10 +217,12 @@ async def run(args) -> int:
             )
             results.append(result)
             print(
-                f"  {name:<14} precision@{args.k} {result['precision']:.3f}"
-                f"  (techo {result['ceiling']:.3f})"
-                f"  distractores {result['distractors_hit']:>3}"
-                f"  {result['latency_ms']:7.1f} ms"
+                f"  {name:<18} p@{args.k} {result['precision']:.3f}"
+                f"/{result['ceiling']:.3f}"
+                f"  encontro {result['found_rate']:>4.0%}"
+                f"  en top3 {result['top3_rate']:>4.0%}"
+                f"  distr {result['distractors_hit']:>3}"
+                f"  {result['latency_ms']:6.0f} ms"
             )
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)

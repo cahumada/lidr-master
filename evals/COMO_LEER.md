@@ -88,6 +88,21 @@ Por eso las tablas llevan tres columnas juntas:
 El techo promedio del conjunto es **0,433**, porque unas preguntas tienen 6
 relevantes y otras 1.
 
+### `encontró` y `en top3`
+
+Para una pregunta con **un solo** documento relevante, `precision@10` tiene techo
+0,100 y no dice casi nada. Lo que importa ahí es otra cosa:
+
+- **`encontró`** — en qué porcentaje de las preguntas el documento correcto
+  apareció entre los 10.
+- **`en top3`** — en qué porcentaje apareció entre los **3 primeros**. Es la que
+  más se parece a la experiencia real: un usuario lee los primeros resultados, no
+  los diez.
+
+Estas dos columnas aparecieron cuando se agregaron preguntas reales de usuario,
+que son de un solo documento. Son las más fáciles de leer de todo el reporte:
+`encontró 92% / en top3 86%` se entiende sin explicación.
+
 ### `distractores`
 
 Documentos anotados **a propósito** como "parecidos pero incorrectos". Para una
@@ -171,18 +186,23 @@ que un solo primer puesto domine.
 
 ## La tabla, leída
 
-| config | precision@10 | % del techo | distractores | qué dice |
-|---|---:|---:|---:|---|
-| `vector` | 0,150 | 35% | 7 | solo significado |
-| `lexical` | 0,030 | 7% | 3 | solo palabras — muy malo por sí solo |
-| `vector+exact` | 0,167 | 39% | **3** | **el más limpio** |
-| `fused` | 0,120 | 28% | 5 | agregar la léxica resta |
-| `vector+exact` cap 1 | **0,197** | **45%** | 9 | **el que más encuentra** |
+Sobre las 36 preguntas del conjunto (30 borradoreadas + 6 reales de usuario):
 
-En una frase: **la mejor configuración encuentra alrededor del 45% de los
-documentos relevantes que podría encontrar.** Hay mucho margen.
+| config | p@10 | encontró | en top3 | distractores | qué dice |
+|---|---:|---:|---:|---:|---|
+| `vector` | 0,136 | 78% | 67% | 7 | solo significado |
+| `lexical` | 0,033 | 28% | 11% | 3 | solo palabras — muy malo por sí solo |
+| `vector+exact` | 0,150 | **92%** | **86%** | **3** | **el más limpio** |
+| `fused` | 0,111 | 86% | 75% | 5 | agregar la léxica resta |
+| `vector+exact` cap 1 | **0,175** | **92%** | **86%** | 9 | **el que más encuentra** |
 
----
+En una frase: **la mejor configuración encuentra el documento correcto en el 92%
+de las preguntas, y lo pone entre los tres primeros en el 86%.**
+
+De las 6 preguntas reales de usuario, **4 devuelven su documento en el puesto 1**.
+Las otras dos lo devuelven en los puestos 41 y 52 — están, pero abajo. Esa es la
+diferencia entre lo que la fusión hace bien (meter la respuesta en el conjunto
+candidato) y lo que le falta (subirla arriba, que es trabajo de un reranker).
 
 ## Lo que estos números NO dicen
 
