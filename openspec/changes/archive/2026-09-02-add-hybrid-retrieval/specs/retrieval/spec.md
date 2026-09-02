@@ -156,3 +156,37 @@ Línea base con el vector solo: acierto@1 70%, @5 88%, @10 92%.
 #### Scenario: Sirve para comparar
 - **WHEN** se corre el proxy antes y después de un cambio en la fusión
 - **THEN** la diferencia dice si ese cambio mejoró o empeoró la recuperación
+
+### Requirement: La búsqueda DEBE exponerse como `GET` y llevar su procedencia
+Una búsqueda no crea nada y es idempotente, así que va en `GET`: la consulta
+adentro de la URL se comparte y se cachea, y los filtros son query params por lo
+mismo.
+
+Y cada resultado tiene que poder verificarse contra su documento. Estas son
+reglas de negocio de seguros; una respuesta que el usuario no puede rastrear
+hasta la sección que la respalda no sirve, aunque sea correcta.
+
+#### Scenario: La consulta y los filtros son query params
+- **WHEN** se llama `GET /search?q=...&module_code=CA`
+- **THEN** se devuelven los chunks relevantes dentro de ese módulo
+
+#### Scenario: Cada hit lleva su procedencia
+- **WHEN** se devuelve un resultado
+- **THEN** lleva `document_id`, `document_title`, `section`, `bullet_path`,
+  `module_code`, el `content_hash` que lo identifica, y `branches` con `ranks`
+  diciendo qué camino lo encontró y en qué puesto
+
+#### Scenario: La respuesta dice cómo se produjo
+- **WHEN** se devuelve una búsqueda
+- **THEN** dice en qué subconsultas se dividió, si un reranker la reordenó, y
+  cuántas filas aportó cada camino
+
+#### Scenario: Los defaults son la configuración medida
+- **WHEN** no se pasan parámetros de pipeline
+- **THEN** se usa tope de 1 chunk por documento, descomposición y reranker
+- **AND** el camino léxico queda apagado, porque medido baja el acierto@1 de 77%
+  a 48%
+
+#### Scenario: Una consulta que no puede recuperar nada se rechaza
+- **WHEN** la consulta tiene menos de 2 caracteres
+- **THEN** se responde 422

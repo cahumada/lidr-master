@@ -23,16 +23,16 @@ se come más distractores.
 
 | Config | precision@10 | techo | % del techo | distractores | ms/consulta |
 |---|---:|---:|---:|---:|---:|
-| `vector+exact cap1` | 0.140 | 0.243 | 58% | 0 | 476.4 |
-| `vector+exact cap1 +split` | 0.140 | 0.243 | 58% | 0 | 1139.7 |
-| `fused cap1` | 0.140 | 0.243 | 58% | 0 | 2666.6 |
-| `fused cap1 +split` | 0.140 | 0.243 | 58% | 0 | 4000.3 |
+| `vector+exact cap1` | 0.140 | 0.243 | 58% | 0 | 508.6 |
+| `vector+exact cap1 +split` | 0.140 | 0.243 | 58% | 0 | 1105.5 |
+| `+split +rerank lexico` | 0.151 | 0.243 | 62% | 0 | 1171.2 |
+| `+split +rerank modelo` | 0.171 | 0.243 | 71% | 0 | 3136.0 |
 
 ## Por tipo de pregunta
 
-| Tipo | preguntas | `vector+exact cap1` | `vector+exact cap1 +split` | `fused cap1` | `fused cap1 +split` |
+| Tipo | preguntas | `vector+exact cap1` | `vector+exact cap1 +split` | `+split +rerank lexico` | `+split +rerank modelo` |
 |---|---:|---:|---:|---:|---:|
-| `user_question` | 35 | 0.140 | 0.140 | 0.140 | 0.140 |
+| `user_question` | 35 | 0.140 | 0.140 | 0.151 | 0.171 |
 
 ### Qué significa cada tipo
 

@@ -39,6 +39,7 @@ import statistics
 import sys
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 # Run as a script (not `python -m`), so add the repo root to sys.path.
 # || Se corre como script (no `python -m`), así que se agrega la raíz del repo a sys.path.
@@ -47,6 +48,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.config import get_settings
 from app.foundation.persistence.database import get_async_session_factory
 from app.generation.rag.retrieval.hybrid import ALL_BRANCHES, DEFAULT_BRANCHES, HybridRetriever
+from app.generation.rag.retrieval.reranker import LexicalReranker
 from app.generation.rag.store.repository import ChunkRepository, SearchFilters
 
 GOLDEN_PATH = Path("evals/golden_retrieval.json")
@@ -71,18 +73,34 @@ REPORT_PATH = Path("evals/RETRIEVAL_EVAL.md")
 # || El tercer elemento es si descomponer las preguntas compuestas. Es una
 # config aparte y no un default nuevo porque el cambio es a propósito aditivo:
 # `precision@k` no se mueve, y el valor aparece en el recall del candidato.
-CONFIGS: dict[str, tuple[tuple[str, ...], int | None, bool]] = {
-    "vector": (("vector",), None, False),
-    "lexical": (("lexical",), None, False),
-    "vector+exact": (DEFAULT_BRANCHES, None, False),
-    "fused": (ALL_BRANCHES, None, False),
-    "vector+exact cap1": (DEFAULT_BRANCHES, 1, False),
-    "vector+exact cap2": (DEFAULT_BRANCHES, 2, False),
-    "vector+exact cap3": (DEFAULT_BRANCHES, 3, False),
-    "fused cap1": (ALL_BRANCHES, 1, False),
-    "vector cap1": (("vector",), 1, False),
-    "vector+exact cap1 +split": (DEFAULT_BRANCHES, 1, True),
-    "fused cap1 +split": (ALL_BRANCHES, 1, True),
+class Config(NamedTuple):
+    """One named configuration. Named fields because four positional values --
+    two of them booleans -- stopped being readable.
+
+    || Una configuración con nombre. Campos con nombre porque cuatro valores
+    posicionales, dos de ellos booleanos, dejaron de leerse.
+    """
+
+    branches: tuple[str, ...]
+    cap: int | None
+    split: bool = False
+    rerank: str | None = None  # None, "lexical" o "llm"
+
+
+CONFIGS: dict[str, Config] = {
+    "vector": Config(("vector",), None),
+    "lexical": Config(("lexical",), None),
+    "vector+exact": Config(DEFAULT_BRANCHES, None),
+    "fused": Config(ALL_BRANCHES, None),
+    "vector+exact cap1": Config(DEFAULT_BRANCHES, 1),
+    "vector+exact cap2": Config(DEFAULT_BRANCHES, 2),
+    "vector+exact cap3": Config(DEFAULT_BRANCHES, 3),
+    "fused cap1": Config(ALL_BRANCHES, 1),
+    "vector cap1": Config(("vector",), 1),
+    "vector+exact cap1 +split": Config(DEFAULT_BRANCHES, 1, split=True),
+    "fused cap1 +split": Config(ALL_BRANCHES, 1, split=True),
+    "+split +rerank lexico": Config(DEFAULT_BRANCHES, 1, split=True, rerank="lexical"),
+    "+split +rerank modelo": Config(DEFAULT_BRANCHES, 1, split=True, rerank="llm"),
 }
 
 # How wide the candidate set is when measuring recall. A relevant document
@@ -155,7 +173,8 @@ def ceiling_at_k(relevant: set[str], k: int) -> float:
 
 
 async def evaluate(
-    name, branches, cap, questions, filters, retriever, *, k: int, split: bool = False
+    name, branches, cap, questions, filters, retriever, *, k: int, split: bool = False,
+    reranker=None,
 ) -> dict:
     precisions: list[float] = []
     ceilings: list[float] = []
@@ -192,6 +211,7 @@ async def evaluate(
             branches=branches,
             max_per_document=cap,
             decompose_query=split,
+            reranker=reranker,
         )
         # The latency of a CANDIDATE_WIDTH retrieval, which overstates a k=10
         # query by the cost of rehydrating 60 rows instead of 10. The branches
@@ -287,14 +307,20 @@ async def run(args) -> int:
         print("!! Los números de abajo NO son la calidad del sistema todavía.\n")
 
     async with get_async_session_factory()() as session:
-        from app.dependencies import get_embedder
+        from app.dependencies import get_embedder, get_reranker
 
         retriever = HybridRetriever(ChunkRepository(session), get_embedder())
         results = []
         for name in wanted:
-            branches, cap, split = CONFIGS[name]
+            config = CONFIGS[name]
+            reranker = None
+            if config.rerank == "lexical":
+                reranker = LexicalReranker()
+            elif config.rerank == "llm":
+                reranker = get_reranker()
             result = await evaluate(
-                name, branches, cap, questions, filters, retriever, k=args.k, split=split
+                name, config.branches, config.cap, questions, filters, retriever,
+                k=args.k, split=config.split, reranker=reranker,
             )
             results.append(result)
             recall = (result["pairs_total"] - result["pairs_recall"]) / result["pairs_total"]

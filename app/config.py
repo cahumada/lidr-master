@@ -93,6 +93,17 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     EMBEDDING_DIMENSIONS: int = 1536
 
+    # The reranker's model. NOT the bottleneck: `gpt-4o` scored exactly the same
+    # +11 pairs as `gpt-4o-mini` on the run they were compared, at 5.6 s against
+    # 3.3 s, so the cheap one is the default. What moved the number was telling
+    # the model what a `_k` suffix means, not making the model bigger.
+    # || El modelo del reranker. NO es el cuello de botella: `gpt-4o` saco
+    # exactamente los mismos +11 pares que `gpt-4o-mini` en la corrida donde se
+    # compararon, a 5,6 s contra 3,3 s, asi que el barato es el default. Lo que
+    # movio el numero fue contarle al modelo que significa un sufijo `_k`, no
+    # agrandar el modelo.
+    RERANK_MODEL: str = "gpt-4o-mini"
+
     # Input cap of text-embedding-3-small. Every chunk is checked against this
     # BEFORE the first call: finding out when the API rejects it means paying
     # to learn it.

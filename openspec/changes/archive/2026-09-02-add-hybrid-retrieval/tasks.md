@@ -47,14 +47,15 @@
 
 ## 5. Endpoint
 
-- [ ] 5.1 `GET /search` con la consulta y los filtros como query params.
-- [ ] 5.2 La respuesta lleva la procedencia de cada hit: documento, sección,
+- [x] 5.1 `GET /search` con la consulta y los filtros como query params.
+- [x] 5.2 La respuesta lleva la procedencia de cada hit: documento, sección,
       breadcrumb y de qué camino vino.
-- [ ] 5.3 Tests del router con la capa de retrieval mockeada.
+- [x] 5.3 Tests del router con la capa de retrieval mockeada. 10 tests, sin base
+      ni red: prueban el contrato del endpoint, no la calidad de la búsqueda.
 
 ## 6. Lo que el curso tiene y este cambio no
 
-- [ ] 6.0 Dejar anotado en el archive: `retrieval/reranker.py`,
+- [x] 6.0 Dejar anotado en el archive: `retrieval/reranker.py`,
       `query_transform.py` y `router.py` existen en el curso y quedan afuera a
       propósito. Medir primero la fusión sola, después agregar.
 
@@ -74,7 +75,8 @@
          problema de recall** (afuera del top-60, no los puede rescatar). Ver
          `design.md` §4c: son conjuntos disjuntos y hacen falta dos arreglos.
 
-- [ ] 6.0b Descomposición de consulta, con la evidencia que la reactiva.
+- [x] 6.0b Descomposición de consulta, con la evidencia que la reactiva.
+      Construida en `add-query-decomposition`; el reranker, en `add-reranker`.
       Medida antes sobre 5 preguntas dio 1/5 → 2/5 y quedó postergada. Sobre 35:
       las **15 fallas de recall son todas de preguntas compuestas, cero en
       simples**, y **10 de los documentos que faltan en una compuesta son la
@@ -87,17 +89,23 @@
 
 ## 7. Cierre
 
-- [ ] 6.1 `pytest`, `pytest -m integration`, `ruff` y `validate_specs` en verde.
-- [ ] 6.2 Promover el delta y archivar.
+- [x] 7.1 `pytest` (440), `pytest -m integration` (25), `ruff` y `validate_specs`
+      en verde.
+- [x] 7.2 Promover el delta y archivar, junto con `add-query-decomposition` y
+      `add-reranker`: los tres construyen la misma capacidad `retrieval`, así que
+      su spec se promueve como un solo documento de 17 requisitos.
 
 
-## Estado: implementado hasta la medición, y la medición cambió una decisión
+## Estado: completo, y la medición cambió dos decisiones en el camino
 
 Hecho: los tres caminos, la fusión RRF sin pesos, el tope por documento, el
-detector de identificadores, el proxy de evaluación y 40 tests unitarios.
+detector de identificadores, el proxy de evaluación, `GET /search` y el golden
+set con 35 preguntas reales de usuarios sobre los cuatro módulos del foco.
 
-**Pendiente y bloqueado en revisión humana:** el golden set y `precision@k`
-sobre él (1.4-1.6, 4.5-4.6), y el endpoint (5.x).
+Lo que en su momento quedó "pendiente y bloqueado en revisión humana" —el golden
+set, `precision@k` sobre él y el endpoint— está cerrado. Las dos piezas que este
+cambio difirió a propósito se construyeron después, cada una con su medición:
+`add-query-decomposition` y `add-reranker`.
 
 ## El hallazgo que cambió el default
 

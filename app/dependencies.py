@@ -84,3 +84,30 @@ def get_hybrid_retriever(session):
     from app.generation.rag.store.repository import ChunkRepository
 
     return HybridRetriever(ChunkRepository(session), get_embedder())
+
+
+@lru_cache
+def get_reranker():
+    """Reranker singleton. The model-based one when there is a key, the lexical
+    one when there is not.
+
+    Falling back instead of raising is deliberate and measured: the lexical
+    reranker is worth +4 pairs of the 28 convertible ones, and a measured 4 beats
+    an unmeasured 0. An embedder has no such fallback -- without vectors there is
+    no search at all -- so `get_embedder` still raises.
+
+    || Singleton del reranker. El de modelo cuando hay clave, el léxico cuando
+    no. Caer al léxico en lugar de fallar es deliberado y medido: vale +4 pares
+    de los 28 convertibles, y un 4 medido le gana a un 0 sin medir. Un embedder
+    no tiene ese respaldo —sin vectores no hay búsqueda— así que `get_embedder`
+    sigue fallando.
+    """
+    from app.generation.rag.retrieval.reranker import LexicalReranker, LLMReranker
+
+    settings = get_settings()
+    if not settings.OPENAI_API_KEY:
+        return LexicalReranker()
+
+    from openai import OpenAI
+
+    return LLMReranker(OpenAI(api_key=settings.OPENAI_API_KEY), model=settings.RERANK_MODEL)

@@ -77,4 +77,4 @@
 
 - [x] 5.1 `pytest` (411), `pytest -m integration` (25), `ruff check .` y
       `validate_specs` en verde.
-- [ ] 5.2 Promover el delta y archivar.
+- [x] 5.2 Promover el delta y archivar.

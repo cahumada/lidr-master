@@ -512,3 +512,94 @@ class EmbeddingManifest(BaseModel):
         ge=0, description="Tokens sent to the model in this run. || Tokens enviados al modelo."
     )
     failed_batches: list[FailedBatch] = Field(default_factory=list)
+
+
+# --- Búsqueda || Search --------------------------------------------------------
+
+
+class SearchHit(BaseModel):
+    """One result with its provenance. || Un resultado con su procedencia.
+
+    Everything needed to VERIFY the answer, not just to read it: which document,
+    which section, which breadcrumb, and which retrieval branch found it. A hit
+    that two branches found is a different kind of answer than one a single
+    branch found, and whoever reads it should be able to tell.
+
+    || Todo lo necesario para VERIFICAR la respuesta, no solo para leerla: qué
+    documento, qué sección, qué breadcrumb, y qué camino de recuperación lo
+    encontró. Un hit que encontraron dos caminos es otra clase de respuesta que
+    uno que encontró uno solo, y quien lee debería poder distinguirlo.
+    """
+
+    content_hash: str = Field(
+        description="Row identity: SHA-256 of the embedded text. "
+        "|| Identidad de la fila: SHA-256 del texto embebido."
+    )
+    chunk_id: str = Field(
+        description="Chunk id, NOT unique on its own: 507 are shared by more than one row. "
+        "|| Id del chunk, NO único por sí solo: 507 están compartidos por más de una fila."
+    )
+    document_id: str = Field(description="Transaction code, e.g. 'CA014'. || Código de transacción.")
+    document_title: str | None = Field(
+        default=None, description="Document title. || Título del documento."
+    )
+    section: str | None = Field(
+        default=None, description="Section the chunk belongs to. || Sección a la que pertenece."
+    )
+    bullet_path: str | None = Field(
+        default=None,
+        description="Breadcrumb inside the section. || Breadcrumb dentro de la sección.",
+    )
+    module_code: str | None = Field(
+        default=None, description="Module code, e.g. 'CA'. || Código de módulo."
+    )
+    text: str = Field(description="The chunk text. || El texto del chunk.")
+    score: float = Field(description="Fused RRF score. || Puntaje RRF fusionado.")
+    branches: list[str] = Field(
+        default_factory=list,
+        description="Which retrieval branches found it. "
+        "|| Qué caminos de recuperación lo encontraron.",
+    )
+    ranks: dict[str, int] = Field(
+        default_factory=dict,
+        description="Its position within each branch that found it. "
+        "|| Su posición dentro de cada camino que lo encontró.",
+    )
+
+
+class SearchResponse(BaseModel):
+    """Response for ``GET /search``. || Respuesta de ``GET /search``.
+
+    Carries how the answer was produced and not only what it is: the sub-queries
+    a compound question was split into, whether a reranker reordered the result,
+    and how many rows each branch contributed. Without that, two identical
+    result lists produced by different pipelines are indistinguishable.
+
+    || Lleva CÓMO se produjo la respuesta y no solo cuál es: en qué subconsultas
+    se dividió una pregunta compuesta, si un reranker reordenó el resultado, y
+    cuántas filas aportó cada camino. Sin eso, dos listas de resultados iguales
+    producidas por pipelines distintos son indistinguibles.
+    """
+
+    query: str = Field(description="The query as received. || La consulta como llegó.")
+    hits: list[SearchHit] = Field(description="Results, best first. || Resultados, el mejor primero.")
+    count: int = Field(ge=0, description="How many hits. || Cuántos hits.")
+    sub_queries: list[str] = Field(
+        default_factory=list,
+        description="The sub-queries a compound question was split into. Empty means it was "
+        "not compound, which is the common case. || Las subconsultas en que se dividió una "
+        "pregunta compuesta. Vacío significa que no era compuesta, que es el caso común.",
+    )
+    reranked: bool = Field(
+        default=False, description="Whether a reranker reordered this. || Si un reranker lo reordenó."
+    )
+    branch_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Rows each branch returned, for the WHOLE query. "
+        "|| Filas que devolvió cada camino, de la consulta ENTERA.",
+    )
+    identifier_terms: list[str] = Field(
+        default_factory=list,
+        description="Identifier-shaped terms detected, which is what triggers the exact branch. "
+        "|| Términos con forma de identificador detectados, que es lo que dispara el camino exacto.",
+    )

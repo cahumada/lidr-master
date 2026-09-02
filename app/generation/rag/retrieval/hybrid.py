@@ -26,6 +26,7 @@ from app.generation.rag.retrieval.fusion import (
     cap_per_group,
     reciprocal_rank_fusion,
 )
+from app.generation.rag.retrieval.reranker import DEFAULT_RERANK_CANDIDATES
 from app.generation.rag.store.repository import ChunkRepository, SearchFilters
 
 logger = structlog.get_logger(__name__)
@@ -297,6 +298,8 @@ class HybridRetriever:
         max_per_document: int | None = None,
         branches: tuple[str, ...] = DEFAULT_BRANCHES,
         decompose_query: bool = False,
+        reranker=None,
+        rerank_candidates: int = DEFAULT_RERANK_CANDIDATES,
     ) -> RetrievalResult:
         """The chunks relevant to ``query``, within ``filters``.
 
@@ -313,6 +316,17 @@ class HybridRetriever:
         que reordenan rompieron documentos que la consulta completa ya tenía,
         porque RRF sobre subconsultas diluye. Agregar no puede regresar por
         construcción.
+
+        With ``reranker`` the candidate set is widened to ``rerank_candidates``,
+        reordered, and cut back to ``limit``. Widening is the point: reranking
+        the same 10 the search already picked has nothing to work with, and the
+        28 convertible pairs are precisely the ones between place 11 and 60.
+
+        || Con ``reranker`` el candidato se ensancha a ``rerank_candidates``, se
+        reordena y se recorta a ``limit``. Ensanchar es todo el punto: reordenar
+        los mismos 10 que la búsqueda ya eligió no tiene con qué trabajar, y los
+        28 pares convertibles son justamente los que están entre el puesto 11 y
+        el 60.
         """
         whole = await self._fuse_branches(query, filters, branches)
         fused, by_document = whole.fused, whole.by_document
@@ -322,11 +336,17 @@ class HybridRetriever:
                 query, filters, branches, fused, by_document
             )
 
+        # A reranker needs more than `limit` to reorder, so the cap is asked for
+        # the wider set and the cut back to `limit` happens after reordering.
+        # || Un reranker necesita más que `limit` para reordenar, así que el tope
+        # se pide sobre el conjunto ancho y el recorte a `limit` pasa después de
+        # reordenar.
+        wanted = max(limit, rerank_candidates) if reranker is not None else limit
         capped = cap_per_group(
             fused,
             lambda content_hash: by_document.get(content_hash, content_hash),
             cap=max_per_document,
-            limit=limit,
+            limit=wanted,
         )
 
         # The branches carry different row shapes (a distance, a rank, a
@@ -366,6 +386,15 @@ class HybridRetriever:
                     ranks=item.ranks,
                 )
             )
+
+        if reranker is not None:
+            # Reordering happens on the HYDRATED chunks: a reranker judges by
+            # title, section and text, and none of that exists before this
+            # point.
+            # || El reordenamiento va sobre los chunks HIDRATADOS: un reranker
+            # juzga por título, sección y texto, y nada de eso existe antes de
+            # este punto.
+            chunks = reranker.rerank(query, chunks)[:limit]
 
         return RetrievalResult(
             chunks=chunks,
