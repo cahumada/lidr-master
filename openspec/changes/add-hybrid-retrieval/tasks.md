@@ -420,3 +420,72 @@ exactamente el argumento de ese orden.
 Dos preguntas no mejoran con expansion (`cartera de pendientes` y
 `desmarcar y repaso`): les falta `COL007` y `COL001`, que no tienen aristas hacia
 los documentos que si se recuperan. La expansion tampoco es una bala de plata.
+
+
+## Preguntas de polizas: cada modulo necesita algo distinto
+
+El dueno del repo aporto 6 preguntas mas, de polizas: 3 de un solo documento y 3
+compuestas. El conjunto de curadas queda en 17 (9 simples + 8 compuestas), 41
+relevantes anotados, y el conjunto total en 47 preguntas.
+
+### Un hallazgo de anotacion antes de medir
+
+Tres anotaciones decian `ca001.md`. Ese archivo declara **un solo id en su linea
+3, `CA001k`**, y `CA001` **no esta declarado como id en ningun archivo del
+corpus**: el nombre del archivo y el id de la transaccion no coinciden en el
+export. El chunker hace lo correcto al confiar en la linea de id y no en el
+nombre del archivo. Se anoto `CA001k`, con la nota en `provenance` y en
+`known_annotation_notes`.
+
+### Las 3 simples: perfectas
+
+`CA051`, `CAL006` y `CA022` vuelven **1/1** cada una. Preguntas especificas
+—un codigo de error, una formula, una validacion— con un documento cada una: el
+caso que la recuperacion ya resuelve.
+
+### Las 3 compuestas, y el contraste con cobranzas
+
+| | sin expansion | con expansion del mapa |
+|---|---:|---:|
+| compuestas de cobranzas | 9/18 | **14/18** |
+| compuestas de polizas | 8/14 | **8/14** (sin cambio) |
+
+La expansion no aporta **nada** en polizas. La razon, medida: hay **0 aristas**
+entre los documentos de polizas del golden set, contra **14** entre los de
+cobranzas.
+
+Y eso conecta con un hallazgo anterior: las aristas `requires` viven en los
+procesos batch, y polizas es mayormente pantallas ABM que no declaran
+precedencia. La densidad del grafo no es uniforme, asi que **el valor de la
+expansion depende del modulo**.
+
+### Lo que polizas SI necesita
+
+Ensanchando el conjunto de resultados de 10 a 60:
+
+| | top 10 | top 60 |
+|---|---:|---:|
+| movimientos en policy_his | 2/4 | **4/4** |
+| propuesta a poliza | 4/5 | **5/5** |
+| primera prima y caja | 2/5 | **4/5** |
+| **TOTAL** | **8/14** | **13/14** |
+
+Los documentos **estan** en el candidato, abajo del puesto 10. Lo que falta ahi
+no es encontrarlos: es **ordenarlos**.
+
+## Las prioridades, corregidas
+
+La tanda de cobranzas me habia hecho poner la expansion primero. Polizas dice
+que el reranker es al menos igual de importante, y que **cada mecanismo arregla
+un problema distinto**:
+
+1. **Reranker sobre un candidato mas ancho** — polizas: 8/14 disponibles a top-10
+   pasan a 13/14 a top-60. Tambien es lo que sube `COL502` y `COL520` desde los
+   puestos 41 y 52.
+2. **Expansion por el mapa** — cobranzas: 9/18 a 14/18. Solo sirve donde el grafo
+   es denso, que son los procesos batch.
+3. **Descomposicion de consulta** — medida en 1/5 a 2/5. Sigue ultima.
+
+Los dos primeros son complementarios y no alternativos: el reranker ordena lo que
+ya se recupero, la expansion trae lo que no se recupero pero esta declarado como
+relacionado.

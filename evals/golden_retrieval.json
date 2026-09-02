@@ -1,6 +1,6 @@
 {
   "status": "PARTIALLY_REVIEWED",
-  "reviewed_questions": 11,
+  "reviewed_questions": 17,
   "focus_modules": [
     "policies",
     "claims",
@@ -9,12 +9,12 @@
   ],
   "questions_by_module": {
     "collections": 20,
-    "policies": 7,
+    "policies": 13,
     "claims": 7,
     "designer": 7
   },
   "questions_by_type": {
-    "user_question": 11,
+    "user_question": 17,
     "declared_precedence": 2,
     "field_validations": 16,
     "by_code": 12
@@ -216,6 +216,110 @@
       ],
       "distractor_document_ids": [],
       "provenance": "Pregunta real de usuario, compuesta y la mas amplia del conjunto (5 documentos). COL500 = lee los giros de financiamiento (financ_dra) y las reglas de morosidad anterior y 'Tomar lo más antiguo'; CO501 y COL704 = actualizan la cuota como rechazada en financ_dra y generan el movimiento histórico en draft_hist, manual y automáticamente; COL502 y COL520 = la imputación marca la cuota como cobrada en financ_dra y, si es el último giro, cambia el estado del recibo principal a cobrado en premium.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-CA051-plantilla-excel",
+      "module": "policies",
+      "type": "user_question",
+      "question": "¿Qué validación y código de error se aplican al campo \"Póliza\" al intentar generar una plantilla de Excel para la carga masiva de certificados?",
+      "relevant_document_ids": [
+        "CA051"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. CA051 (Plantilla para la carga colectiva), en su seccion de validaciones de la plantilla de carga colectiva.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-CAL006-formulas-reservas",
+      "module": "policies",
+      "type": "user_question",
+      "question": "¿Cuáles son las fórmulas matemáticas que aplica el sistema para calcular las reservas de riesgo en curso en seguros generales mediante los métodos de prorrata simple y doceavos?",
+      "relevant_document_ids": [
+        "CAL006"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. CAL006 (Reservas), en su seccion de formulas del proceso de reservas.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-CA022-clausula-duplicada",
+      "module": "policies",
+      "type": "user_question",
+      "question": "¿Cuál es el código de error que arroja el sistema al intentar ingresar una cláusula duplicada para un mismo asegurado o cobertura en una póliza?",
+      "relevant_document_ids": [
+        "CA022"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. CA022 (Clausulas de la poliza individual o certificado), en su tabla de validaciones.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-policy-his-movimientos",
+      "module": "policies",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Qué tipos de movimientos y códigos de transacción se registran en la tabla de historia (policy_his) al realizar emisiones de pólizas, rehabilitaciones, suspensiones de garantías e indexaciones automáticas?",
+      "relevant_document_ids": [
+        "CA001k",
+        "CA034",
+        "CA035",
+        "CAL400"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. CA001k = movimientos de emision de poliza y certificados; CA034 = rehabilitacion de poliza o certificado; CA035 = suspension de garantias; CAL400 = movimiento de 'Retarificacion de coberturas' por indexacion. Nota de anotacion: el usuario indico 'ca001.md'. Ese archivo declara un solo id en su linea 3, `CA001k`, y `CA001` NO esta declarado como id en ningun archivo del corpus: el nombre del archivo y el id de la transaccion no coinciden en el export. Se anota `CA001k`, que es el id real del contenido.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-propuesta-a-poliza",
+      "module": "policies",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Cuáles son los pasos técnicos para convertir una propuesta en póliza definitiva y cómo puedo consultar su resumen de datos básicos o verificar si está retenida por \"espera de pago de prima\"?",
+      "relevant_document_ids": [
+        "CA001k",
+        "CAC1005",
+        "CAC1005A",
+        "CAC1005B",
+        "CAC910"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. CA001k = proceso de conversion de propuesta a poliza; CAC1005/CAC1005A/CAC1005B = condiciones de busqueda del resumen de propuestas (los tres se titulan igual y cualquiera responde); CAC910 = busqueda de propuestas pendientes por la causa 'espera de pago de prima'. Nota de anotacion: el usuario indico 'ca001.md'. Ese archivo declara un solo id en su linea 3, `CA001k`, y `CA001` NO esta declarado como id en ningun archivo del corpus: el nombre del archivo y el id de la transaccion no coinciden en el export. Se anota `CA001k`, que es el id real del contenido.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-primera-prima-y-caja",
+      "module": "policies",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Cómo valida el sistema el ingreso de la primera prima de una propuesta antes de su emisión, cómo configuro la domiciliación bancaria del titular y de qué manera puedo consultar el detalle de las formas de pago aplicadas en la caja?",
+      "relevant_document_ids": [
+        "CA001k",
+        "CA003",
+        "CAC1006",
+        "CAC1006A",
+        "CAC1006B"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. CA001k = validacion de primera prima cobrada contra prima a cobrar; CA003 = campos de pago automatico por banco o tarjeta (dir_debit); CAC1006/CAC1006A/CAC1006B = consulta de movimientos de caja y formas de pago (los tres se titulan igual). Nota de anotacion: el usuario indico 'ca001.md'. Ese archivo declara un solo id en su linea 3, `CA001k`, y `CA001` NO esta declarado como id en ningun archivo del corpus: el nombre del archivo y el id de la transaccion no coinciden en el export. Se anota `CA001k`, que es el id real del contenido.",
       "review": {
         "question_is_realistic": true,
         "annotation_is_correct": true
