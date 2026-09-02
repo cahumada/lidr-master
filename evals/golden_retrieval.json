@@ -1,0 +1,501 @@
+{
+  "status": "PENDING_REVIEW",
+  "description": "Borrador de golden set para evaluar la recuperación, DERIVADO DEL CORPUS y PENDIENTE DE REVISIÓN. Cada pregunta lleva en `provenance` el criterio verificable del que salió, y en `review` dos casillas que alguien que conozca el negocio tiene que completar: si un usuario haría esa pregunta, y si los documentos anotados son los que la responden. Hasta que estén completas, cualquier número medido contra esto NO es la calidad del sistema.",
+  "how_to_review": [
+    "Por cada pregunta, poner review.question_is_realistic en true o false.",
+    "Por cada pregunta, poner review.annotation_is_correct en true o false.",
+    "Si la anotación está incompleta, agregar los ids que falten a relevant_document_ids.",
+    "Una pregunta con question_is_realistic en false se saca del conjunto, no se corrige: si nadie la haría, medirla no informa nada.",
+    "FALTA UN TIPO DE PREGUNTA, y sesga la métrica. Las 22 de acá se derivan de criterios que naturalmente dan varios documentos relevantes, así que el conjunto premia traer MUCHOS documentos. No hay ninguna pregunta profunda sobre un solo documento —del estilo 'qué pasa si el importe de ajuste supera la comisión neta', cuya respuesta correcta son varios chunks de AGL009 y de nadie más—. Sin ese tipo, la medición favorece recortar a un chunk por documento y no se puede ver lo que ese recorte rompe. Agregar 4-6 de esas preguntas es lo más valioso que se le puede hacer a este conjunto."
+  ],
+  "what_the_types_mean": {
+    "declared_precedence": "El corpus declara la dependencia. Es el tipo mejor fundado.",
+    "field_validations": "Relevancia por metadata.field exacto. Ojo: favorece a la búsqueda léxica, porque el nombre del campo aparece literalmente en el texto.",
+    "by_code": "Un solo relevante. Es el caso que la búsqueda vectorial no puede responder y por el que existe la rama exacta."
+  },
+  "questions": [
+    {
+      "id": "A-MGSL006",
+      "type": "declared_precedence",
+      "question": "¿Qué procesos hay que ejecutar antes de Cuadros del margen de solvencia (MGSL006)?",
+      "relevant_document_ids": [
+        "MGSL006",
+        "MGSL001",
+        "MGSL002",
+        "MGSL003",
+        "MGSL004",
+        "MGSL009",
+        "MGSL010"
+      ],
+      "distractor_document_ids": [
+        "MGSL007",
+        "MGSL008"
+      ],
+      "provenance": "El documento MGSL006 declara en su sección Requisitos que requiere la ejecución previa de MGSL001, MGSL002, MGSL003, MGSL004, MGSL009, MGSL010. Relevantes = el proceso más su cadena declarada. Distractores = documentos de la familia MGSL que NO están en la cadena.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "A-CRL007",
+      "type": "declared_precedence",
+      "question": "¿Qué procesos hay que ejecutar antes de Generación cuentas técnicas de reaseguro obligatorio (CRL007)?",
+      "relevant_document_ids": [
+        "CRL007",
+        "CRL001",
+        "CRL002",
+        "CRL009",
+        "CRL013"
+      ],
+      "distractor_document_ids": [
+        "CRL003",
+        "CRL004",
+        "CRL005",
+        "CRL006"
+      ],
+      "provenance": "El documento CRL007 declara en su sección Requisitos que requiere la ejecución previa de CRL001, CRL002, CRL009, CRL013. Relevantes = el proceso más su cadena declarada. Distractores = documentos de la familia CRL que NO están en la cadena.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "A-CRL050",
+      "type": "declared_precedence",
+      "question": "¿Qué procesos hay que ejecutar antes de Resumen de Cesiones de Reaseguro (CRL050)?",
+      "relevant_document_ids": [
+        "CRL050",
+        "CRL001",
+        "CRL002",
+        "CRL009",
+        "CRL013"
+      ],
+      "distractor_document_ids": [
+        "CRL003",
+        "CRL004",
+        "CRL005",
+        "CRL006"
+      ],
+      "provenance": "El documento CRL050 declara en su sección Requisitos que requiere la ejecución previa de CRL001, CRL002, CRL009, CRL013. Relevantes = el proceso más su cadena declarada. Distractores = documentos de la familia CRL que NO están en la cadena.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "A-COL502",
+      "type": "declared_precedence",
+      "question": "¿Qué procesos hay que ejecutar antes de Imputación automática de PAC y Transbank (COL502)?",
+      "relevant_document_ids": [
+        "COL502",
+        "CO501",
+        "COL500",
+        "COL704"
+      ],
+      "distractor_document_ids": [
+        "COL001",
+        "COL003",
+        "COL005",
+        "COL007"
+      ],
+      "provenance": "El documento COL502 declara en su sección Requisitos que requiere la ejecución previa de CO501, COL500, COL704. Relevantes = el proceso más su cadena declarada. Distractores = documentos de la familia COL que NO están en la cadena.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "A-COL520",
+      "type": "declared_precedence",
+      "question": "¿Qué procesos hay que ejecutar antes de Notificación de cobranza PAC y Transbank (COL520)?",
+      "relevant_document_ids": [
+        "COL520",
+        "CO501",
+        "COL500",
+        "COL704"
+      ],
+      "distractor_document_ids": [
+        "COL001",
+        "COL003",
+        "COL005",
+        "COL007"
+      ],
+      "provenance": "El documento COL520 declara en su sección Requisitos que requiere la ejecución previa de CO501, COL500, COL704. Relevantes = el proceso más su cadena declarada. Distractores = documentos de la familia COL que NO están en la cadena.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "A-CRL008",
+      "type": "declared_precedence",
+      "question": "¿Qué procesos hay que ejecutar antes de Generación cuentas técnicas de reaseguro facultativo (CRL008)?",
+      "relevant_document_ids": [
+        "CRL008",
+        "CRL001",
+        "CRL002"
+      ],
+      "distractor_document_ids": [
+        "CRL003",
+        "CRL004",
+        "CRL005",
+        "CRL006"
+      ],
+      "provenance": "El documento CRL008 declara en su sección Requisitos que requiere la ejecución previa de CRL001, CRL002. Relevantes = el proceso más su cadena declarada. Distractores = documentos de la familia CRL que NO están en la cadena.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "A-CRL010",
+      "type": "declared_precedence",
+      "question": "¿Qué procesos hay que ejecutar antes de Impresión de cuentas técnicas de reaseguro (CRL010)?",
+      "relevant_document_ids": [
+        "CRL010",
+        "CRL007",
+        "CRL008"
+      ],
+      "distractor_document_ids": [
+        "CRL001",
+        "CRL002",
+        "CRL003",
+        "CRL004"
+      ],
+      "provenance": "El documento CRL010 declara en su sección Requisitos que requiere la ejecución previa de CRL007, CRL008. Relevantes = el proceso más su cadena declarada. Distractores = documentos de la familia CRL que NO están en la cadena.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "A-CRL011",
+      "type": "declared_precedence",
+      "question": "¿Qué procesos hay que ejecutar antes de Generación de cuentas corrientes de coaseguro (CRL011)?",
+      "relevant_document_ids": [
+        "CRL011",
+        "CRL001",
+        "CRL002"
+      ],
+      "distractor_document_ids": [
+        "CRL003",
+        "CRL004",
+        "CRL005",
+        "CRL006"
+      ],
+      "provenance": "El documento CRL011 declara en su sección Requisitos que requiere la ejecución previa de CRL001, CRL002. Relevantes = el proceso más su cadena declarada. Distractores = documentos de la familia CRL que NO están en la cadena.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "A-CRL012",
+      "type": "declared_precedence",
+      "question": "¿Qué procesos hay que ejecutar antes de Generación de cuentas corrientes de reaseguro (CRL012)?",
+      "relevant_document_ids": [
+        "CRL012",
+        "CRL007",
+        "CRL008"
+      ],
+      "distractor_document_ids": [
+        "CRL001",
+        "CRL002",
+        "CRL003",
+        "CRL004"
+      ],
+      "provenance": "El documento CRL012 declara en su sección Requisitos que requiere la ejecución previa de CRL007, CRL008. Relevantes = el proceso más su cadena declarada. Distractores = documentos de la familia CRL que NO están en la cadena.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "A-CRL663",
+      "type": "declared_precedence",
+      "question": "¿Qué procesos hay que ejecutar antes de Generación de ordenes de pago de una cuenta técnica (CRL663)?",
+      "relevant_document_ids": [
+        "CRL663",
+        "CRL007",
+        "CRL008"
+      ],
+      "distractor_document_ids": [
+        "CRL001",
+        "CRL002",
+        "CRL003",
+        "CRL004"
+      ],
+      "provenance": "El documento CRL663 declara en su sección Requisitos que requiere la ejecución previa de CRL007, CRL008. Relevantes = el proceso más su cadena declarada. Distractores = documentos de la familia CRL que NO están en la cadena.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "B-Convenio",
+      "type": "field_validations",
+      "question": "¿Qué validaciones existen sobre el campo Convenio?",
+      "relevant_document_ids": [
+        "CO001_k",
+        "CO004",
+        "COC625",
+        "COL003",
+        "MAG554",
+        "MCO505",
+        "MVA645",
+        "OP001"
+      ],
+      "distractor_document_ids": [
+        "AGC904",
+        "CA004",
+        "CO823",
+        "COC898"
+      ],
+      "provenance": "Relevantes = los 8 documentos con un chunk de Validaciones cuyo metadata.field es exactamente 'Convenio'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'convenio'.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "B-Fecha_del_proceso",
+      "type": "field_validations",
+      "question": "¿Qué validaciones existen sobre el campo Fecha del proceso?",
+      "relevant_document_ids": [
+        "AGL002",
+        "COC679",
+        "COL585",
+        "COL684",
+        "CPL778",
+        "CPL779",
+        "MGSL002",
+        "MGSL003"
+      ],
+      "distractor_document_ids": [
+        "AG001",
+        "AG003",
+        "AG004",
+        "AG005"
+      ],
+      "provenance": "Relevantes = los 8 documentos con un chunk de Validaciones cuyo metadata.field es exactamente 'Fecha del proceso'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'fecha'.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "B-Fecha_Final",
+      "type": "field_validations",
+      "question": "¿Qué validaciones existen sobre el campo Fecha Final?",
+      "relevant_document_ids": [
+        "AGL771",
+        "AGL772",
+        "AGL774",
+        "AGL775",
+        "CAC1012",
+        "CAC967",
+        "CAL509",
+        "CAL511"
+      ],
+      "distractor_document_ids": [
+        "AG001",
+        "AG003",
+        "AG004",
+        "AG005"
+      ],
+      "provenance": "Relevantes = los 8 documentos con un chunk de Validaciones cuyo metadata.field es exactamente 'Fecha Final'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'fecha'.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "B-Fecha_Inicio",
+      "type": "field_validations",
+      "question": "¿Qué validaciones existen sobre el campo Fecha Inicio?",
+      "relevant_document_ids": [
+        "CAC1012",
+        "COL1027",
+        "COL980",
+        "OPL1056",
+        "OPL1057",
+        "OPL1060",
+        "OPL1063",
+        "OPL963"
+      ],
+      "distractor_document_ids": [
+        "AG001",
+        "AG003",
+        "AG004",
+        "AG005"
+      ],
+      "provenance": "Relevantes = los 8 documentos con un chunk de Validaciones cuyo metadata.field es exactamente 'Fecha Inicio'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'fecha'.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "B-Provincia",
+      "type": "field_validations",
+      "question": "¿Qué validaciones existen sobre el campo Provincia?",
+      "relevant_document_ids": [
+        "MAG502",
+        "MDP503_k",
+        "MDP504",
+        "MS105_k",
+        "MS108_k",
+        "MS109",
+        "MS112_k",
+        "SOP003"
+      ],
+      "distractor_document_ids": [
+        "CA006",
+        "CAC005_k",
+        "SCA001",
+        "SOP001"
+      ],
+      "provenance": "Relevantes = los 8 documentos con un chunk de Validaciones cuyo metadata.field es exactamente 'Provincia'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'provincia'.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "B-Tarifa",
+      "type": "field_validations",
+      "question": "¿Qué validaciones existen sobre el campo Tarifa?",
+      "relevant_document_ids": [
+        "AM002",
+        "AM003",
+        "AM006",
+        "DP057",
+        "DP058",
+        "DP8002",
+        "MRO002",
+        "MRO003"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Relevantes = los 8 documentos con un chunk de Validaciones cuyo metadata.field es exactamente 'Tarifa'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'tarifa'.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "C-AG001",
+      "type": "by_code",
+      "question": "¿Qué hace AG001?",
+      "relevant_document_ids": [
+        "AG001"
+      ],
+      "distractor_document_ids": [
+        "AG001_K",
+        "AG003",
+        "AG004",
+        "AG004_k"
+      ],
+      "provenance": "Relevante = el documento AG001 ('Actualización de intermediarios', tipo functional_abm). Un solo relevante por construcción: la pregunta nombra un código. Distractores = documentos de la familia AG.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "C-CA055",
+      "type": "by_code",
+      "question": "¿Qué hace CA055?",
+      "relevant_document_ids": [
+        "CA055"
+      ],
+      "distractor_document_ids": [
+        "CA001A",
+        "CA001k",
+        "CA001M",
+        "CA003"
+      ],
+      "provenance": "Relevante = el documento CA055 ('Grupos y proveedores de una póliza', tipo functional_abm). Un solo relevante por construcción: la pregunta nombra un código. Distractores = documentos de la familia CA.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "C-AGC001",
+      "type": "by_code",
+      "question": "¿Qué hace AGC001?",
+      "relevant_document_ids": [
+        "AGC001"
+      ],
+      "distractor_document_ids": [
+        "AGC002",
+        "AGC006",
+        "AGC574",
+        "AGC621"
+      ],
+      "provenance": "Relevante = el documento AGC001 ('Historia del convenio económico de un intermediario', tipo query). Un solo relevante por construcción: la pregunta nombra un código. Distractores = documentos de la familia AGC.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "C-CAC862",
+      "type": "by_code",
+      "question": "¿Qué hace CAC862?",
+      "relevant_document_ids": [
+        "CAC862"
+      ],
+      "distractor_document_ids": [
+        "CAC001",
+        "CAC002",
+        "CAC003",
+        "CAC005"
+      ],
+      "provenance": "Relevante = el documento CAC862 ('Consulta detalle pago de primera prima', tipo query). Un solo relevante por construcción: la pregunta nombra un código. Distractores = documentos de la familia CAC.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "C-AGL001",
+      "type": "by_code",
+      "question": "¿Qué hace AGL001?",
+      "relevant_document_ids": [
+        "AGL001"
+      ],
+      "distractor_document_ids": [
+        "AGL002",
+        "AGL003",
+        "AGL004",
+        "AGL005"
+      ],
+      "provenance": "Relevante = el documento AGL001 ('Preparación de cuentas corrientes de intermediarios', tipo process_report). Un solo relevante por construcción: la pregunta nombra un código. Distractores = documentos de la familia AGL.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    },
+    {
+      "id": "C-COL526",
+      "type": "by_code",
+      "question": "¿Qué hace COL526?",
+      "relevant_document_ids": [
+        "COL526"
+      ],
+      "distractor_document_ids": [
+        "COL001",
+        "COL003",
+        "COL005",
+        "COL007"
+      ],
+      "provenance": "Relevante = el documento COL526 ('Cálculo de la previsión de primas por cobrar', tipo process_report). Un solo relevante por construcción: la pregunta nombra un código. Distractores = documentos de la familia COL.",
+      "review": {
+        "question_is_realistic": null,
+        "annotation_is_correct": null
+      }
+    }
+  ]
+}
