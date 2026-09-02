@@ -42,6 +42,8 @@
 - [x] 4.5 precision@k sobre el golden set, por configuración: solo vector, solo
       léxico, y la fusión.
 - [x] 4.6 Medir qué le hace el tope por documento a las dos métricas.
+- [x] 4.7 Medir cuántos candidatos necesita cada camino para que el tope por
+      documento no se quede sin con qué llenar. `branch_limit` 30 → 100.
 
 ## 5. Endpoint
 
@@ -55,6 +57,21 @@
 - [ ] 6.0 Dejar anotado en el archive: `retrieval/reranker.py`,
       `query_transform.py` y `router.py` existen en el curso y quedan afuera a
       propósito. Medir primero la fusión sola, después agregar.
+
+      Evidencia acumulada a favor del reranker, cuatro casos medidos e
+      independientes [VERIFICADO-CORPUS]:
+
+      1. Pólizas: 8 de 14 relevantes en el top-10, 13 de 14 en el top-60.
+      2. `COL502` y `COL520` en los puestos 41 y 52.
+      3. El derrumbe de hit@1 cuando se fusiona el léxico sin reordenar.
+      4. Las dos preguntas de siniestros que puntúan 0 en p@10 **no son
+         fallas de recall**: `SI012` está en el puesto 15, `SIL00970` en el 14 y
+         `SIC001` en el 18. Solo `SIC002` está genuinamente afuera del top-60.
+         Tres de los cuatro documentos que "faltan" están entre los puestos 11
+         y 20 — exactamente el rango que un reranker recupera.
+
+      `window_type_name` ya viaja en cada fila y es señal utilizable: ante un
+      "¿en qué pantalla?", una transacción puntual le gana a un proceso masivo.
 
 ## 7. Cierre
 

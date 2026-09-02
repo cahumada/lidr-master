@@ -67,6 +67,38 @@ Forzar diversidad rompería el segundo caso para arreglar el primero. Se expone
 como tope de chunks por documento, con un default que no recorta, y queda medido
 qué le hace a la métrica.
 
+## 4b. El tope por documento necesita candidatos de sobra
+
+El tope se descubrió a medias. `cap=1` deja un chunk por documento, así que la
+respuesta **no puede tener más documentos distintos que los que haya en la lista
+de candidatos**. Con `branch_limit = 30`, 30 chunks concentrados colapsan a 6
+documentos y una consulta de `k = 10` devuelve 6 resultados con 4 puestos
+vacíos.
+
+No es que el relleno esté roto: `cap_per_group` recorre la lista entera. Es que
+no queda nada con qué rellenar.
+
+Medido sobre las 26 preguntas escritas por una persona, con `cap = 1` y `k = 10`
+[VERIFICADO-CORPUS]:
+
+| `branch_limit` | p@10 | encontró | devolvieron < 10 resultados |
+|---:|---:|---:|---:|
+| 30 | 0,138 | 85% | **7 de 26** |
+| 100 | 0,146 | 88% | 0 de 26 |
+| 300 | 0,146 | 88% | 0 de 26 |
+
+100 es donde para la truncación y 300 no compra nada, así que el default queda
+en 100.
+
+La latencia es **empate**: 389-430 ms con 30 contra 411-606 ms con 100, una
+diferencia menor que la varianza entre corridas. Una primera medición dio 100
+más *rápido* que 30 (404 contra 647 ms); era un artefacto de arranque en frío,
+porque 30 corrió primero y pagó el calentamiento. Repetida en los dos órdenes,
+la ventaja desaparece.
+
+Sobre las 56 preguntas del golden set, `vector+exact cap1` pasó de p@10 0,170 a
+**0,177** y de 91% a **93%** de hallazgo.
+
 ## 5. Dos métricas, y cada una para lo que sirve
 
 Sin número, "mejoró la recuperación" es una opinión. Pero un solo número mal

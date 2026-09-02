@@ -22,7 +22,7 @@ from app.generation.rag.retrieval.fusion import (
     cap_per_group,
     reciprocal_rank_fusion,
 )
-from app.generation.rag.retrieval.hybrid import identifier_terms
+from app.generation.rag.retrieval.hybrid import DEFAULT_BRANCH_LIMIT, identifier_terms
 from app.generation.rag.store.repository import (
     SearchFilters,
     build_exact_statement,
@@ -165,6 +165,40 @@ def test_a_cap_larger_than_what_a_document_has_changes_nothing():
     fused = fuse({"vector": ranking("A::x::1", "B::y::1")})
     capped = cap_per_group(fused, document_of, cap=5, limit=10)
     assert [item.key for item in capped] == ["A::x::1", "B::y::1"]
+
+
+def test_a_narrow_candidate_pool_starves_the_cap():
+    """With `cap=1` the answer holds at most as many documents as the pool has
+    distinct ones. 30 chunks concentrated in 6 documents return 6 results for a
+    `limit=10`, and the 4 empty places are the defect that raised
+    `DEFAULT_BRANCH_LIMIT`: 7 of the 26 human-authored questions came back short.
+    The filling is not broken -- there is nothing left to fill with."""
+    pool = [f"D{i % 6}::x::{i}" for i in range(30)]
+    fused = fuse({"vector": ranking(*pool)})
+
+    capped = cap_per_group(fused, document_of, cap=1, limit=10)
+
+    assert len(capped) == 6
+    assert len({document_of(item.key) for item in capped}) == 6
+
+
+def test_a_wide_candidate_pool_fills_the_limit():
+    """The same 6-document concentration, but the pool now reaches further and
+    holds 12 documents. This is what raising the branch limit buys."""
+    pool = [f"D{i % 6}::x::{i}" for i in range(30)]
+    pool += [f"E{i}::y::1" for i in range(6)]
+    fused = fuse({"vector": ranking(*pool)})
+
+    capped = cap_per_group(fused, document_of, cap=1, limit=10)
+
+    assert len(capped) == 10
+
+
+def test_the_branch_limit_leaves_room_for_the_cap():
+    """Not a taste setting. Measured over the 26 human-authored questions at
+    `cap=1`, `k=10`: 30 left 7 questions short, 100 left none, 300 changed
+    nothing. It has to stay well above any plausible `k`."""
+    assert DEFAULT_BRANCH_LIMIT >= 100
 
 
 # --- The identifier detector -----------------------------------------------------

@@ -23,20 +23,24 @@ se come más distractores.
 
 | Config | precision@10 | techo | % del techo | distractores | ms/consulta |
 |---|---:|---:|---:|---:|---:|
-| `vector` | 0.134 | 0.376 | 36% | 7 | 504.1 |
-| `vector+exact` | 0.146 | 0.376 | 39% | 3 | 523.0 |
-| `fused` | 0.115 | 0.376 | 31% | 5 | 1239.6 |
-| `vector+exact cap1` | 0.176 | 0.376 | 47% | 9 | 524.4 |
-| `vector+exact cap2` | 0.166 | 0.376 | 44% | 7 | 595.8 |
+| `vector` | 0.130 | 0.345 | 38% | 7 | 494.8 |
+| `lexical` | 0.057 | 0.345 | 17% | 2 | 957.3 |
+| `vector+exact` | 0.141 | 0.345 | 41% | 3 | 464.6 |
+| `fused` | 0.121 | 0.345 | 35% | 4 | 1733.7 |
+| `vector+exact cap1` | 0.177 | 0.345 | 51% | 9 | 453.9 |
+| `vector+exact cap2` | 0.163 | 0.345 | 47% | 7 | 531.5 |
+| `vector+exact cap3` | 0.154 | 0.345 | 45% | 6 | 498.3 |
+| `fused cap1` | 0.148 | 0.345 | 43% | 7 | 1638.1 |
+| `vector cap1` | 0.168 | 0.345 | 49% | 9 | 416.2 |
 
 ## Por tipo de pregunta
 
-| Tipo | preguntas | `vector` | `vector+exact` | `fused` | `vector+exact cap1` | `vector+exact cap2` |
-|---|---:|---:|---:|---:|---:|---:|
-| `by_code` | 12 | 0.058 | 0.100 | 0.100 | 0.100 | 0.100 |
-| `declared_precedence` | 2 | 0.100 | 0.100 | 0.100 | 0.200 | 0.200 |
-| `field_validations` | 16 | 0.225 | 0.225 | 0.138 | 0.269 | 0.250 |
-| `user_question` | 11 | 0.091 | 0.091 | 0.100 | 0.118 | 0.109 |
+| Tipo | preguntas | `vector` | `lexical` | `vector+exact` | `fused` | `vector+exact cap1` | `vector+exact cap2` | `vector+exact cap3` | `fused cap1` | `vector cap1` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `by_code` | 12 | 0.058 | 0.025 | 0.100 | 0.100 | 0.100 | 0.100 | 0.100 | 0.100 | 0.067 |
+| `declared_precedence` | 2 | 0.100 | 0.200 | 0.100 | 0.100 | 0.300 | 0.250 | 0.250 | 0.300 | 0.300 |
+| `field_validations` | 16 | 0.225 | 0.013 | 0.225 | 0.131 | 0.269 | 0.250 | 0.237 | 0.169 | 0.269 |
+| `user_question` | 26 | 0.108 | 0.088 | 0.112 | 0.127 | 0.146 | 0.131 | 0.119 | 0.146 | 0.142 |
 
 ### Qué significa cada tipo
 

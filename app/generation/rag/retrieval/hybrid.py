@@ -57,6 +57,27 @@ EXACT = "exact"
 DEFAULT_BRANCHES = (VECTOR, EXACT)
 ALL_BRANCHES = (VECTOR, LEXICAL, EXACT)
 
+# How many rows each branch returns before fusion. Not a taste setting: with
+# `max_per_document=1` the answer can hold at most as many documents as the
+# candidate pool contains distinct ones, and 30 chunks routinely collapse to
+# fewer than 10 documents. Measured over the 26 human-authored questions, at
+# `cap=1` and `k=10` [VERIFICADO-CORPUS]:
+#
+#   branch_limit=30    p@10 0.138   found 85%   returned <10 results: 7 of 26
+#   branch_limit=100   p@10 0.146   found 88%   returned <10 results: 0 of 26
+#   branch_limit=300   p@10 0.146   found 88%   returned <10 results: 0 of 26
+#
+# 100 is where the truncation stops; 300 buys nothing. Latency is a wash --
+# 389-430 ms at 30 against 411-606 ms at 100, a spread narrower than the
+# run-to-run variance.
+# || Cuantas filas devuelve cada rama antes de fusionar. No es una cuestion de
+# gusto: con `max_per_document=1` la respuesta no puede tener mas documentos que
+# los distintos que haya en el candidato, y 30 chunks colapsan seguido a menos
+# de 10 documentos. Medido sobre las 26 preguntas escritas por una persona, con
+# `cap=1` y `k=10`. 100 es donde para la truncacion; 300 no compra nada. La
+# latencia es empate: la diferencia es menor que la varianza entre corridas.
+DEFAULT_BRANCH_LIMIT = 100
+
 # What an identifier looks like in this corpus, taken from the real ones:
 #   - a transaction code:      CAC011, CPL500, BC005_k, VI7501_A
 #   - a table or column name:  premium_mo, nReceipt, TIN_AllowDoubAccIss
@@ -150,7 +171,7 @@ class HybridRetriever:
         embedder,
         *,
         rrf_k: int = DEFAULT_RRF_K,
-        branch_limit: int = 30,
+        branch_limit: int = DEFAULT_BRANCH_LIMIT,
     ) -> None:
         self._repository = repository
         self._embedder = embedder

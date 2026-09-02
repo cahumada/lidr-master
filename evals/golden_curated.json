@@ -301,10 +301,166 @@
         "question_is_realistic": true,
         "annotation_is_correct": true
       }
+    },
+    {
+      "id": "U-SI501-reasignar",
+      "module": "claims",
+      "type": "user_question",
+      "question": "¿Cómo puedo reasignar un siniestro de un analista a otro en el sistema y qué campos de la tabla claim se actualizan al hacerlo?",
+      "relevant_document_ids": [
+        "SI501",
+        "SI501_k"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: si501.md (Asignación de siniestros a analistas). El archivo declara DOS ids en su cabecera, SI501_k y SI501, y el pipeline lo indexa como dos documentos (23 y 18 chunks); los dos cuentan como relevantes porque son el mismo archivo fuente.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-CA908-jerarquia-productores",
+      "module": "policies",
+      "type": "user_question",
+      "question": "¿De qué manera puedo modificar los niveles jerárquicos o agregar intermediarios en una jerarquía de productores si la póliza aún no está vigente?",
+      "relevant_document_ids": [
+        "CA908"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: ca908.md (Jerarquía de productores de la póliza/certificado). Llegó en el lote de siniestros pero el documento es del módulo de pólizas (policies) y así queda clasificada.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-SI012-recobro",
+      "module": "claims",
+      "type": "user_question",
+      "question": "¿Cuál es el procedimiento administrativo para registrar un trámite de recobro o salvataje estimado y cómo se genera su historial?",
+      "relevant_document_ids": [
+        "SI012"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario. Documento anotado por el dueño del repo: si012.md (Trámite de recobro).",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-declaracion-siniestro",
+      "module": "claims",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Qué secuencia de ventanas, variables de clave inicial y validaciones de clientes requiero para realizar la declaración formal de un siniestro?",
+      "relevant_document_ids": [
+        "SI001_A",
+        "SI001_k",
+        "SI004"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. Documentos anotados por el dueño del repo, con el motivo de cada uno: SI001_A = operaciones sobre siniestros, declara que la secuencia de ventanas depende de la transacción elegida; SI001_k = solicitud de clave para tratamiento de siniestros, las variables de clave inicial; SI004 = datos generales del siniestro. SI001_A es un documento despachador de solo 2 chunks (lista 11 operaciones) y compite contra 127 y 78 chunks; es legítimamente relevante y a la vez el caso más duro de recuperar del conjunto.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-pago-siniestro",
+      "module": "claims",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Cómo se realiza la gestión de un pago de siniestro (parcial o total), su correspondiente clave de control y la posterior aprobación de la orden de pago?",
+      "relevant_document_ids": [
+        "SI008",
+        "SI008_k",
+        "SI777"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. Documentos anotados por el dueño del repo, con el motivo de cada uno: SI008 = pago de siniestros; SI008_k = solicitud de clave para pago de siniestros, la transacción de encabezado; SI777 = control de órdenes para pagos de siniestros, la aprobación posterior.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-consulta-siniestros",
+      "module": "claims",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Cuáles son las opciones de consulta y reportes para visualizar el estado, costos y desglose de siniestros acumulados por cliente o póliza?",
+      "relevant_document_ids": [
+        "SIC001",
+        "SIC002",
+        "SIL00970"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. Documentos anotados por el dueño del repo, con el motivo de cada uno: SIC001 = consulta de siniestros de un cliente; SIC002 = siniestros de una póliza/certificado; SIL00970 = listado de siniestros por estado.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-coberturas-individual-vs-matriz",
+      "module": "policies",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Cómo difiere la configuración y el registro de coberturas entre una póliza de tipo individual y una póliza matriz colectiva, y qué transacciones de clave las inician?",
+      "relevant_document_ids": [
+        "CA001k",
+        "CA014",
+        "CA014A"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. Documentos anotados por el dueño del repo, con el motivo de cada uno: CA001k (archivo ca001_k.md) = solicitud de clave para tratamiento de pólizas, la transacción de encabezado; CA014 = coberturas de la póliza individual o certificado; CA014A = coberturas de la póliza matriz.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-traspaso-pago",
+      "module": "collections",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Cómo se realiza el traspaso de pagos (parciales o totales) entre recibos y qué validaciones de caja o migración de pólizas aplican en estas transacciones?",
+      "relevant_document_ids": [
+        "CO634",
+        "CA001k",
+        "CA001M"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta y CRUZADA entre módulos (cobranzas y pólizas). Documentos anotados por el dueño del repo, con el motivo de cada uno: CO634 = información del traspaso de pago; CA001k = solicitud de clave para tratamiento de pólizas; CA001M = solicitud de clave para tratamiento de pólizas colectivas. Clasificada en collections por el documento que lleva la respuesta principal.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
+    },
+    {
+      "id": "U-multi-limites-vida-comisionables",
+      "module": "policies",
+      "type": "user_question",
+      "compound": true,
+      "question": "¿Qué limitaciones de capital, edad y porcentajes de variación se validan al parametrizar coberturas de vida, y qué intermediarios comisionables afectan estas reglas?",
+      "relevant_document_ids": [
+        "CA014",
+        "CA014A",
+        "CA908"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Pregunta real de usuario, compuesta. Documentos anotados por el dueño del repo, con el motivo de cada uno: CA014 = coberturas de la póliza individual o certificado, límites de capital y edad; CA014A = coberturas de la póliza matriz; CA908 = jerarquía de productores, los intermediarios comisionables.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
     }
   ],
   "known_annotation_notes": {
     "ca001.md_declara_CA001k": "El archivo ca001.md declara un solo id, `CA001k`, y `CA001` no esta declarado como id en NINGUN archivo del corpus. El nombre del archivo y el id de la transaccion no coinciden en el export, asi que las anotaciones que decian 'ca001.md' usan `CA001k`.",
-    "codigos_con_sufijo_A_y_B": "CAC1005/A/B y CAC1006/A/B se titulan igual y documentan la misma consulta. Los tres van como relevantes: recuperar cualquiera responde la pregunta."
+    "codigos_con_sufijo_A_y_B": "CAC1005/A/B y CAC1006/A/B se titulan igual y documentan la misma consulta. Los tres van como relevantes: recuperar cualquiera responde la pregunta.",
+    "si501.md_declara_dos_ids": "si501.md declara DOS ids en su cabecera (SI501_k y SI501) y el pipeline lo indexa como dos documentos separados, de 23 y 18 chunks. Un archivo fuente, dos document_id. Los dos se anotan como relevantes: penalizar la recuperacion por devolver la otra mitad del mismo archivo mediria el chunker, no la busqueda.",
+    "si001_a.md_sin_id_declarado": "si001_a.md NO declara id en su cabecera; el pipeline lo indexa como SI001_A por caida al nombre del archivo. Es el unico de los 17 archivos referenciados en este lote sin id declarado."
   }
 }
