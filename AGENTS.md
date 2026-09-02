@@ -78,6 +78,13 @@ código, decilo en el proposal en vez de antedatarlo.
   `openspec/project.md` para la convención completa y su única excepción
   (datos de dominio literales en español).
 - **No agregar dependencias** sin justificarlo en el `proposal.md` del cambio.
+- **Qué puede viajar al repo público.** El repo es público mientras se evalúa
+  el proyecto. `data/` queda afuera —los documentos fuente y el export de
+  `WINDOWS` son del cliente— y `.env` también. `evals/golden_retrieval.json` y
+  `evals/golden_curated.json` **sí** van al repo por decisión del dueño del
+  repo, aunque lleven códigos de transacción y títulos reales: son la evidencia
+  de que las mediciones son reproducibles y sin ellos los números no se pueden
+  auditar. Decidido el 2026-09-02; no volver a proponer excluirlos.
 
 ## 4. Comandos
 
