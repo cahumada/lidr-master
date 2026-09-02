@@ -367,3 +367,128 @@ def test_the_repository_searches_and_filters(clean_tables, tenant):
     assert todos[0].similarity == pytest.approx(1.0, abs=1e-5)
     assert len(filtrados) == 5
     assert ajenos == []
+
+
+# --- The process map's edges ------------------------------------------------
+
+
+def load_edges(engine, rows) -> int:
+    raw = engine.raw_connection()
+    try:
+        connection = raw.driver_connection
+        with connection.cursor() as cursor:
+            cursor.executemany(
+                "INSERT INTO process_map_edges (tenant_id, doc_version, source, target,"
+                " edge_type, origin, evidence) VALUES (%s,%s,%s,%s,%s,%s,%s)"
+                " ON CONFLICT (tenant_id, doc_version, source, target, edge_type)"
+                " DO NOTHING",
+                rows,
+            )
+            inserted = cursor.rowcount
+        connection.commit()
+        return inserted
+    finally:
+        raw.close()
+
+
+def test_the_edges_load_idempotently(clean_tables, tenant):
+    rows = [
+        (tenant, "v1", "COL502", "COL500", "requires", "requisitos_section", "requiere que..."),
+        (tenant, "v1", "CA014", "DMECAR", "menu_parent", "windows_tree", None),
+    ]
+
+    load_edges(clean_tables, rows)
+    load_edges(clean_tables, rows)
+
+    with clean_tables.connect() as connection:
+        total = connection.execute(
+            text("SELECT count(*) FROM process_map_edges WHERE tenant_id = :t"), {"t": tenant}
+        ).scalar_one()
+    assert total == 2
+
+
+def test_the_same_pair_can_hold_two_different_relations(clean_tables, tenant):
+    """`requires` and `references` between the same two documents are two
+    different facts, so the key includes the type."""
+    load_edges(
+        clean_tables,
+        [
+            (tenant, "v1", "COL502", "COL500", "requires", "requisitos_section", None),
+            (tenant, "v1", "COL502", "COL500", "references", "chunk_reference", None),
+        ],
+    )
+
+    with clean_tables.connect() as connection:
+        total = connection.execute(
+            text("SELECT count(*) FROM process_map_edges WHERE tenant_id = :t"), {"t": tenant}
+        ).scalar_one()
+    assert total == 2
+
+
+def test_expansion_works_from_either_end(clean_tables, tenant):
+    """Retrieval expands in both directions: what does this reference, and what
+    references this. Hence an index on each end."""
+    load_edges(
+        clean_tables,
+        [
+            (tenant, "v1", "CA001", "CA014", "references", "chunk_reference", None),
+            (tenant, "v1", "CA050", "CA014", "references", "chunk_reference", None),
+            (tenant, "v1", "CA014", "CA099", "references", "chunk_reference", None),
+        ],
+    )
+
+    with clean_tables.connect() as connection:
+        incoming = connection.execute(
+            text(
+                "SELECT source FROM process_map_edges WHERE tenant_id = :t"
+                " AND target = 'CA014' AND edge_type = 'references' ORDER BY source"
+            ),
+            {"t": tenant},
+        ).scalars().all()
+        outgoing = connection.execute(
+            text(
+                "SELECT target FROM process_map_edges WHERE tenant_id = :t"
+                " AND source = 'CA014' AND edge_type = 'references'"
+            ),
+            {"t": tenant},
+        ).scalars().all()
+
+    assert incoming == ["CA001", "CA050"]
+    assert outgoing == ["CA099"]
+
+
+def test_a_precedence_query_never_returns_a_reference(clean_tables, tenant):
+    """The three relations do not mean the same thing, and the biggest emitters
+    of `references` are index documents."""
+    load_edges(
+        clean_tables,
+        [
+            (tenant, "v1", "COL502", "COL500", "requires", "requisitos_section", None),
+            (tenant, "v1", "LIFE_INDEX", "VI001", "references", "index_document", None),
+        ],
+    )
+
+    with clean_tables.connect() as connection:
+        precedence = connection.execute(
+            text(
+                "SELECT source FROM process_map_edges WHERE tenant_id = :t"
+                " AND edge_type = 'requires'"
+            ),
+            {"t": tenant},
+        ).scalars().all()
+    assert precedence == ["COL502"]
+
+
+def test_an_edge_keeps_the_sentence_that_justified_it(clean_tables, tenant):
+    """Any `requires` edge has to be auditable back to the document's own words."""
+    load_edges(
+        clean_tables,
+        [(tenant, "v1", "COL502", "COL500", "requires", "requisitos_section",
+          "Este proceso requiere que previamente se ejecute uno o varios de los siguientes")],
+    )
+
+    with clean_tables.connect() as connection:
+        evidence = connection.execute(
+            text("SELECT evidence FROM process_map_edges WHERE tenant_id = :t"), {"t": tenant}
+        ).scalar_one()
+    assert "requiere que previamente" in evidence

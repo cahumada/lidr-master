@@ -152,6 +152,21 @@ class Settings(BaseSettings):
     # || Filas por lote de COPY al cargar el corpus en Postgres.
     DB_COPY_BATCH_SIZE: int = 5000
 
+    # --- Process map / CAG || Mapa de procesos / CAG -----------------------
+
+    # Ceiling for the preloadable context. Over it, the build FAILS instead of
+    # writing something that will be truncated in silence -- half a map reads
+    # as a whole one. 128k leaves headroom inside a 200k window for the
+    # question, the retrieved chunks and the answer.
+    # || Techo del contexto precargable. Por encima, la construcción FALLA en
+    # vez de escribir algo que se va a truncar en silencio — medio mapa se lee
+    # como uno entero. 128k deja margen dentro de una ventana de 200k para la
+    # pregunta, los chunks recuperados y la respuesta.
+    CAG_MAX_TOKENS: int = 128_000
+
+    PROCESS_MAP_PATH: Path = Path("data/process_map.json")
+    CAG_CONTEXT_PATH: Path = Path("data/cag_context.md")
+
     # WITHOUT this, a filtered similarity search returns WRONG results, not slow
     # ones. HNSW walks its nearest candidates and only then applies the WHERE:
     # a query filtered by `transaction_type='query'` came back with 0 rows while

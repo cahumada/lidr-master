@@ -67,6 +67,45 @@ Corre sin base: los tests que la necesitan se saltean diciendo por qué. Con
 `docker compose up -d` corren de verdad — son los que verifican lo que no se
 puede emular: el stemming español, el índice parcial y la búsqueda filtrada.
 
+## Mapa de procesos y contexto del CAG
+
+```bash
+uv run python scripts/build_process_map.py --dry-run
+```
+
+```bash
+uv run python scripts/build_process_map.py
+```
+
+Arma un grafo de 4.061 transacciones desde tres fuentes, y las **tres relaciones
+nunca se colapsan** porque no afirman lo mismo:
+
+| tipo | cantidad | qué afirma |
+|---|---:|---|
+| `menu_parent` | 2.672 | dónde vive la transacción en el menú |
+| `references` | 1.390 | que un documento menciona a otro |
+| `requires` | **39** | que hay que ejecutar una antes de otra |
+
+Los mayores emisores de `references` son documentos índice (676 de las 1.390), o
+sea tabla de contenidos y no relación de negocio — y van marcados como tales.
+
+Las `requires` salen solo de donde un documento lo declara. **No se infiere
+nada:** que dos procesos escriban en la misma tabla no crea una arista.
+
+Sale `data/process_map.json` (el artefacto reproducible), `data/cag_context.md`
+(**90.067 tokens**, el 70% del techo de 128k) y las aristas en
+`process_map_edges`, indexadas en las dos puntas para expandir en cualquier
+dirección.
+
+**El contexto empieza declarando lo que NO cubre**, adentro y no al lado: 794
+transacciones no cuelgan de ningún menú y eso no significa que no existan; fuera
+de las 39 `requires` la documentación no dice en qué orden se ejecutan los
+procesos. Un modelo que reciba el mapa sin sus límites va a contestar que una
+transacción no existe cuando lo que pasa es que no está en el menú.
+
+Si el contexto supera el techo, el build **falla** en vez de truncar: medio mapa
+se lee como uno entero.
+
 ## Fuente de verdad
 
 Este repo documenta su comportamiento con [OpenSpec](https://github.com/Fission-AI/OpenSpec):
@@ -107,8 +146,13 @@ app/
     │   ├── embedder.py                      # protocolo Embedder, OpenAI, HashEmbedder
     │   ├── sidecar.py                       # IO del .npy + .index.json
     │   └── runner.py                        # planificación incremental y verificación
+    ├── process_map/
+    │   ├── graph.py                         # nodos, aristas, deteccion de ciclos
+    │   ├── requisites.py                    # precedencia declarada en Requisitos
+    │   ├── builder.py                       # armado desde las tres fuentes
+    │   └── cag.py                           # el contexto precargable, medido
     └── store/
-        ├── models.py                        # chunks, corpus_versions
+        ├── models.py                        # chunks, corpus_versions, process_map_edges
         ├── loader.py                        # COPY masivo e idempotente
         └── repository.py                    # búsqueda por similitud con filtros
 ```

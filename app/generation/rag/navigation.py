@@ -118,6 +118,42 @@ class NavigationTree:
             current = self._parent.get(current)
         return list(reversed(chain))
 
+    # --- Read-only views, for consumers that walk the whole tree ----------
+    # || Vistas de solo lectura, para consumidores que recorren todo el árbol.
+
+    def codes(self) -> list[str]:
+        """Every code in the tree, in export order.
+
+        || Cada código del árbol, en el orden del export.
+        """
+        return list(self._parent)
+
+    def parent_of(self, code: str) -> str | None:
+        """The declared parent, or ``None`` when the export carries none.
+
+        717 codes have no parent and 63 point at one the export does not carry,
+        so ``None`` is a real answer and not an error.
+
+        || El padre declarado, o ``None`` si el export no trae ninguno. 717
+        códigos no tienen padre y 63 apuntan a uno que el export no trae, así
+        que ``None`` es una respuesta real y no un error.
+        """
+        return self._parent.get(code)
+
+    def description_of(self, code: str) -> str | None:
+        """The window's description, or ``None`` when the code is unknown.
+
+        || La descripción de la ventana, o ``None`` si el código no se conoce.
+        """
+        return self._description.get(code)
+
+    def has_children(self, code: str) -> bool:
+        """Whether anything hangs off ``code`` -- a menu node rather than a leaf.
+
+        || Si algo cuelga de ``code`` — un nodo de menú y no una hoja.
+        """
+        return code in self._with_children
+
     def locate(self, code: str) -> NavigationLocation:
         """Resolve ``code``'s breadcrumb, or leave it unresolved.
 

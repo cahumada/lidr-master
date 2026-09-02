@@ -1,6 +1,17 @@
-# process-map Delta Specification
+# process-map Specification
 
-## ADDED Requirements
+## Purpose
+El grafo de transacciones de VisualTIME y el contexto precargable que se deriva
+de él. Tres relaciones que nunca se colapsan: dónde vive una transacción en el
+menú, qué tiene que correr antes, y qué documento menciona a cuál.
+
+Implementado en `app/generation/rag/process_map/`: `graph.py` (el modelo y la
+detección de ciclos), `requisites.py` (la precedencia declarada), `builder.py`
+(el armado desde las tres fuentes) y `cag.py` (el contexto, con su tamaño
+medido). El batch es `scripts/build_process_map.py`, y las aristas se persisten
+en `process_map_edges`.
+
+## Requirements
 
 ### Requirement: Cada arista DEBE declarar su tipo y su fuente
 Tres relaciones distintas conviven en el corpus y no afirman lo mismo:
@@ -78,9 +89,15 @@ escriben con los mismos dos códigos.
 - **THEN** no hay arista entre ellos
 
 ### Requirement: El mapa DEBE declarar lo que no cubre
-Medido sobre el corpus [VERIFICADO-CORPUS]: 714 de 3.389 transacciones (21%) no
-cuelgan de ningún menú, 1.850 nodos del árbol no tienen documento funcional, y
-672 documentos no son una ventana.
+Medido sobre el corpus [VERIFICADO-CORPUS]: **794 de 3.389** transacciones (23%)
+no son alcanzables desde ningún menú, 1.850 nodos del árbol no tienen documento
+funcional, y 672 documentos no son una ventana.
+
+"No alcanzable" es que su camino **no llega a la raíz**, no simplemente que no
+tenga padre. Son dos números distintos y el correcto es el primero: 717 códigos
+no tienen padre, pero 3 de ellos **sí tienen hijos**, y cada descendiente de un
+subárbol colgado de la nada es tan inalcanzable como su raíz. Contar solo los
+sin padre daba 714 y subcontaba por 80.
 
 Ninguno es un error a corregir: es cómo es el sistema. Pero un mapa que los
 omitiera se leería como completo y llevaría a afirmar que una transacción no
@@ -92,8 +109,16 @@ existe cuando lo que pasa es que no está en el menú.
   cuántos nodos no tienen documento y cuántos documentos no son ventana
 
 #### Scenario: Una transacción sin menú sigue en el mapa
-- **WHEN** una transacción existe como ventana pero no tiene padre
+- **WHEN** una transacción existe como ventana y su camino no llega a la raíz
 - **THEN** está en el mapa, marcada como no alcanzable desde el menú
+
+#### Scenario: Un subárbol entero colgado de la nada
+- **WHEN** un código sin padre tiene hijos
+- **THEN** él y todos sus descendientes quedan marcados como no alcanzables
+
+#### Scenario: La raíz no se cuenta como inalcanzable
+- **WHEN** se evalúa la raíz del árbol, que no tiene padre por definición
+- **THEN** no queda marcada como no alcanzable
 
 #### Scenario: El grafo no tiene ciclos que cuelguen a quien lo recorra
 - **WHEN** el árbol fuente contiene un ciclo

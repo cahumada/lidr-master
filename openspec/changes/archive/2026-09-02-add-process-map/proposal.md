@@ -28,13 +28,17 @@ Esto se midió antes de diseñar, porque el alcance del mapa depende de lo que l
 documentación realmente dice.
 
 **Jerarquía de navegación — sólida pero con huecos.** El árbol `WINDOWS` tiene
-3.389 nodos con `parent_code`. De esos, **2.675 (79%) cuelgan del árbol** y
-**714 (21%) no tienen padre y son hojas**: transacciones reales —`CPL011`
-"Asientos automáticos de primas", `VI7001`, `MA5565`— que existen como ventana y
-**no son alcanzables desde ningún menú**. Otros 63 apuntan a un padre que el
-export no trae (44 padres distintos).
+3.389 nodos con `parent_code`, y **794 (23%) no son alcanzables desde ningún
+menú**: transacciones reales —`CPL011` "Asientos automáticos de primas",
+`VI7001`, `MA5565`— que existen como ventana y no cuelgan de ninguna opción.
 
-Que 714 transacciones no cuelguen de un menú **es información del mapa**, no un
+El número se corrigió durante la implementación. "Sin padre" son 717, pero 3 de
+esos **tienen hijos**, y cada descendiente de un subárbol colgado de la nada es
+tan inalcanzable como su raíz; sumando eso son 794. Contar solo los sin padre
+subcontaba por 80. La medida correcta es si el camino llega a la raíz, que
+`NavigationTree.path()` ya resuelve y a prueba de ciclos.
+
+Que 794 transacciones no cuelguen de un menú **es información del mapa**, no un
 defecto de la extracción: se ejecutan desde código o desde otra transacción, y
 saberlo es parte de entender el sistema.
 

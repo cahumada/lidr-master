@@ -115,7 +115,12 @@ def clean_tables(store_engine: Engine) -> Iterator[Engine]:
     || Vacía las dos tablas antes de cada test, así el orden nunca importa.
     """
     with store_engine.connect() as connection:
-        connection.execute(text(f"TRUNCATE {TEST_SCHEMA}.chunks, {TEST_SCHEMA}.corpus_versions"))
+        connection.execute(
+            text(
+                f"TRUNCATE {TEST_SCHEMA}.chunks, {TEST_SCHEMA}.corpus_versions,"
+                f" {TEST_SCHEMA}.process_map_edges"
+            )
+        )
         connection.commit()
     return store_engine
 
