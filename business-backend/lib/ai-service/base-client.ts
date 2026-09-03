@@ -179,6 +179,52 @@ export async function postFormData<T>(
   return (await response.json()) as T;
 }
 
+/**
+ * POST JSON and accept several success status codes — e.g. 200 and 202 on
+ * `/answer/agentic`, where 202 is a deliberate pause, not a failure.
+ * || POST JSON aceptando varios códigos de éxito — p. ej. 200 y 202 en
+ * `/answer/agentic`, donde 202 es una pausa deliberada, no un fallo.
+ */
+export async function postJsonAllowingStatuses<T>(
+  path: string,
+  body: unknown,
+  allowedStatuses: number[],
+  timeoutMs?: number,
+): Promise<{ status: number; data: T }> {
+  const response = await callAllowingStatuses(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    timeoutMs,
+    allowedStatuses,
+  });
+  return { status: response.status, data: (await response.json()) as T };
+}
+
+async function callAllowingStatuses(
+  path: string,
+  init: RequestInit & { timeoutMs?: number; allowedStatuses: number[] },
+): Promise<Response> {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, allowedStatuses, ...rest } = init;
+  const signal = AbortSignal.timeout(timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl()}${path}`, {
+      ...rest,
+      signal,
+      cache: "no-store",
+    });
+  } catch (error) {
+    throw new AiServiceUnreachable(error);
+  }
+
+  if (!allowedStatuses.includes(response.status)) {
+    throw new AiServiceError(response.status, await detailOf(response));
+  }
+  return response;
+}
+
 /** Shape the route handlers relay to the browser. || Forma que los route handlers pasan al browser. */
 export interface ErrorPayload {
   error: string;

@@ -41,17 +41,32 @@ producción.
 app/
 ├── api/                       # Route Handlers: el proxy hacia el servicio IA
 │   ├── search/
+│   ├── answer/agentic/ · answer/agentic/resume/
 │   ├── documents/ingest-file/
 │   └── corpus/rebuild · jobs · jobs/[id]
 ├── search/                    # Búsqueda: la pantalla principal
+├── answer/                    # Respuesta agentica: formulario, traza y gate humano
 ├── documents/                 # Vista previa de ingesta (no persiste)
 └── corpus/                    # Reconstrucción del corpus y sus trabajos
 lib/ai-service/                # LA ÚNICA capa que habla HTTP con el servicio
 ├── base-client.ts             # fetch, timeouts, y los errores del servicio
 ├── types.ts                   # espejo 1:1 de los schemas Pydantic
-├── search.ts · documents.ts · corpus.ts   # un cliente por contexto
+├── search.ts · documents.ts · corpus.ts · answer.ts   # un cliente por contexto
 components/ui/                 # shadcn: el código vive acá, no en node_modules
 ```
+
+### Respuesta agentica (`app/answer/`)
+
+Consume `POST /answer/agentic` del servicio IA: formulario de pregunta,
+respuesta con sus citas, y la traza de ruteo (`routing_history`) de los
+cuatro agentes que la produjeron. Cuando el servicio devuelve **202**
+(`awaiting_human_review`), la pantalla muestra el motivo (confianza baja,
+sin evidencia, cita sin respaldo) y botones para aprobar o rechazar (el
+schema también admite `adjust`, sin control propio en esta pantalla
+todavía) que llaman a `POST /answer/agentic/resume` — el 202 no es un error, es el
+gate humano funcionando. `base-client.ts` distingue explícitamente 200 de
+202 (`postJsonAllowingStatuses`) para que ese caso no caiga en la misma
+rama que un fallo real.
 
 Los contextos (`search`, `documents`, `corpus`) **no se importan entre sí**, y
 ninguna pantalla hace `fetch` al servicio por su cuenta: si falta una llamada,

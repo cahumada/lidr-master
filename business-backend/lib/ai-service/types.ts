@@ -206,3 +206,55 @@ export interface CorpusIdentity {
   tenant_id: string;
   doc_version: string;
 }
+
+// --- Respuesta / agentes || Answer / agents ----------------------------------
+
+/** Body of `POST /answer` and `POST /answer/agentic`. || Cuerpo de ambos endpoints. */
+export interface AnswerRequest {
+  question: string;
+  limit?: number;
+  max_per_document?: number;
+  module_code?: string[];
+  window_type_name?: string[];
+  lexical?: boolean;
+  split?: boolean;
+  rerank?: boolean;
+}
+
+export interface RoutingRecord {
+  step: number;
+  next_agent: string;
+  reason: string;
+  source: string;
+}
+
+export interface AnswerAgenticCompleted {
+  status: "completed";
+  thread_id: string;
+  question: string;
+  answer: string;
+  citations: SearchHit[];
+  grounded: boolean;
+  confidence: number | null;
+  needs_human_review: boolean;
+  review_reasons: string[];
+  routing_history: RoutingRecord[];
+}
+
+export interface AnswerAgenticPaused {
+  status: "awaiting_human_review";
+  thread_id: string;
+  question: string;
+  answer: string | null;
+  citations: SearchHit[];
+  review_reasons: string[];
+  confidence: number | null;
+}
+
+export type AnswerAgenticResponse = AnswerAgenticCompleted | AnswerAgenticPaused;
+
+export interface AnswerAgenticResumeRequest {
+  thread_id: string;
+  decision: "approve" | "reject" | "adjust";
+  note?: string | null;
+}

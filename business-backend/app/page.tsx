@@ -28,6 +28,12 @@ const SCREENS = [
       "Preguntar en lenguaje natural o por código de transacción. Cada resultado llega con su procedencia: documento, sección y qué rama de recuperación lo encontró.",
   },
   {
+    href: "/answer",
+    title: "Respuesta agentica",
+    description:
+      "Grafo orquestador con revisión humana opcional: planifica, recupera, sintetiza y valida citas sobre el corpus indexado.",
+  },
+  {
     href: "/documents",
     title: "Ingesta",
     description:
@@ -57,7 +63,7 @@ export default function Home() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {SCREENS.map((screen) => (
           <Link key={screen.href} href={screen.href} className="group">
             <Card className="hover:border-foreground/20 h-full transition-colors">
