@@ -51,8 +51,9 @@ Para cualquier cosa más allá de un typo o un fix de una línea:
    (`add-embedding-layer`, `fix-table-repair-gap`).
 2. **Implementar** — trabajar el checklist de `tasks.md`, tachando ítems a
    medida que entran.
-3. **Verificar** — `uv run pytest`, `uv run ruff check .`, más lo que pidan
-   las tasks del cambio. Un cambio no está listo mientras haya un check en rojo.
+3. **Verificar** — `uv run pytest` y `uv run ruff check .` desde
+   `ai-service/`, más lo que pidan las tasks del cambio. Un cambio no está
+   listo mientras haya un check en rojo.
 4. **Archivar** — integrar los deltas en `openspec/specs/`, y mover la
    carpeta del cambio a `openspec/changes/archive/<YYYY-MM-DD>-<change-id>/`.
 
@@ -63,7 +64,7 @@ código, decilo en el proposal en vez de antedatarlo.
 
 ## 3. Reglas no negociables
 
-- **Verificar el formato antes de cerrar**: `uv run python scripts/validate_specs.py`.
+- **Verificar el formato antes de cerrar**: `python scripts/validate_specs.py`.
   Es un script pelado sin dependencias externas, así que cualquier agente,
   cualquier harness y CI lo corren igual.
 - **Nunca borrar información de negocio en silencio.** Son reglas de negocio
@@ -88,12 +89,23 @@ código, decilo en el proposal en vez de antedatarlo.
 
 ## 4. Comandos
 
+Este repo es un monorepo de dos proyectos: `ai-service/` (el servicio Python) y
+`business-backend/` (el frontend y backend de negocio). Los comandos del
+servicio corren **desde `ai-service/`**:
+
 ```bash
+cd ai-service
 uv sync                                   # instalar dependencias
 uv run pytest                             # tests
 uv run ruff check .                       # lint
-uv run python scripts/validate_specs.py   # validar specs/changes
 uv run uvicorn app.main:app --reload      # servidor (Swagger en /docs)
+```
+
+El validador de specs corre **desde la raíz** y sin `uv` — es stdlib puro para
+que cualquier harness y CI lo corran igual:
+
+```bash
+python scripts/validate_specs.py          # validar specs/changes
 ```
 
 ## 5. Agregar otro harness

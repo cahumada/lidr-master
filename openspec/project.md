@@ -10,7 +10,44 @@ El corpus fuente son documentos markdown de especificación funcional, uno por
 transacción (`CA014`, `CA001`, ...), organizados en **30 módulos** de negocio
 (`policies`, `life`, `claims`, `collections`, `maintenance`, ...) bajo una raíz
 externa al repo (por defecto `D:\EspecificacionesFuncionales_md`). Tres
-documentos reales viven en `data/policies/` como fixtures de test.
+documentos reales viven en `ai-service/data/policies/` como fixtures de test.
+
+## Layout del repo
+
+Monorepo de dos proyectos, el layout que fija el programa del Master:
+
+```
+ai-service/         # el servicio Python + FastAPI (app/, scripts/, tests/, alembic/, data/, evals/)
+business-backend/   # el frontend y backend de negocio  (todavía no construido)
+openspec/           # la fuente de verdad — documenta los dos
+scripts/            # herramientas del repo: hoy solo validate_specs.py
+docker-compose.yml  # Postgres + pgvector para desarrollo local
+```
+
+**Las rutas de código en las specs del servicio IA son relativas a
+`ai-service/`.** Una spec que dice `app/generation/rag/chunking/functional_spec.py`
+se refiere a `ai-service/app/generation/rag/chunking/functional_spec.py`. El día
+que una spec describa código de `business-backend/`, esa spec nombra su ruta
+completa desde la raíz.
+
+Lo que la mudanza a `ai-service/` **no** renombró, y no se debe "arreglar":
+
+- La raíz del paquete Python sigue siendo `app.*`.
+- `TENANT_ID` y `DOC_VERSION` conservan sus valores: están estampados en las
+  57.101 filas de `chunks` y son parte de su clave única.
+- La base sigue siendo `visualtime_rag`, el volumen de compose sigue siendo
+  `pgdata` y el contenedor `visual-time-rag-postgres`.
+
+`docker-compose.yml` se queda en la raíz por una razón concreta: el nombre del
+proyecto de compose sale del directorio donde está el archivo. Moverlo a
+`ai-service/` renombraría el volumen a `ai-service_pgdata` y levantaría una base
+vacía, sin un solo error a la vista.
+
+`scripts/validate_specs.py` es el único script que no vive en `ai-service/`:
+deriva la raíz del repo de su propia ubicación para encontrar `openspec/`, que
+documenta los dos proyectos. Es stdlib puro, así que corre con `python
+scripts/validate_specs.py` desde la raíz, sin `uv` y sin `pyproject.toml` al
+lado.
 
 ## Stack
 
@@ -29,7 +66,7 @@ documentos reales viven en `data/policies/` como fixtures de test.
 Replica la arquitectura del curso (rama `session_16` de
 [LIDR-academy/ai-engineering](https://github.com/LIDR-academy/ai-engineering/tree/session_16/ai-service/app),
 donde el servicio vive en `ai-service/`, renombrado desde `estimator/` en la
-sesión 15):
+sesión 15). Todo lo que sigue cuelga de `ai-service/`:
 
 ```
 app/
@@ -130,13 +167,21 @@ toma ahora; si vive solo en código, espera.**
 
 ## Comandos
 
+Los del servicio corren desde `ai-service/`:
+
 ```bash
+cd ai-service
 uv sync
 uv run pytest
 uv run ruff check .
-uv run python scripts/validate_specs.py
 uv run uvicorn app.main:app --reload
 uv run python scripts/chunk_corpus.py --root "D:\EspecificacionesFuncionales_md" --out data/chunks
+```
+
+El validador de specs corre desde la raíz del repo, y sin `uv`:
+
+```bash
+python scripts/validate_specs.py
 ```
 
 ## Estado y alcance
