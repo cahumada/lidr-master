@@ -116,17 +116,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # pnpm ANTES que setup-node: `cache: pnpm` necesita el binario de pnpm
+      # para resolver dónde está su store. Al revés, el paso de cache falla.
+      # || pnpm BEFORE setup-node: `cache: pnpm` needs the pnpm binary to
+      # resolve its store location. The other way around, the cache step fails.
+      #
+      # La versión sale de `packageManager` en package.json, así que CI y una
+      # máquina con corepack instalan exactamente la misma.
+      # || The version comes from `packageManager` in package.json, so CI and a
+      # corepack machine install exactly the same one.
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: business-backend/package-lock.json
+          cache: pnpm
+          cache-dependency-path: business-backend/pnpm-lock.yaml
 
+      # `--frozen-lockfile` falla si pnpm-lock.yaml no coincide con
+      # package.json — la misma propiedad que `--frozen` del lado de uv.
+      # || `--frozen-lockfile` fails if pnpm-lock.yaml disagrees with
+      # package.json -- the same property uv's `--frozen` gives on the Python side.
       - name: Dependencias
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm lint
 
       # `next build` corre TypeScript, así que el chequeo de tipos entra acá.
       # No hay AI_SERVICE_URL: el build no llama al servicio, y si algún día lo
@@ -135,7 +150,7 @@ jobs:
       # AI_SERVICE_URL: the build does not call the service, and if it ever did,
       # this absence is what would make it fail instead of hiding it.
       - name: Build
-        run: npm run build
+        run: pnpm build
 
   # ---------------------------------------------------------------------------
   # Etapa 3 — validación de las specs

@@ -21,7 +21,7 @@ cd ai-service && uv sync && uv run uvicorn app.main:app --reload
 ```
 
 ```bash
-cd business-backend && npm install && npm run dev
+cd business-backend && pnpm install && pnpm dev
 ```
 
 Postgres con pgvector sale del compose de la raíz:

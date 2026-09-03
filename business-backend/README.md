@@ -9,9 +9,9 @@ Portada del monorepo en el [README de la raíz](../README.md).
 
 ```bash
 cd business-backend
-npm install
+pnpm install
 cp .env.example .env.local     # AI_SERVICE_URL apuntando a tu servicio
-npm run dev
+pnpm dev
 ```
 
 Necesita el servicio IA corriendo:
@@ -65,10 +65,10 @@ declara.
 ## Comandos
 
 ```bash
-npm run dev     # desarrollo
-npm run lint    # eslint
-npm run build   # build de producción; corre TypeScript
-npm start       # servir el build
+pnpm dev      # desarrollo
+pnpm lint     # eslint
+pnpm build    # build de producción; corre TypeScript
+pnpm start    # servir el build
 ```
 
 ## Despliegue

@@ -105,10 +105,10 @@ Los de la consola web, **desde `business-backend/`**:
 
 ```bash
 cd business-backend
-npm install
-npm run dev                               # desarrollo
-npm run lint                              # eslint
-npm run build                             # build; corre TypeScript
+pnpm install
+pnpm dev                               # desarrollo
+pnpm lint                              # eslint
+pnpm build                             # build; corre TypeScript
 ```
 
 El validador de specs corre **desde la raíz** y sin `uv` — es stdlib puro para
