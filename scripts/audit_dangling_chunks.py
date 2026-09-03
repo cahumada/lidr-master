@@ -38,7 +38,9 @@ from pathlib import Path
 # || Se corre como script (no `python -m`), así que se agrega la raíz del repo a sys.path.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.config import get_settings
 from app.generation.rag.chunking.functional_spec import _leaves_statement_open
+from app.ingestion.pipeline import corpus_dir
 
 HEADER_LINES = 2  # [Documento: ...] + [Sección: ...]
 
@@ -116,9 +118,16 @@ def audit(chunks_dir: Path, samples: int) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    # El default es la BASE; el directorio real lleva el nombre de la version,
+    # porque cada version de la documentacion tiene el suyo. Ver
+    # `app.ingestion.pipeline.corpus_dir`.
+    # || The default is the BASE; the real directory is named after the version,
+    # because each documentation version has its own. See
+    # `app.ingestion.pipeline.corpus_dir`.
     parser.add_argument("--chunks", type=Path, default=Path("data/chunks"))
     parser.add_argument("--samples", type=int, default=10)
     args = parser.parse_args()
+    args.chunks = corpus_dir(args.chunks, get_settings().DOC_VERSION)
 
     if not args.chunks.is_dir():
         print(f"no existe el directorio de chunks: {args.chunks}", file=sys.stderr)

@@ -118,7 +118,7 @@ def main() -> int:
     )
     elapsed = time.perf_counter() - started
 
-    (out_dir / REPORT_FILENAME).write_text(
+    (result.out_dir / REPORT_FILENAME).write_text(
         render_report(result, elapsed), encoding="utf-8"
     )
 

@@ -42,9 +42,12 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.foundation.persistence.database import get_async_session_factory
+from app.ingestion.pipeline import corpus_dir
 
 OUTPUT = Path("evals/golden_retrieval.json")
-CHUNKS_DIR = Path("data/chunks")
+# La BASE; el directorio real lleva el nombre de la version.
+# || The BASE; the real directory is named after the version.
+CHUNKS_BASE = Path("data/chunks")
 
 # Human-authored questions, merged in and never overwritten. They live in their
 # own file because regenerating the draft would wipe them, and they are the most
@@ -180,7 +183,9 @@ async def build(session, tenant: str, version: str, modules) -> tuple[list[dict]
     borrador 27% reaseguros.
     """
     params = {"tenant": tenant, "version": version}
-    module_of = corpus_module_map(CHUNKS_DIR, modules)
+    module_of = corpus_module_map(
+        corpus_dir(CHUNKS_BASE, get_settings().DOC_VERSION), modules
+    )
     in_focus = set(module_of)
     questions: list[dict] = []
 

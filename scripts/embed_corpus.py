@@ -123,7 +123,7 @@ def main() -> int:
     # || El manifiesto lo escribe el pipeline, porque el endpoint de rebuild
     # corre el mismo paso y una corrida que embebe sin dejar registro no se puede
     # auditar. Aca solo se arma el reporte legible.
-    (out_dir / REPORT_FILENAME).write_text(
+    (result.out_dir / REPORT_FILENAME).write_text(
         render_report(result.manifest, result.module_results, elapsed), "utf-8"
     )
 
@@ -131,7 +131,7 @@ def main() -> int:
     if result.failed_batches:
         print(
             f"{result.failed_batches} batch(es) failed and were NOT embedded. "
-            f"Re-run to retry only those. See {out_dir / REPORT_FILENAME}",
+            f"Re-run to retry only those. See {result.out_dir / REPORT_FILENAME}",
             file=sys.stderr,
         )
         return 1

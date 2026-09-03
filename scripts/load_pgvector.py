@@ -108,7 +108,7 @@ def main() -> int:
     # modulos se escriben dos veces.
     print(f"\n{result.rows_written:,} rows written in {elapsed:.1f}s")
 
-    (args.chunks / REPORT_FILENAME).write_text(render_report(result, elapsed), encoding="utf-8")
+    (result.chunks_dir / REPORT_FILENAME).write_text(render_report(result, elapsed), encoding="utf-8")
     return 0
 
 

@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from app.config import get_settings
 from app.generation.rag.embedding.embedder import EmbeddingError, HashEmbedder
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -42,13 +43,32 @@ def load_script():
 
 
 @pytest.fixture
-def corpus(tmp_path) -> Path:
+def corpus(tmp_path, monkeypatch) -> Path:
     """A two-module corpus in the shape ``chunk_corpus.py`` writes.
 
+    Written under its VERSION directory and returning the base, because that is
+    the shape the pipeline expects: each documentation version has its own
+    directory, and the callers pass the base.
+
     || Un corpus de dos módulos con la forma que escribe ``chunk_corpus.py``.
+    Escrito bajo su directorio de VERSIÓN y devolviendo la base, porque es la
+    forma que el pipeline espera: cada versión de la documentación tiene su
+    directorio, y quien llama pasa la base.
     """
-    chunks_dir = tmp_path / "chunks"
-    chunks_dir.mkdir()
+    from app.ingestion.pipeline import corpus_dir
+
+    # La version se fija acá y no se lee del `.env`: los pasos de lectura
+    # resuelven su directorio desde Settings, así que el test tiene que
+    # controlarla o depende de la máquina donde corre.
+    # || The version is pinned here and not read from `.env`: the reading steps
+    # resolve their directory from Settings, so the test has to control it or it
+    # depends on the machine it runs on.
+    monkeypatch.setattr(get_settings(), "DOC_VERSION", "v1", raising=False)
+    monkeypatch.setattr(get_settings(), "TENANT_ID", "acme_seguros", raising=False)
+
+    base = tmp_path / "chunks"
+    chunks_dir = corpus_dir(base, get_settings().DOC_VERSION)
+    chunks_dir.mkdir(parents=True)
 
     def chunk(text: str, index: int) -> dict:
         return {
@@ -56,8 +76,8 @@ def corpus(tmp_path) -> Path:
             "text": text,
             "token_count": 10,
             "metadata": {
-                "tenant_id": "acme_seguros",
-                "doc_version": "v1",
+                "tenant_id": get_settings().TENANT_ID,
+                "doc_version": get_settings().DOC_VERSION,
                 "content_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             },
         }
@@ -77,13 +97,22 @@ def corpus(tmp_path) -> Path:
         }
         (chunks_dir / f"{module}.json").write_text(json.dumps(payload), encoding="utf-8")
 
+    # El manifiesto declara la MISMA versión que nombra el directorio: el
+    # pipeline verifica que coincidan, porque un manifiesto que no coincide
+    # significa que alguien movió archivos.
+    # || The manifest declares the SAME version that names the directory: the
+    # pipeline checks they agree, because a mismatch means someone moved files.
     (chunks_dir / "manifest.json").write_text(
         json.dumps(
-            {"corpus_id": "test-corpus", "tenant_id": "acme_seguros", "doc_version": "v1"}
+            {
+                "corpus_id": "test-corpus",
+                "tenant_id": get_settings().TENANT_ID,
+                "doc_version": get_settings().DOC_VERSION,
+            }
         ),
         encoding="utf-8",
     )
-    return chunks_dir
+    return base
 
 
 @pytest.fixture
@@ -93,6 +122,19 @@ def script(monkeypatch):
         module.get_settings(), "EMBEDDING_BATCH_SIZE", 2, raising=False
     )
     return module
+
+
+def sidecar(out: Path) -> Path:
+    """Donde caen los sidecars: bajo el directorio de su versión.
+
+    El reporte legible tambien, porque pertenece a la corrida de esa version.
+
+    || Where the sidecars land: under their version's directory. The
+    human-readable report too, because it belongs to that version's run.
+    """
+    from app.ingestion.pipeline import corpus_dir
+
+    return corpus_dir(out, get_settings().DOC_VERSION)
 
 
 def invoke(script, monkeypatch, argv: list[str], embedder=None) -> int:
@@ -141,12 +183,12 @@ def test_a_full_run_writes_sidecars_a_manifest_and_a_report(
     )
 
     assert code == 0
-    assert (out / "policies.npy").exists()
-    assert (out / "policies.index.json").exists()
-    assert (out / "claims.npy").exists()
-    assert (out / "embedding_report.md").exists()
+    assert (sidecar(out) / "policies.npy").exists()
+    assert (sidecar(out) / "policies.index.json").exists()
+    assert (sidecar(out) / "claims.npy").exists()
+    assert (sidecar(out) / "embedding_report.md").exists()
 
-    manifest = json.loads((out / "embeddings_manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((sidecar(out) / "embeddings_manifest.json").read_text(encoding="utf-8"))
     assert manifest["corpus_id"] == "test-corpus"
     assert manifest["tenant_id"] == "acme_seguros"
     assert manifest["total_rows"] == 3, "2 rows in policies (one deduped) + 1 in claims"
@@ -188,7 +230,7 @@ def test_failed_batches_make_the_exit_code_non_zero(script, corpus, tmp_path, mo
     )
 
     assert code == 1
-    manifest = json.loads((out / "embeddings_manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((sidecar(out) / "embeddings_manifest.json").read_text(encoding="utf-8"))
     assert manifest["failed_batches"], "the report must name what is missing"
     assert manifest["total_rows"] == 0
 
@@ -203,8 +245,8 @@ def test_a_module_filter_limits_the_run(script, corpus, tmp_path, monkeypatch):
         HashEmbedder(DIMS),
     )
 
-    assert (out / "claims.npy").exists()
-    assert not (out / "policies.npy").exists()
+    assert (sidecar(out) / "claims.npy").exists()
+    assert not (sidecar(out) / "policies.npy").exists()
 
 
 def test_a_missing_corpus_is_an_error_not_an_empty_success(script, tmp_path, monkeypatch):
@@ -218,9 +260,10 @@ def test_a_chunk_over_the_model_limit_stops_the_script(script, corpus, tmp_path,
     """The check runs during planning, so even --dry-run catches it."""
     from app.generation.rag.embedding.runner import CorpusValidationError
 
-    payload = json.loads((corpus / "claims.json").read_text(encoding="utf-8"))
+    versionado = sidecar(corpus)
+    payload = json.loads((versionado / "claims.json").read_text(encoding="utf-8"))
     payload["documents"][0]["chunks"][0]["token_count"] = 99_999
-    (corpus / "claims.json").write_text(json.dumps(payload), encoding="utf-8")
+    (versionado / "claims.json").write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(CorpusValidationError):
         invoke(script, monkeypatch, ["--chunks", str(corpus), "--dry-run"])
@@ -241,6 +284,6 @@ def test_the_report_file_keeps_its_accents(script, corpus, tmp_path, monkeypatch
     out = tmp_path / "embeddings"
     invoke(script, monkeypatch, ["--chunks", str(corpus), "--out", str(out)], HashEmbedder(DIMS))
 
-    report = (out / "embedding_report.md").read_text(encoding="utf-8")
+    report = (sidecar(out) / "embedding_report.md").read_text(encoding="utf-8")
     assert "Módulo" in report
     assert "Duplicados ahorrados" in report

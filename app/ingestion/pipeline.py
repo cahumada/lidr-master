@@ -31,7 +31,9 @@ que el mismo código escriba a una terminal y a Postgres.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -65,6 +67,62 @@ def _silent(*_args, **_kwargs) -> None:
 # || El directorio del corpus tiene un JSON por módulo más dos archivos que no
 # son módulos. Estaba copiado en tres scripts antes de que existiera este módulo.
 NON_MODULE_FILES = frozenset({"manifest.json"})
+
+# Un `doc_version` no es un nombre de directorio: "DW Funtionals 2026.1" tiene
+# espacios y puntos, y usarlo crudo obliga a entrecomillar cada invocacion de la
+# CLI. Se convierte en slug.
+#
+# Y el slug lleva un hash corto del valor ORIGINAL, que no es adorno: sin el,
+# "2026.1" y "2026 1" y "2026-1" producen el mismo slug y dos versiones
+# distintas compartirian directorio, mezclando corpus EN SILENCIO. Es la misma
+# clase de fallo que este proyecto viene persiguiendo todo el tiempo.
+# || A `doc_version` is not a directory name: "DW Funtionals 2026.1" has spaces
+# and dots, and using it raw forces quoting on every CLI invocation. It is
+# slugified.
+#
+# And the slug carries a short hash of the ORIGINAL value, which is not
+# decoration: without it "2026.1", "2026 1" and "2026-1" produce the same slug
+# and two different versions would share a directory, mixing corpora SILENTLY.
+_SLUG_SEPARATORS = re.compile(r"[^a-z0-9]+")
+
+
+def version_slug(doc_version: str) -> str:
+    """A filesystem-safe, collision-free directory name for a ``doc_version``.
+
+    || Un nombre de directorio seguro y sin colisiones para un ``doc_version``.
+    """
+    plain = doc_version.lower().translate(str.maketrans("aeiounc", "aeiounc"))
+    slug = _SLUG_SEPARATORS.sub("-", plain).strip("-") or "unversioned"
+    fingerprint = hashlib.sha256(doc_version.encode("utf-8")).hexdigest()[:6]
+    return f"{slug}-{fingerprint}"
+
+
+def corpus_dir(base: Path, doc_version: str) -> Path:
+    """Where one documentation version's artifacts live.
+
+    Every generated artifact -- the chunked corpus and the vector sidecar -- goes
+    under its version. Without this, re-chunking 2026.2 DESTROYS 2026.1's
+    artifacts in place, and with them the ability to reload the previous version
+    without paying to embed it again. Demonstrated: of 384 chunks of a first
+    corpus, 0 survived chunking a second one over it.
+
+    The tenant is NOT in the path on purpose: one process serves exactly one
+    tenant (`Settings.TENANT_ID` is a single value read everywhere), so a
+    per-tenant segment would be a directory level that never has a sibling.
+
+    || Donde viven los artefactos de una version de la documentacion. Cada
+    artefacto generado va bajo su version. Sin esto, re-trocear 2026.2 DESTRUYE
+    los artefactos de 2026.1 en el lugar, y con ellos la posibilidad de recargar
+    la version anterior sin volver a pagar por embeberla. Demostrado: de 384
+    chunks de un primer corpus, sobrevivieron 0 al trocear un segundo encima.
+
+    El tenant NO va en la ruta a proposito: un proceso sirve exactamente un
+    tenant (`Settings.TENANT_ID` es un valor unico leido en todos lados), asi
+    que un segmento por tenant seria un nivel de directorio que nunca tiene
+    hermanos.
+    """
+    return base / version_slug(doc_version)
+
 
 MANIFEST_FILENAME = "manifest.json"
 # El del sidecar, que NO es el del corpus: viven en directorios distintos y
@@ -102,7 +160,23 @@ def corpus_identity(chunks_dir: Path) -> tuple[str, str, str]:
             f"|| {manifest_path} no existe. Corré primero el paso de chunking."
         )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    return manifest["corpus_id"], manifest["tenant_id"], manifest["doc_version"]
+    declared = manifest["doc_version"]
+    # El directorio lleva el nombre de su version, asi que el manifiesto de
+    # adentro TIENE que coincidir. Si no, alguien movio archivos, y cargar un
+    # corpus atribuyendolo a otra version es la clase de error que despues no se
+    # ve: las filas quedan con la version equivocada y el prune de la version
+    # real las borra.
+    # || The directory is named after its version, so the manifest inside MUST
+    # agree. If it does not, someone moved files, and loading a corpus under the
+    # wrong version is the kind of error that does not show up later: the rows
+    # carry the wrong version and the real version's prune deletes them.
+    if chunks_dir.name and chunks_dir.name != version_slug(declared):
+        raise ValueError(
+            f"{chunks_dir} holds a manifest for {declared!r}, whose directory would be "
+            f"{version_slug(declared)!r}. || {chunks_dir} tiene un manifiesto de "
+            f"{declared!r}, cuyo directorio seria {version_slug(declared)!r}."
+        )
+    return manifest["corpus_id"], manifest["tenant_id"], declared
 
 def chunk_module(
     chunker: FunctionalSpecChunker, source: CorpusSource, module: str, keys: list[str]
@@ -178,6 +252,11 @@ def chunk_module(
 @dataclass
 class ChunkStepResult:
     corpus_id: str
+    # Donde escribio de verdad, resuelto por version. El reporte del script va
+    # aca y no en la base: pertenece a la corrida de esta version.
+    # || Where it actually wrote, resolved by version. The script's report goes
+    # here and not in the base: it belongs to this version's run.
+    out_dir: Path
     # De donde salio este corpus. En el manifiesto y en el reporte, porque un
     # corpus sin procedencia no se puede rastrear.
     # || Where this corpus came from. In the manifest and in the report, because
@@ -197,6 +276,9 @@ class ChunkStepResult:
 
 @dataclass
 class EmbedStepResult:
+    # Donde escribio de verdad, resuelto por version.
+    # || Where it actually wrote, resolved by version.
+    out_dir: Path
     modules: int
     to_embed: int
     reused: int
@@ -230,6 +312,9 @@ class EmbedStepResult:
 @dataclass
 class LoadStepResult:
     corpus_id: str
+    # De donde leyo, resuelto por version.
+    # || Where it read from, resolved by version.
+    chunks_dir: Path
     tenant_id: str
     doc_version: str
     modules: int
@@ -268,6 +353,9 @@ def chunk_corpus(
     tenant_id = tenant_id or settings.TENANT_ID
     doc_version = doc_version or settings.DOC_VERSION
 
+    # Cada version tiene su directorio. Ver `corpus_dir`.
+    # || Each version gets its own directory. See `corpus_dir`.
+    out_dir = corpus_dir(out_dir, doc_version)
     out_dir.mkdir(parents=True, exist_ok=True)
     discovered = source.modules()
     if modules:
@@ -306,6 +394,7 @@ def chunk_corpus(
 
     result = ChunkStepResult(
         corpus_id=str(uuid.uuid4()),
+        out_dir=out_dir,
         source=source.label(),
         tenant_id=tenant_id,
         doc_version=doc_version,
@@ -420,7 +509,8 @@ def embed_corpus(
     from app.generation.rag.embedding.sidecar import load_sidecar
 
     settings = get_settings()
-    out_dir = out_dir or settings.EMBEDDINGS_PATH
+    chunks_dir = corpus_dir(chunks_dir, settings.DOC_VERSION)
+    out_dir = corpus_dir(out_dir or settings.EMBEDDINGS_PATH, settings.DOC_VERSION)
 
     paths = module_files(chunks_dir)
     if modules:
@@ -441,6 +531,7 @@ def embed_corpus(
 
     tokens = sum(plan.tokens_to_bill for _, _, plan in plans)
     result = EmbedStepResult(
+        out_dir=out_dir,
         modules=len(plans),
         to_embed=sum(len(plan.to_embed) for _, _, plan in plans),
         reused=sum(plan.reused for _, _, plan in plans),
@@ -558,7 +649,10 @@ def load_corpus(
     from app.generation.rag.store.loader import iter_rows, load_module, prune_corpus
 
     settings = get_settings()
-    embeddings_dir = embeddings_dir or settings.EMBEDDINGS_PATH
+    chunks_dir = corpus_dir(chunks_dir, settings.DOC_VERSION)
+    embeddings_dir = corpus_dir(
+        embeddings_dir or settings.EMBEDDINGS_PATH, settings.DOC_VERSION
+    )
 
     paths = module_files(chunks_dir)
     if modules:
@@ -584,6 +678,7 @@ def load_corpus(
     prepared, corpus_hashes = [], set()
     result = LoadStepResult(
         corpus_id=corpus_id,
+        chunks_dir=chunks_dir,
         tenant_id=tenant_id,
         doc_version=doc_version,
         modules=len(paths),

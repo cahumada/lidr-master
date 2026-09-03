@@ -32,6 +32,7 @@ from app.config import get_settings
 from app.generation.rag.navigation import get_navigation_tree
 from app.generation.rag.process_map.builder import build, load_documents, to_json
 from app.generation.rag.process_map.cag import ContextTooLargeError, render
+from app.ingestion.pipeline import corpus_dir
 
 REPORT_FILENAME = "process_map_report.md"
 
@@ -53,6 +54,12 @@ def corpus_identity(chunks_dir: Path) -> tuple[str, str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    # El default es la BASE; el directorio real lleva el nombre de la version,
+    # porque cada version de la documentacion tiene el suyo. Ver
+    # `app.ingestion.pipeline.corpus_dir`.
+    # || The default is the BASE; the real directory is named after the version,
+    # because each documentation version has its own. See
+    # `app.ingestion.pipeline.corpus_dir`.
     parser.add_argument("--chunks", type=Path, default=Path("data/chunks"))
     parser.add_argument(
         "--dry-run",
@@ -63,6 +70,7 @@ def main() -> int:
         "--skip-database", action="store_true", help="Write the artifacts, skip the load."
     )
     args = parser.parse_args()
+    args.chunks = corpus_dir(args.chunks, get_settings().DOC_VERSION)
 
     settings = get_settings()
     tenant_id, doc_version = corpus_identity(args.chunks)

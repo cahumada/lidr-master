@@ -9,9 +9,11 @@ import pytest
 from app.ingestion.pipeline import (
     EMBEDDING_MANIFEST_FILENAME,
     MANIFEST_FILENAME,
+    corpus_dir,
     corpus_identity,
     load_corpus,
     module_files,
+    version_slug,
 )
 
 
@@ -35,12 +37,45 @@ def test_the_identity_comes_from_the_manifest(tmp_path):
     """Del manifiesto y nunca de Settings: el corpus en disco lo produjo una
     corrida concreta, y cargarlo con otra identidad lo atribuiria al cliente
     equivocado."""
-    (tmp_path / MANIFEST_FILENAME).write_text(
+    versionado = corpus_dir(tmp_path, "v9")
+    versionado.mkdir(parents=True)
+    (versionado / MANIFEST_FILENAME).write_text(
         json.dumps({"corpus_id": "c1", "tenant_id": "acme", "doc_version": "v9"}),
         encoding="utf-8",
     )
 
-    assert corpus_identity(tmp_path) == ("c1", "acme", "v9")
+    assert corpus_identity(versionado) == ("c1", "acme", "v9")
+
+
+def test_a_manifest_that_disagrees_with_its_directory_is_an_error(tmp_path):
+    """El directorio lleva el nombre de su version, asi que el manifiesto de
+    adentro TIENE que coincidir. Si no, alguien movio archivos, y cargar un
+    corpus atribuyendolo a otra version no se ve despues: las filas quedan con
+    la version equivocada y el prune de la version real las borra."""
+    equivocado = corpus_dir(tmp_path, "v1")
+    equivocado.mkdir(parents=True)
+    (equivocado / MANIFEST_FILENAME).write_text(
+        json.dumps({"corpus_id": "c1", "tenant_id": "acme", "doc_version": "v9"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="v9"):
+        corpus_identity(equivocado)
+
+
+def test_two_versions_that_slugify_alike_do_not_share_a_directory():
+    """Sin el hash del valor original, "2026.1" y "2026 1" y "2026-1" darian el
+    mismo directorio y mezclarian corpus EN SILENCIO."""
+    slugs = {version_slug(v) for v in ("2026.1", "2026 1", "2026-1")}
+    assert len(slugs) == 3
+
+
+def test_the_slug_is_a_usable_directory_name():
+    """Un doc_version real tiene espacios y puntos, y usarlo crudo obliga a
+    entrecomillar cada invocacion de la CLI."""
+    slug = version_slug("DW Funtionals 2026.1")
+    assert " " not in slug
+    assert slug.startswith("dw-funtionals-2026-1-")
 
 
 def test_no_manifest_says_so_instead_of_guessing(tmp_path):
