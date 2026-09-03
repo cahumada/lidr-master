@@ -6,10 +6,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import type { SearchHit, SearchResponse } from "@/lib/ai-service/types";
+import type { SearchFacets, SearchHit, SearchResponse } from "@/lib/ai-service/types";
 
 /**
  * Every toggle carries the number that was measured for it.
@@ -42,11 +43,80 @@ const TOGGLES = [
   },
 ];
 
-export function SearchConsole() {
+/**
+ * A checkbox list with an explicit "all" default, mutually exclusive with any
+ * specific selection: picking a value turns "all" off, and clearing every
+ * value turns it back on. There is no separate flag to track that -- an empty
+ * `selected` array already means "all", so the two states cannot disagree.
+ *
+ * || Un listado de checkboxes con un default explícito "todos", mutuamente
+ * excluyente con cualquier selección puntual: elegir un valor apaga "todos", y
+ * vaciar la selección lo vuelve a prender. No hay un flag aparte para eso: un
+ * arreglo `selected` vacío ya significa "todos", así que los dos estados no
+ * pueden discrepar.
+ */
+function MultiSelectFilter({
+  label,
+  allLabel,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  allLabel: string;
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const isAll = selected.length === 0;
+
+  function toggle(option: string) {
+    onChange(
+      selected.includes(option)
+        ? selected.filter((value) => value !== option)
+        : [...selected, option],
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label className="text-xs">{label}</Label>
+      <div className="flex max-h-40 flex-col gap-1.5 overflow-y-auto rounded-lg border p-2.5">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <Checkbox checked={isAll} onCheckedChange={() => onChange([])} />
+          {allLabel}
+        </label>
+        {options.length === 0 ? (
+          <p className="text-muted-foreground text-xs">
+            Sin valores en el corpus todavía.
+          </p>
+        ) : (
+          options.map((option) => (
+            <label key={option} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={selected.includes(option)}
+                onCheckedChange={() => toggle(option)}
+              />
+              <span className="truncate">{option}</span>
+            </label>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function SearchConsole({ initialFacets }: { initialFacets: SearchFacets }) {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState("10");
-  const [moduleCode, setModuleCode] = useState("");
-  const [windowType, setWindowType] = useState("");
+  // Empty selection means the default ("Todos" / "Cualquiera") is in effect --
+  // see `MultiSelectFilter`. No separate boolean to track: an empty array IS
+  // the default, so the two can never disagree.
+  // || Selección vacía significa que el default ("Todos" / "Cualquiera") está
+  // vigente -- ver `MultiSelectFilter`. Sin un booleano aparte para rastrearlo:
+  // un arreglo vacío ES el default, así que los dos nunca pueden discrepar.
+  const [moduleCodes, setModuleCodes] = useState<string[]>([]);
+  const [windowTypes, setWindowTypes] = useState<string[]>([]);
   const [flags, setFlags] = useState({
     rerank: true,
     split: true,
@@ -73,8 +143,12 @@ export function SearchConsole() {
       split: String(flags.split),
       lexical: String(flags.lexical),
     });
-    if (moduleCode.trim()) params.set("module_code", moduleCode.trim());
-    if (windowType.trim()) params.set("window_type_name", windowType.trim());
+    // Repeated params, not comma-joined: `/api/search` reads them with
+    // `searchParams.getAll`, which is what turns into the `IN` filter.
+    // || Parámetros repetidos, no unidos por coma: `/api/search` los lee con
+    // `searchParams.getAll`, que es lo que se vuelve el filtro `IN`.
+    for (const code of moduleCodes) params.append("module_code", code);
+    for (const name of windowTypes) params.append("window_type_name", name);
 
     try {
       const response = await fetch(`/api/search?${params}`);
@@ -128,28 +202,20 @@ export function SearchConsole() {
               onChange={(event) => setLimit(event.target.value)}
             />
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="module" className="text-xs">
-              Módulo
-            </Label>
-            <Input
-              id="module"
-              value={moduleCode}
-              onChange={(event) => setModuleCode(event.target.value)}
-              placeholder="CA"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="window-type" className="text-xs">
-              Tipo de ventana
-            </Label>
-            <Input
-              id="window-type"
-              value={windowType}
-              onChange={(event) => setWindowType(event.target.value)}
-              placeholder="Masivo con encabezado"
-            />
-          </div>
+          <MultiSelectFilter
+            label="Módulo"
+            allLabel="Todos"
+            options={initialFacets.modules}
+            selected={moduleCodes}
+            onChange={setModuleCodes}
+          />
+          <MultiSelectFilter
+            label="Tipo de ventana"
+            allLabel="Cualquiera"
+            options={initialFacets.window_types}
+            selected={windowTypes}
+            onChange={setWindowTypes}
+          />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">

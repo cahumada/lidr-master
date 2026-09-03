@@ -7,6 +7,11 @@ apoyarse.
 ## 1. Scaffolding de `business-backend/`
 - [x] 1.1 `create-next-app` en `business-backend/` — TypeScript, App Router,
       Tailwind, ESLint.
+- [x] 1.1b Pasar a **pnpm**: `pnpm import` para derivar `pnpm-lock.yaml` del
+      `package-lock.json` que dejó el scaffolding (así las versiones resueltas
+      son las mismas que ya se probaron, no una resolución nueva), borrar
+      `package-lock.json`, y fijar `packageManager: pnpm@10.0.0` para que CI,
+      Vercel y una máquina con corepack usen la misma versión.
 - [x] 1.2 Inicializar shadcn/ui. Copiar **solo** los componentes que las
       pantallas usan (`button`, `input`, `card`, `badge`, `table`, `switch`,
       `select`, `alert`) — no el catálogo entero.
@@ -14,6 +19,23 @@ apoyarse.
       Sin prefijo `NEXT_PUBLIC_`: si el browser la puede leer, el diseño se
       rompió.
 - [x] 1.4 Layout base con la navegación de las tres pantallas.
+- [x] 1.5 Tema claro/oscuro: aplicar el registry item del tema `Woken` de
+      tweakcn (`https://tweakcn.com/r/themes/cmt3ah8fc000004id2kh74do2`) en
+      `app/globals.css` — valores literales en `:root` / `.dark`, y los tokens
+      nuevos (sombras, tracking, `font-serif`) mapeados en `@theme inline`.
+      Incluye `color-scheme`, sin el cual los widgets nativos (scrollbars, el
+      input de archivo de la pantalla de ingesta) siguen claros en oscuro.
+- [x] 1.6 `lib/theme.ts` + `components/theme-toggle.tsx`: un solo lugar que
+      sabe la clave de storage y la clase, y un botón que no guarda estado de
+      React — el tema vigente es la clase `dark` en `<html>` y los íconos se
+      alternan por CSS. Sin `next-themes`: la mecánica son treinta líneas y
+      `AGENTS.md` §3 pide justificar cada dependencia.
+- [x] 1.7 Script inline en `<head>` que aplica el tema antes del primer
+      pintado, con `suppressHydrationWarning` en `<html>` y la reaplicación en
+      `useLayoutEffect` que pide el remount de Strict Mode en dev (ver
+      `node_modules/next/dist/docs/01-app/02-guides/preventing-flash-before-hydration.md`).
+- [x] 1.8 Sacar `next/font`/Geist: el tema trae sus propias pilas tipográficas,
+      todas del sistema. Dejarlo sería bajar una webfont que nada renderiza.
 
 ## 2. La capa que habla con el servicio IA
 - [x] 2.1 `lib/ai-service/base-client.ts`: `fetch` contra `AI_SERVICE_URL`,
@@ -45,6 +67,11 @@ apoyarse.
       `limit`, toggles `lexical`/`split`/`rerank` con su número medido al
       lado) + resultados con procedencia completa (documento, título, sección,
       score, ramas) + las sub-preguntas cuando `split` está activo.
+- [x] 4.1b `module_code`/`window_type_name` pasaron de input de texto libre a
+      listado de selección múltiple ("Todos"/"Cualquiera" por default),
+      poblado desde `GET /api/search/facets` — ver
+      `openspec/changes/add-search-multiselect-filters/` (cambio separado que
+      además agregó filtros de varios valores con OR al servicio).
 - [x] 4.2 **Vista previa de ingesta**: subir un `.md` → chunks y estadísticas.
       Sin botón de guardar: esa operación no existe en el servicio.
 - [x] 4.3 **Reconstrucción de corpus**: selección de pasos
@@ -77,7 +104,7 @@ apoyarse.
       (`ai-service`, `business-backend`).
 - [x] 7.2 Job del servicio IA: `uv sync --frozen`, `ruff check .`, `pytest -q`,
       `working-directory: ai-service`, condicionado al filtro.
-- [x] 7.3 Job de la app web: `npm ci`, `npm run lint`, `npm run build`,
+- [x] 7.3 Job de la app web: `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm build`,
       `working-directory: business-backend`, condicionado al filtro.
 - [x] 7.4 Ningún job de deploy (§5, §6).
 - [ ] 7.5 Chequeo de contrato entre `types.ts` y los schemas Pydantic, al
@@ -99,7 +126,7 @@ apoyarse.
 - [x] 8.3 `AGENTS.md` §4: los comandos de `business-backend/`.
 
 ## 9. Verificación
-- [x] 9.1 `npm run lint` y `npm run build` en verde.
+- [x] 9.1 `pnpm lint` y `pnpm build` en verde.
 - [x] 9.2 Desde `ai-service/`: `uv run pytest` y `uv run ruff check .` siguen
       en verde (este change no debería tocar nada del servicio; si algo falla,
       es que sí lo tocó).
@@ -107,6 +134,9 @@ apoyarse.
 - [x] 9.4 Smoke local: las tres pantallas contra
       `uv run uvicorn app.main:app --reload`, incluido el camino de error
       (apagar el servicio y confirmar que la UI dice qué pasó, sin traza cruda).
+- [x] 9.8 Smoke del tema: las tres pantallas en claro y en oscuro, la elección
+      sobreviviendo una recarga y una navegación dura, y sin flash blanco al
+      cargar con el tema oscuro puesto.
 - [ ] 9.5 Smoke post-deploy: las tres pantallas en Vercel contra Railway.
 - [ ] 9.6 Confirmar los dos filtros de despliegue con commits reales: uno que
       toque solo `business-backend/` (no debe redesplegar Railway) y uno que

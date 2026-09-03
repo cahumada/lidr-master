@@ -34,6 +34,7 @@ class FakeRetriever:
                     section="Validaciones",
                     bullet_path="Capital > Limites",
                     module_code="CA",
+                    document_kind="content",
                     text="El capital asegurado no puede superar el maximo del plan.",
                     score=0.031,
                     branches=["vector", "exact"],
@@ -166,8 +167,22 @@ def test_the_filters_reach_the_repository(client, retriever, monkeypatch):
     )
 
     filters = retriever.calls[0]["filters"]
-    assert filters.module_code == "CA"
-    assert filters.window_type_name == "Masivo con encabezado"
+    assert filters.module_code == ["CA"]
+    assert filters.window_type_name == ["Masivo con encabezado"]
+
+
+def test_a_repeated_filter_reaches_the_repository_as_a_list(client, retriever, monkeypatch):
+    """`?module_code=CA&module_code=DF` is the OR a user comparing two modules
+    needs, not two searches pasted together by hand."""
+    monkeypatch.setattr("app.api.search.get_reranker", lambda: None)
+
+    client.get(
+        "/search",
+        params=[("q", "transacciones masivas"), ("module_code", "CA"), ("module_code", "DF")],
+    )
+
+    filters = retriever.calls[0]["filters"]
+    assert filters.module_code == ["CA", "DF"]
 
 
 def test_a_query_of_one_character_is_rejected(client):

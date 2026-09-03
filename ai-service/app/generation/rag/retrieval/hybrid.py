@@ -125,6 +125,104 @@ def identifier_terms(query: str) -> list[str]:
     return list(dict.fromkeys(terms))
 
 
+# Off by default until measured. `SI001_A` and `DP003_A` are `document_kind` =
+# 'index' documents that ARE the correct answer to two real golden-set
+# questions -- a blunt exclusion would break exactly the hard cases this corpus
+# already struggles with. See `openspec/changes/.../design.md` for the sweep
+# that picked the value.
+# || Apagado por default hasta medirlo. `SI001_A` y `DP003_A` son documentos
+# `document_kind` = 'index' que SON la respuesta correcta a dos preguntas reales
+# del golden set -- una exclusión a lo bruto rompería justo los casos duros que
+# este corpus ya sufre. Ver `openspec/changes/.../design.md` por el barrido que
+# eligió el valor.
+DEFAULT_INDEX_PENALTY = 1.0
+DEFAULT_DEDUPE_TEXT = False
+
+
+def _demote_index_kind(fused: list, by_kind: dict[str, str | None], penalty: float) -> list:
+    """Multiply an 'index' chunk's RRF score by ``penalty`` and re-sort.
+
+    A SOFT demotion and not a filter: measured, `document_kind='index'` chunks
+    are 0.8% of the corpus by count but took 6 of 10 places in a real question
+    -- 4-8x their share -- because a one-line breadcrumb like "Tipo de reaseguro
+    (MA0008)" embeds close to short factual questions. But two real golden-set
+    answers (`SI001_A`, `DP003_A`) ARE index documents, so `penalty=1.0` (no-op)
+    stays the default until a sweep picks a value that helps the common case
+    without erasing those two.
+
+    This is a per-CANDIDATE property, not a per-BRANCH weight: it does not
+    reopen the "no per-branch weights" decision in `fusion.py` -- RRF still
+    decides purely by position, and this runs as a separate pass afterward.
+
+    || Multiplica el puntaje RRF de un chunk 'index' por ``penalty`` y
+    reordena. Una democión SUAVE y no un filtro: medido, los chunks
+    `document_kind='index'` son 0,8% del corpus por conteo y se llevaron 6 de
+    10 lugares en una pregunta real —4-8x su participación— porque un
+    breadcrumb de una línea como "Tipo de reaseguro (MA0008)" embebe cerca de
+    preguntas factuales cortas. Pero dos respuestas reales del golden set
+    (`SI001_A`, `DP003_A`) SON documentos índice, así que `penalty=1.0` (no-op)
+    se queda como default hasta que un barrido elija un valor que ayude al
+    caso común sin borrar esos dos.
+
+    Es una propiedad por CANDIDATO, no un peso por RAMA: no reabre la decisión
+    de "sin pesos por rama" de `fusion.py` — RRF sigue decidiendo puramente por
+    posición, y esto corre como un paso aparte después.
+    """
+    if penalty >= 1.0:
+        return fused
+    for item in fused:
+        if by_kind.get(item.key) == "index":
+            item.score *= penalty
+    fused.sort(key=lambda item: (-item.score, item.key))
+    return fused
+
+
+def _dedupe_by_text(fused: list, by_text: dict[str, str]) -> list:
+    """Drop a candidate whose BODY text (the header stripped) already appeared.
+
+    The contextual header is exactly one line, ``[Documento: X - <title>]``,
+    that ``_stamp()`` always puts first -- everything from the second line on
+    is section breadcrumb plus body, and two SIBLING documents in this corpus
+    (``REINSURANCE_INTRO`` / ``REINSURANCE_REPORTS_INTRO``) carry byte-identical
+    section and body text under different ids. With `cap=1` those are two
+    different "documents" that spend two result slots on one sentence.
+
+    Keeps whichever occurrence ranks first -- this runs AFTER
+    `_demote_index_kind`, so the survivor is the post-demotion winner.
+
+    || Descarta un candidato cuyo texto de CUERPO (sin el header) ya apareció.
+    El header contextual es exactamente una línea, ``[Documento: X -
+    <título>]``, que ``_stamp()`` siempre pone primero — todo desde la segunda
+    línea es breadcrumb de sección más cuerpo, y dos documentos HERMANOS de
+    este corpus (``REINSURANCE_INTRO`` / ``REINSURANCE_REPORTS_INTRO``) llevan
+    texto de sección y cuerpo byte-idéntico bajo ids distintos. Con `cap=1` esos
+    son dos "documentos" distintos que gastan dos lugares de resultado en una
+    sola oración.
+
+    Se queda con la ocurrencia que rankea primero — esto corre DESPUÉS de
+    `_demote_index_kind`, así que la que sobrevive es la ganadora post-democión.
+    """
+    seen: set[str] = set()
+    kept = []
+    for item in fused:
+        body = by_text.get(item.key)
+        if body is not None:
+            if body in seen:
+                continue
+            seen.add(body)
+        kept.append(item)
+    return kept
+
+
+def _body_of(text: str) -> str:
+    """Everything after the first line -- the ``[Documento: ...]`` header.
+
+    || Todo después de la primera línea — el header ``[Documento: ...]``.
+    """
+    _, _, rest = text.partition("\n")
+    return rest
+
+
 @dataclass
 class RetrievedChunk:
     """One result, with everything needed to verify and cite it.
@@ -139,6 +237,7 @@ class RetrievedChunk:
     section: str | None
     bullet_path: str | None
     module_code: str | None
+    document_kind: str | None
     text: str
     score: float
     # Which branches found it. A chunk found by two is a different kind of
@@ -211,6 +310,9 @@ class HybridRetriever:
         branches: tuple[str, ...],
         fused: list,
         by_document: dict[str, str],
+        *,
+        index_penalty: float,
+        dedupe_text: bool,
     ) -> tuple[list, dict[str, str]]:
         """What the sub-questions find that the whole question missed, appended.
 
@@ -230,7 +332,10 @@ class HybridRetriever:
 
         sub_rankings: dict[str, list[str]] = {}
         for position, sub_query in enumerate(sub_queries):
-            run = await self._fuse_branches(sub_query, filters, branches)
+            run = await self._fuse_branches(
+                sub_query, filters, branches,
+                index_penalty=index_penalty, dedupe_text=dedupe_text,
+            )
             # The whole query's mapping wins on collision: same hash, same
             # document, so either is right, and preferring the first keeps this
             # step from touching anything the prefix depends on.
@@ -251,7 +356,15 @@ class HybridRetriever:
         )
         return fused + appended, by_document
 
-    async def _fuse_branches(self, query: str, filters: SearchFilters, branches) -> _BranchRun:
+    async def _fuse_branches(
+        self,
+        query: str,
+        filters: SearchFilters,
+        branches,
+        *,
+        index_penalty: float = DEFAULT_INDEX_PENALTY,
+        dedupe_text: bool = DEFAULT_DEDUPE_TEXT,
+    ) -> _BranchRun:
         """Run the branches for one query and fuse them.
 
         || Corre las ramas de una consulta y las fusiona.
@@ -280,11 +393,19 @@ class HybridRetriever:
             key=lambda hit: hit.content_hash,
             k=self._rrf_k,
         )
+        fused = list(fused)
+        all_hits = [hit for hits in rankings.values() for hit in hits]
+
+        if index_penalty < 1.0:
+            by_kind = {hit.content_hash: hit.document_kind for hit in all_hits}
+            fused = _demote_index_kind(fused, by_kind, index_penalty)
+        if dedupe_text:
+            by_text = {hit.content_hash: _body_of(hit.text) for hit in all_hits}
+            fused = _dedupe_by_text(fused, by_text)
+
         return _BranchRun(
-            fused=list(fused),
-            by_document={
-                hit.content_hash: hit.document_id for hits in rankings.values() for hit in hits
-            },
+            fused=fused,
+            by_document={hit.content_hash: hit.document_id for hit in all_hits},
             branch_counts={name: len(hits) for name, hits in rankings.items()},
             terms=terms,
         )
@@ -300,6 +421,8 @@ class HybridRetriever:
         decompose_query: bool = False,
         reranker=None,
         rerank_candidates: int = DEFAULT_RERANK_CANDIDATES,
+        index_penalty: float = DEFAULT_INDEX_PENALTY,
+        dedupe_text: bool = DEFAULT_DEDUPE_TEXT,
     ) -> RetrievalResult:
         """The chunks relevant to ``query``, within ``filters``.
 
@@ -328,12 +451,16 @@ class HybridRetriever:
         28 pares convertibles son justamente los que están entre el puesto 11 y
         el 60.
         """
-        whole = await self._fuse_branches(query, filters, branches)
+        whole = await self._fuse_branches(
+            query, filters, branches,
+            index_penalty=index_penalty, dedupe_text=dedupe_text,
+        )
         fused, by_document = whole.fused, whole.by_document
 
         if decompose_query:
             fused, by_document = await self._append_sub_queries(
-                query, filters, branches, fused, by_document
+                query, filters, branches, fused, by_document,
+                index_penalty=index_penalty, dedupe_text=dedupe_text,
             )
 
         # A reranker needs more than `limit` to reorder, so the cap is asked for
@@ -380,6 +507,7 @@ class HybridRetriever:
                     section=row.section,
                     bullet_path=row.bullet_path,
                     module_code=row.module_code,
+                    document_kind=row.document_kind,
                     text=row.text,
                     score=item.score,
                     branches=item.branches,

@@ -585,6 +585,13 @@ class SearchHit(BaseModel):
     module_code: str | None = Field(
         default=None, description="Module code, e.g. 'CA'. || Código de módulo."
     )
+    document_kind: str | None = Field(
+        default=None,
+        description="'content' answers something; 'index' is a navigation node -- a "
+        "one-line breadcrumb, not an answer. Surfaced because it now affects ranking. "
+        "|| 'content' responde algo; 'index' es un nodo de navegación -- un breadcrumb de "
+        "una línea, no una respuesta. Se expone porque ahora influye en el orden.",
+    )
     text: str = Field(description="The chunk text. || El texto del chunk.")
     score: float = Field(description="Fused RRF score. || Puntaje RRF fusionado.")
     branches: list[str] = Field(
@@ -634,4 +641,29 @@ class SearchResponse(BaseModel):
         default_factory=list,
         description="Identifier-shaped terms detected, which is what triggers the exact branch. "
         "|| Términos con forma de identificador detectados, que es lo que dispara el camino exacto.",
+    )
+
+
+class SearchFacets(BaseModel):
+    """Response for ``GET /search/facets``. || Respuesta de ``GET /search/facets``.
+
+    The distinct, non-null values of the two filterable fields that actually
+    have chunks loaded — neither list is a fixed enum, so a UI that wants to
+    offer them as choices has to ask, not hard-code them.
+
+    || Los valores distintos y no nulos de los dos campos filtrables que
+    realmente tienen chunks cargados — ninguna de las dos listas es un enum
+    fijo, así que una UI que quiera ofrecerlas como opciones tiene que
+    preguntar, no escribirlas a mano.
+    """
+
+    modules: list[str] = Field(
+        default_factory=list,
+        description="Distinct `module_code` values present in the corpus, sorted. "
+        "|| Valores distintos de `module_code` presentes en el corpus, ordenados.",
+    )
+    window_types: list[str] = Field(
+        default_factory=list,
+        description="Distinct `window_type_name` values present in the corpus, sorted. "
+        "|| Valores distintos de `window_type_name` presentes en el corpus, ordenados.",
     )

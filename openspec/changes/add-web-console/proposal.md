@@ -27,7 +27,16 @@ lleva el servicio a `ai-service/` y libera el lugar donde va esta app.
 
 - Nueva app **`business-backend/`**: Next.js (App Router, TypeScript),
   Tailwind y componentes **shadcn/ui** copiados al repo (no una dependencia de
-  librería de componentes).
+  librería de componentes). Dependencias con **`pnpm`**, fijado en
+  `packageManager` y con `pnpm-lock.yaml` como único lockfile: CI instala con
+  `--frozen-lockfile`, la contraparte exacta del `uv sync --frozen` del
+  servicio.
+- **Tema claro y oscuro**, tomado literal del registry item de un tema de
+  tweakcn (`Woken`) en vez de escribir tokens a mano, con un conmutador en la
+  barra y la elección persistida. Se resuelve **sin `next-themes`**: la
+  mecánica —una clase en `<html>`, un script inline, `localStorage`— son unas
+  pocas decenas de líneas en `lib/theme.ts`, y agregar una dependencia para eso
+  no se sostiene contra `AGENTS.md` §3.
 - Nueva capability `web-console`: tres pantallas, una por grupo de endpoints
   que el servicio IA expone hoy — búsqueda (`GET /search`), vista previa de
   ingesta (`POST /documents/ingest[-file]`) y reconstrucción de corpus

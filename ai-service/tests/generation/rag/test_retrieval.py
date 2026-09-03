@@ -22,7 +22,13 @@ from app.generation.rag.retrieval.fusion import (
     cap_per_group,
     reciprocal_rank_fusion,
 )
-from app.generation.rag.retrieval.hybrid import DEFAULT_BRANCH_LIMIT, identifier_terms
+from app.generation.rag.retrieval.hybrid import (
+    DEFAULT_BRANCH_LIMIT,
+    _body_of,
+    _dedupe_by_text,
+    _demote_index_kind,
+    identifier_terms,
+)
 from app.generation.rag.store.repository import (
     SearchFilters,
     build_exact_statement,
@@ -283,11 +289,11 @@ def test_the_lexical_branch_keeps_the_structural_filters():
     """Both branches must narrow the same way, or the fusion compares different
     candidate spaces."""
     sql = sql_of(
-        build_lexical_statement("poliza", SearchFilters("acme", "v1", module_code="DMECAR"), limit=5)
+        build_lexical_statement("poliza", SearchFilters("acme", "v1", module_code=["DMECAR"]), limit=5)
     )
     assert "chunks.tenant_id = " in sql
     assert "chunks.doc_version = " in sql
-    assert "chunks.module_code = " in sql
+    assert "chunks.module_code IN" in sql
 
 
 def test_the_exact_branch_asks_the_three_questions():
@@ -311,3 +317,113 @@ def test_the_exact_branch_also_keeps_the_filters():
     sql = sql_of(build_exact_statement(["CAC011"], filters(), limit=5))
     assert "chunks.tenant_id = " in sql
     assert "chunks.doc_version = " in sql
+
+
+# --- La democión de 'index' -----------------------------------------------------
+
+
+def test_penalty_of_one_is_a_no_op():
+    """`penalty=1.0` es el default hasta medir: no debe tocar el orden."""
+    fused = fuse({"vector": ranking("A", "B", "C")})
+    original = [item.key for item in fused]
+
+    resultado = _demote_index_kind(list(fused), {"A": "index"}, penalty=1.0)
+
+    assert [item.key for item in resultado] == original
+
+
+def test_an_index_candidate_drops_below_content():
+    """Medido: 'index' es 0,8% del corpus por conteo y se llevó 6 de 10 lugares
+    en una pregunta real -- 4-8x su participación."""
+    fused = fuse({"vector": ranking("INDEX_A", "CONTENT_B")})
+
+    resultado = _demote_index_kind(
+        list(fused), {"INDEX_A": "index", "CONTENT_B": "content"}, penalty=0.3
+    )
+
+    assert [item.key for item in resultado] == ["CONTENT_B", "INDEX_A"]
+
+
+def test_an_index_candidate_can_still_win_if_nothing_else_matches():
+    """Una democión SUAVE y no un filtro: si 'index' es la única evidencia que
+    hay, sigue pudiendo ganar -- solo pesa menos frente a contenido real."""
+    fused = fuse({"vector": ranking("SOLO_INDEX")})
+
+    resultado = _demote_index_kind(list(fused), {"SOLO_INDEX": "index"}, penalty=0.1)
+
+    assert [item.key for item in resultado] == ["SOLO_INDEX"]
+
+
+def test_unknown_kind_is_left_alone():
+    """Un candidato sin `document_kind` conocido (no vino de ninguna rama, o el
+    dato no llegó) no se penaliza: solo se demociona lo que se sabe 'index'."""
+    fused = fuse({"vector": ranking("A", "B")})
+
+    resultado = _demote_index_kind(list(fused), {}, penalty=0.1)
+
+    assert [item.key for item in resultado] == ["A", "B"]
+
+
+# --- La deduplicación por texto -------------------------------------------------
+
+
+def test_a_repeated_body_keeps_only_the_first():
+    """`REINSURANCE_INTRO` y `REINSURANCE_REPORTS_INTRO` llevan texto de cuerpo
+    byte-idéntico bajo ids distintos. Con cap=1 son dos "documentos" que gastan
+    dos lugares en una sola oración."""
+    fused = fuse({"vector": ranking("REINSURANCE_INTRO", "REINSURANCE_REPORTS_INTRO", "OTRO")})
+    cuerpo_comun = "[Sección: Introducción]\n**VisualTIME** está en capacidad de manejar..."
+    by_text = {
+        "REINSURANCE_INTRO": cuerpo_comun,
+        "REINSURANCE_REPORTS_INTRO": cuerpo_comun,
+        "OTRO": "[Sección: Otra]\ntexto distinto",
+    }
+
+    resultado = _dedupe_by_text(list(fused), by_text)
+
+    assert [item.key for item in resultado] == ["REINSURANCE_INTRO", "OTRO"]
+
+
+def test_dedup_keeps_the_best_ranked_occurrence():
+    """Corre DESPUÉS de la democión de índice, así que la que sobrevive es la
+    ganadora post-democión y no la primera por azar de orden de inserción."""
+    fused = fuse({"vector": ranking("SEGUNDO", "PRIMERO")})
+    by_text = {"SEGUNDO": "mismo cuerpo", "PRIMERO": "mismo cuerpo"}
+
+    resultado = _dedupe_by_text(list(fused), by_text)
+
+    assert [item.key for item in resultado] == ["SEGUNDO"]
+
+
+def test_no_text_known_is_never_deduped():
+    """Un candidato sin texto conocido (no llegó de ninguna rama con `.text`)
+    nunca se descarta por esto: solo se compara lo que sí se sabe."""
+    fused = fuse({"vector": ranking("A", "B")})
+
+    resultado = _dedupe_by_text(list(fused), {})
+
+    assert [item.key for item in resultado] == ["A", "B"]
+
+
+# --- El header contextual --------------------------------------------------------
+
+
+def test_the_header_line_is_stripped():
+    """El header es EXACTAMENTE la primera línea, `[Documento: X - <título>]`,
+    que `_stamp()` siempre antepone. Todo lo demás es sección más cuerpo."""
+    texto = "[Documento: CA014 - Coberturas]\n[Sección: Función]\nEl cuerpo real."
+
+    assert _body_of(texto) == "[Sección: Función]\nEl cuerpo real."
+
+
+def test_two_documents_with_the_same_body_normalise_equal():
+    a = "[Documento: REINSURANCE_INTRO - Introducción]\n[Sección: X]\nmismo cuerpo"
+    b = "[Documento: REINSURANCE_REPORTS_INTRO - Introducción]\n[Sección: X]\nmismo cuerpo"
+
+    assert _body_of(a) == _body_of(b)
+
+
+def test_a_text_with_no_newline_normalises_to_empty():
+    """Un texto sin salto de línea no tiene cuerpo después del header -- caso
+    de borde, no debería pasar en el corpus real pero no debe romper."""
+    assert _body_of("una sola linea") == ""

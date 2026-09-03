@@ -56,11 +56,18 @@ export interface SearchParams {
   q: string;
   limit?: number;
   max_per_document?: number;
-  module_code?: string;
-  window_type_name?: string;
+  /** Several values are OR'd -- matches `module_code` in any of them. || Varios valores se combinan con OR. */
+  module_code?: string[];
+  window_type_name?: string[];
   lexical?: boolean;
   split?: boolean;
   rerank?: boolean;
+}
+
+/** Response for `GET /search/facets`: what a filter can pick from, straight from the corpus. || Respuesta de `GET /search/facets`: de qué puede elegir un filtro, directo del corpus. */
+export interface SearchFacets {
+  modules: string[];
+  window_types: string[];
 }
 
 // --- Ingesta de un documento || Single-document ingestion --------------------

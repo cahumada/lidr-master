@@ -48,6 +48,25 @@ acceder a campos no declarados en esos tipos.
 - **THEN** el tipo de `lib/ai-service/types.ts` se actualiza antes de que
   ninguna pantalla lo use
 
+### Requirement: La consola se ve en claro y en oscuro, sin flash
+Toda pantalla SHALL renderizarse legible en tema claro y en tema oscuro, con un
+único juego de tokens de color: ninguna pantalla SHALL fijar un color literal
+que no salga de esos tokens. Cuando el usuario no eligió tema, la consola SHALL
+seguir la preferencia del sistema (`prefers-color-scheme`); cuando eligió, esa
+elección SHALL persistir entre recargas y ganarle al sistema. El tema vigente
+SHALL quedar aplicado antes del primer pintado, no después de hidratar.
+
+#### Scenario: primera visita con el sistema en oscuro
+- **WHEN** un usuario que nunca eligió tema abre la consola con su sistema
+  operativo en modo oscuro
+- **THEN** la primera pintura de la página ya es oscura
+- **AND** no se ve un fondo claro intermedio
+
+#### Scenario: la elección sobrevive la recarga
+- **WHEN** el usuario cambia el tema con el conmutador y recarga la página
+- **THEN** la página vuelve con el tema que eligió
+- **AND** ese tema se mantiene aunque el sistema operativo pida el contrario
+
 ### Requirement: La pantalla de búsqueda expone la procedencia de cada resultado
 La pantalla SHALL llamar a `GET /search` y renderizar, por cada resultado, su
 `document_id`, `document_title`, `section`, `score` y las ramas (`branches`)
@@ -64,6 +83,31 @@ que lo encontraron. Cuando la descomposición está activa, SHALL mostrar las
 - **WHEN** el usuario deja activada la descomposición (default del endpoint)
 - **THEN** la pantalla muestra las sub-preguntas en las que se dividió la
   consulta, tal como vienen en `SearchResponse.sub_queries`
+
+### Requirement: Los filtros de módulo y tipo de ventana son de selección múltiple
+La pantalla de búsqueda SHALL ofrecer `Módulo` y `Tipo de ventana` como
+listados de selección múltiple, poblados desde `GET /api/search/facets` — no
+desde una lista escrita a mano en la pantalla. `Módulo` SHALL tener "Todos"
+seleccionado por default; `Tipo de ventana` SHALL tener "Cualquiera"
+seleccionado por default. Seleccionar el default y seleccionar valores
+puntuales SHALL ser mutuamente excluyente: elegir un valor puntual apaga el
+default, y no dejar ningún valor puntual elegido vuelve al default.
+
+#### Scenario: Estado inicial
+- **WHEN** la pantalla de búsqueda carga
+- **THEN** `Módulo` muestra "Todos" seleccionado y `Tipo de ventana` muestra
+  "Cualquiera" seleccionado
+- **AND** la búsqueda no manda `module_code` ni `window_type_name`
+
+#### Scenario: Elegir varios módulos
+- **WHEN** el usuario selecciona `CA` y `DF` en el listado de módulos
+- **THEN** "Todos" queda deseleccionado
+- **AND** la búsqueda manda `module_code=CA` y `module_code=DF`
+
+#### Scenario: Deseleccionar todos los valores puntuales
+- **WHEN** el usuario deselecciona el último módulo puntual que tenía elegido
+- **THEN** el listado vuelve a mostrar "Todos" seleccionado
+- **AND** la búsqueda deja de mandar `module_code`
 
 ### Requirement: La vista previa de ingesta no persiste
 La pantalla de ingesta SHALL llamar a `POST /documents/ingest` o

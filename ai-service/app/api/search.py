@@ -28,7 +28,7 @@ from app.dependencies import get_embedder, get_reranker
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.retrieval.decomposition import decompose
 from app.generation.rag.retrieval.hybrid import ALL_BRANCHES, DEFAULT_BRANCHES, HybridRetriever
-from app.generation.rag.schemas import SearchHit, SearchResponse
+from app.generation.rag.schemas import SearchFacets, SearchHit, SearchResponse
 from app.generation.rag.store.repository import ChunkRepository, SearchFilters
 
 log = structlog.get_logger()
@@ -57,13 +57,18 @@ async def search(
         "|| Tope de chunks por documento. Default 1, medido: una pregunta con varios "
         "documentos relevantes no se puede responder con diez chunks de uno solo.",
     ),
-    module_code: str | None = Query(
-        default=None, description="Restrict to one module, e.g. 'CA'. || Restringir a un módulo."
-    ),
-    window_type_name: str | None = Query(
+    module_code: list[str] | None = Query(  # noqa: B008 — FastAPI's required DI idiom.
         default=None,
-        description="Restrict by window type, e.g. 'Masivo con encabezado'. "
-        "|| Restringir por tipo de ventana.",
+        description="Restrict to one or more modules, e.g. 'CA' or repeated "
+        "'?module_code=CA&module_code=DF' for either. || Restringir a uno o varios "
+        "módulos, ej. 'CA' o repetido para 'CA o DF'.",
+    ),
+    window_type_name: list[str] | None = Query(  # noqa: B008 — FastAPI's required DI idiom.
+        default=None,
+        description="Restrict by one or more window types, e.g. 'Masivo con encabezado'. "
+        "Repeat the param for several, matched with OR. "
+        "|| Restringir por uno o varios tipos de ventana. Repetir el parámetro para "
+        "varios, con semántica OR.",
     ),
     lexical: bool = Query(
         default=False,
@@ -135,6 +140,7 @@ async def search(
                 section=chunk.section,
                 bullet_path=chunk.bullet_path,
                 module_code=chunk.module_code,
+                document_kind=chunk.document_kind,
                 text=chunk.text,
                 score=chunk.score,
                 branches=chunk.branches,
@@ -148,3 +154,28 @@ async def search(
         branch_counts=result.branch_counts,
         identifier_terms=result.identifier_terms,
     )
+
+
+@router.get("/facets", response_model=SearchFacets)
+async def facets(
+    session: AsyncSession = Depends(get_async_session),  # noqa: B008 — FastAPI's required DI idiom.
+) -> SearchFacets:
+    """The `module_code` and `window_type_name` values a filter can pick from.
+
+    Neither is a fixed enum -- `module_code` runs from two-letter codes like
+    `CA` to six-letter ones like `DMECAR`, and there is no lookup table -- so a
+    caller that wants to offer them as choices has to ask the corpus, not
+    hard-code a list.
+
+    || Los valores de `module_code` y `window_type_name` de los que puede
+    elegir un filtro. Ninguno es un enum fijo -- `module_code` va de códigos de
+    dos letras como `CA` a otros de seis como `DMECAR`, y no hay tabla de
+    referencia -- así que quien los quiera ofrecer como opciones tiene que
+    preguntarle al corpus, no escribir una lista a mano.
+    """
+    settings = get_settings()
+    filters = SearchFilters(settings.TENANT_ID, settings.DOC_VERSION)
+    repository = ChunkRepository(session)
+    modules = await repository.distinct_module_codes(filters)
+    window_types = await repository.distinct_window_type_names(filters)
+    return SearchFacets(modules=modules, window_types=window_types)

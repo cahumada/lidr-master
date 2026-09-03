@@ -413,6 +413,84 @@ def test_the_repository_searches_and_filters(clean_tables, tenant):
     assert ajenos == []
 
 
+def test_a_list_filter_matches_any_of_its_values(clean_tables, tenant):
+    """`module_code=["CA", "DF"]` is an OR: a chunk from either module counts,
+    the same as comparing two modules would need."""
+    from app.foundation.persistence.database import to_async_url
+    from app.generation.rag.store.repository import ChunkRepository, SearchFilters
+
+    load(
+        clean_tables,
+        [make_row(tenant, "regla ca", index=0, module_code="CA")]
+        + [make_row(tenant, "regla df", index=1, module_code="DF")]
+        + [make_row(tenant, "regla ag", index=2, module_code="AG")],
+    )
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from tests.store.conftest import TEST_SCHEMA
+
+    async def run():
+        engine = create_async_engine(
+            to_async_url(str(clean_tables.url.render_as_string(hide_password=False))),
+            connect_args={"server_settings": {"search_path": f"{TEST_SCHEMA},public"}},
+        )
+        try:
+            async with async_sessionmaker(bind=engine, expire_on_commit=False)() as session:
+                await session.execute(text("SET hnsw.iterative_scan = strict_order"))
+                repository = ChunkRepository(session)
+                filters = SearchFilters(tenant, "v1", module_code=["CA", "DF"])
+                return await repository.count(filters)
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(run()) == 2
+
+
+def test_distinct_values_list_what_is_actually_loaded(clean_tables, tenant):
+    from app.foundation.persistence.database import to_async_url
+    from app.generation.rag.store.repository import ChunkRepository, SearchFilters
+
+    load(
+        clean_tables,
+        [
+            make_row(
+                tenant, "regla ca", index=0, module_code="CA",
+                window_type_name="Masivo con encabezado",
+            ),
+            make_row(
+                tenant, "regla df", index=1, module_code="DF",
+                window_type_name="Puntual sin encabezado",
+            ),
+            make_row(tenant, "sin modulo", index=2, module_code=None, window_type_name=None),
+        ],
+    )
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from tests.store.conftest import TEST_SCHEMA
+
+    async def run():
+        engine = create_async_engine(
+            to_async_url(str(clean_tables.url.render_as_string(hide_password=False))),
+            connect_args={"server_settings": {"search_path": f"{TEST_SCHEMA},public"}},
+        )
+        try:
+            async with async_sessionmaker(bind=engine, expire_on_commit=False)() as session:
+                await session.execute(text("SET hnsw.iterative_scan = strict_order"))
+                repository = ChunkRepository(session)
+                filters = SearchFilters(tenant, "v1")
+                modules = await repository.distinct_module_codes(filters)
+                window_types = await repository.distinct_window_type_names(filters)
+                return modules, window_types
+        finally:
+            await engine.dispose()
+
+    modules, window_types = asyncio.run(run())
+    assert modules == ["CA", "DF"]
+    assert window_types == ["Masivo con encabezado", "Puntual sin encabezado"]
+
+
 # --- The process map's edges ------------------------------------------------
 
 

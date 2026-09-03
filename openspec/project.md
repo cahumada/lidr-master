@@ -58,10 +58,33 @@ lado.
 ### `business-backend/` — la consola web
 
 - Next.js 16 (App Router) + TypeScript, React 19.
+- **`pnpm`** para dependencias, fijado en `packageManager` de `package.json`,
+  con `pnpm-lock.yaml` como el único lockfile del proyecto. CI corre
+  `pnpm install --frozen-lockfile`, que falla si el lock no coincide con
+  `package.json` — la misma propiedad que da `uv sync --frozen` del lado
+  Python, y la que hace que la instalación sea reproducible en las dos stacks.
+  pnpm 10 **no ejecuta los scripts de build** de las dependencias salvo que se
+  listen en `pnpm.onlyBuiltDependencies`; acá no hay ninguno listado, y el
+  único que los pide (`unrs-resolver`, transitivo de `eslint-config-next`)
+  funciona igual porque su binario nativo llega precompilado por plataforma.
+  Si algún día el lint falla por resolución de módulos, ese es el hilo.
 - Tailwind v4 y **shadcn/ui**: el código de cada componente vive en
   `components/ui/`, no en `node_modules`. Se copian **solo los que se usan** —
   un `components/ui/` de cuarenta archivos para seis en uso es la versión
   shadcn de pre-construir capas vacías.
+- **El tema es un artefacto generado, no CSS escrito a mano.** Los tokens de
+  color, radio, sombras y tipografía de `app/globals.css` salen literales del
+  registry item de un tema de tweakcn — hoy
+  [`Woken`](https://tweakcn.com/themes/cmt3ah8fc000004id2kh74do2). Cambiar de
+  tema es reemplazar los bloques `:root` / `.dark` enteros; un token retocado a
+  mano se pierde en la próxima regeneración y nadie se entera hasta que el
+  color vuelve solo.
+- **Claro y oscuro son los dos de primera.** La clase `dark` en `<html>` la
+  pone un script inline en `<head>`, antes del primer pintado, leyendo
+  `localStorage` y cayendo a `prefers-color-scheme`. El servidor no puede saber
+  el tema, así que corregirlo después de hidratar sería el flash blanco; toda
+  la mecánica vive en `lib/theme.ts`, y ninguna pantalla puede dar por sentado
+  un fondo claro.
 - **Sin herramienta de monorepo de JS** (Turborepo, workspaces): hay una sola
   app JS, y una herramienta de monorepo para un paquete es el mismo ruido que
   una abstracción con una única implementación.
@@ -213,10 +236,10 @@ Los de la consola web, desde `business-backend/`:
 
 ```bash
 cd business-backend
-npm install
-npm run dev
-npm run lint
-npm run build
+pnpm install
+pnpm dev
+pnpm lint
+pnpm build
 ```
 
 El validador de specs corre desde la raíz del repo, y sin `uv`:

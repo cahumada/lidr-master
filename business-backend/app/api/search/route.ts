@@ -36,13 +36,24 @@ export async function GET(request: NextRequest) {
     return raw === null || raw === "" ? undefined : raw === "true";
   };
 
+  // `.getAll`, not `.get`: several `module_code`/`window_type_name` params
+  // are how the browser asks for an OR between values, and `.get` would
+  // silently keep only the first one.
+  // || `.getAll`, no `.get`: varios parámetros `module_code`/`window_type_name`
+  // son cómo el browser pide un OR entre valores, y `.get` se quedaría con el
+  // primero en silencio.
+  const asList = (name: string) => {
+    const values = params.getAll(name);
+    return values.length > 0 ? values : undefined;
+  };
+
   try {
     const response = await search({
       q,
       limit: asNumber("limit"),
       max_per_document: asNumber("max_per_document"),
-      module_code: params.get("module_code") ?? undefined,
-      window_type_name: params.get("window_type_name") ?? undefined,
+      module_code: asList("module_code"),
+      window_type_name: asList("window_type_name"),
       lexical: asBoolean("lexical"),
       split: asBoolean("split"),
       rerank: asBoolean("rerank"),

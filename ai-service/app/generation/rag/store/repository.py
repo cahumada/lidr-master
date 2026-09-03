@@ -45,14 +45,20 @@ class SearchFilters:
     # correcto mientras hay una sola: filtrar al unico valor que existe seria
     # un no-op con aspecto de decision.
     source_type: str | None = None
-    module_code: str | None = None
+    # A list, not a single value: a user comparing "CA or DF" needs an OR, not
+    # two separate searches pasted together by hand.
+    # || Una lista, no un solo valor: comparar "CA o DF" necesita un OR, no dos
+    # búsquedas separadas pegadas a mano.
+    module_code: list[str] | None = None
     transaction_type: str | None = None
     document_kind: str | None = None
     chunk_type: str | None = None
     document_id: str | None = None
-    # "las transacciones masivas con encabezado" as a filter, not a read.
-    # || "las transacciones masivas con encabezado" como filtro, no como lectura.
-    window_type_name: str | None = None
+    # "las transacciones masivas con encabezado o puntual sin encabezado" como
+    # filtro, no como lectura -- de ahí la lista.
+    # || "the mass-with-header or point-without-header transactions" as a
+    # filter, not a read -- hence the list.
+    window_type_name: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +72,7 @@ class SearchHit:
     section: str | None
     bullet_path: str | None
     module_code: str | None
+    document_kind: str | None
     text: str
     distance: float
 
@@ -96,6 +103,7 @@ class RankedHit:
     section: str | None
     bullet_path: str | None
     module_code: str | None
+    document_kind: str | None
     text: str
     score: float
 
@@ -116,18 +124,32 @@ def _apply(statement: Select, filters: SearchFilters) -> Select:
         ChunkRow.tenant_id == filters.tenant_id,
         ChunkRow.doc_version == filters.doc_version,
     )
-    optional = {
+    equals = {
         ChunkRow.source_type: filters.source_type,
-        ChunkRow.module_code: filters.module_code,
         ChunkRow.transaction_type: filters.transaction_type,
         ChunkRow.document_kind: filters.document_kind,
         ChunkRow.chunk_type: filters.chunk_type,
         ChunkRow.document_id: filters.document_id,
-        ChunkRow.window_type_name: filters.window_type_name,
     }
-    for column, value in optional.items():
+    for column, value in equals.items():
         if value is not None:
             statement = statement.where(column == value)
+    # `IN`, not `=`: these two carry several values with OR semantics (see
+    # `SearchFilters`). An empty list is treated the same as `None` -- "filter
+    # to nothing" would silently return zero rows instead of reading as "no
+    # filter", which is the only reading a UI's empty selection can mean.
+    # || `IN`, no `=`: estos dos llevan varios valores con semántica OR (ver
+    # `SearchFilters`). Una lista vacía se trata igual que `None` -- "filtrar a
+    # nada" devolvería cero filas en silencio en vez de leerse como "sin
+    # filtro", que es la única lectura que puede tener una selección vacía de
+    # una UI.
+    in_ = {
+        ChunkRow.module_code: filters.module_code,
+        ChunkRow.window_type_name: filters.window_type_name,
+    }
+    for column, values in in_.items():
+        if values:
+            statement = statement.where(column.in_(values))
     return statement
 
 
@@ -146,6 +168,17 @@ _SELECTED = (
     ChunkRow.section,
     ChunkRow.bullet_path,
     ChunkRow.module_code,
+    # Needed to tell a navigation node from an answer: measured, chunks marked
+    # 'index' are 0.8% of the corpus by count and took 6 of 10 places in a real
+    # question's results -- 4-8x their share. Threaded through here so the
+    # fusion can see it before hydration, not just as a hard filter no caller
+    # sets by default.
+    # || Hace falta para distinguir un nodo de navegación de una respuesta:
+    # medido, los chunks 'index' son 0,8% del corpus por conteo y se llevaron 6
+    # de 10 lugares en una pregunta real — 4-8x su participación. Se hace pasar
+    # acá para que la fusión lo vea antes de la hidratación, no solo como un
+    # filtro duro que nadie activa por default.
+    ChunkRow.document_kind,
     ChunkRow.text,
 )
 
@@ -280,6 +313,7 @@ class ChunkRepository:
                 section=row.section,
                 bullet_path=row.bullet_path,
                 module_code=row.module_code,
+                document_kind=row.document_kind,
                 text=row.text,
                 distance=float(row.distance),
             )
@@ -335,6 +369,41 @@ class ChunkRepository:
         statement = _apply(select(func.count(ChunkRow.id)), filters)
         return int((await self._session.execute(statement)).scalar_one())
 
+    async def distinct_module_codes(self, filters: SearchFilters) -> list[str]:
+        """The `module_code` values with at least one chunk, sorted.
+
+        Neither this nor `distinct_window_type_names` reads `filters.module_code`
+        or `.window_type_name` -- they answer "what values exist", not "what
+        matches a filter", so the caller passes a `SearchFilters` with those two
+        fields left `None`.
+
+        || Los valores de `module_code` con al menos un chunk, ordenados. Ni
+        este ni `distinct_window_type_names` lee `filters.module_code` ni
+        `.window_type_name` -- responden "qué valores existen", no "qué
+        matchea un filtro", así que quien llama pasa un `SearchFilters` con
+        esos dos campos en `None`.
+        """
+        statement = _apply(
+            select(ChunkRow.module_code).distinct().where(ChunkRow.module_code.is_not(None)),
+            filters,
+        ).order_by(ChunkRow.module_code)
+        result = await self._session.execute(statement)
+        return [row[0] for row in result]
+
+    async def distinct_window_type_names(self, filters: SearchFilters) -> list[str]:
+        """The `window_type_name` values with at least one chunk, sorted.
+
+        || Los valores de `window_type_name` con al menos un chunk, ordenados.
+        """
+        statement = _apply(
+            select(ChunkRow.window_type_name)
+            .distinct()
+            .where(ChunkRow.window_type_name.is_not(None)),
+            filters,
+        ).order_by(ChunkRow.window_type_name)
+        result = await self._session.execute(statement)
+        return [row[0] for row in result]
+
 
 def _ranked(row) -> RankedHit:
     return RankedHit(
@@ -345,6 +414,7 @@ def _ranked(row) -> RankedHit:
         section=row.section,
         bullet_path=row.bullet_path,
         module_code=row.module_code,
+        document_kind=row.document_kind,
         text=row.text,
         score=float(row.score),
     )

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getJson } from "./base-client";
-import type { SearchParams, SearchResponse } from "./types";
+import type { SearchFacets, SearchParams, SearchResponse } from "./types";
 
 /** Retrieval context. Never imports another context. || Contexto de recuperación. Nunca importa otro contexto. */
 
@@ -28,4 +28,16 @@ export function search(params: SearchParams): Promise<SearchResponse> {
     },
     SEARCH_TIMEOUT_MS,
   );
+}
+
+/**
+ * What the two filters above can pick from -- neither is a fixed list (a
+ * module code runs from two letters to six, with no enum behind it), so the
+ * screen asks the corpus instead of hard-coding one.
+ * || De qué pueden elegir los dos filtros de arriba -- ninguno es una lista
+ * fija (un código de módulo va de dos letras a seis, sin enum detrás), así
+ * que la pantalla le pregunta al corpus en vez de escribir una a mano.
+ */
+export function facets(): Promise<SearchFacets> {
+  return getJson<SearchFacets>("/search/facets");
 }

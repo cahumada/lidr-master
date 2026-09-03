@@ -127,12 +127,21 @@ async function call(
 
 export async function getJson<T>(
   path: string,
-  params?: Record<string, string | number | boolean | undefined>,
+  params?: Record<string, string | number | boolean | string[] | undefined>,
   timeoutMs?: number,
 ): Promise<T> {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params ?? {})) {
-    if (value !== undefined && value !== "") query.set(key, String(value));
+    if (value === undefined || value === "") continue;
+    // An array becomes a repeated param (`?module_code=CA&module_code=DF`),
+    // which is what FastAPI's `list[str] | None` Query param expects.
+    // || Un arreglo se vuelve un parámetro repetido, que es lo que espera un
+    // Query param `list[str] | None` de FastAPI.
+    if (Array.isArray(value)) {
+      for (const item of value) query.append(key, item);
+    } else {
+      query.set(key, String(value));
+    }
   }
   const suffix = query.size > 0 ? `?${query}` : "";
   const response = await call(`${path}${suffix}`, { timeoutMs });

@@ -165,7 +165,6 @@ def test_tenant_and_version_are_always_predicates():
 @pytest.mark.parametrize(
     ("field_name", "kwargs"),
     [
-        ("module_code", {"module_code": "DMECAR"}),
         ("transaction_type", {"transaction_type": "query"}),
         ("document_kind", {"document_kind": "content"}),
         ("chunk_type", {"chunk_type": "table"}),
@@ -181,13 +180,44 @@ def test_every_optional_filter_becomes_a_predicate(field_name, kwargs):
     assert f"chunks.{field_name} = " in sql
 
 
+@pytest.mark.parametrize(
+    ("field_name", "kwargs"),
+    [
+        ("module_code", {"module_code": ["DMECAR"]}),
+        ("window_type_name", {"window_type_name": ["Masivo con encabezado"]}),
+    ],
+)
+def test_list_filters_become_an_in_predicate(field_name, kwargs):
+    """`module_code`/`window_type_name` carry several values with OR
+    semantics, so they filter with `IN` and not `=`."""
+    sql = compiled(
+        build_search_statement([0.1] * DIMS, SearchFilters("acme", "v1", **kwargs), limit=5)
+    )
+    assert f"chunks.{field_name} IN" in sql
+
+
 def test_an_absent_filter_adds_no_predicate():
+    """`module_code` is always SELECTed (it travels with every hit), so the
+    absence to check for is the predicate, not the column name."""
     sql = compiled(build_search_statement([0.1] * DIMS, SearchFilters("acme", "v1"), limit=5))
+    assert "chunks.module_code IN" not in sql
+    assert "chunks.module_code = " not in sql
+
+
+def test_an_empty_list_filter_adds_no_predicate():
+    """An empty selection reads as "no filter", not as "match nothing" -- the
+    only reading a UI's empty multi-select can mean."""
+    sql = compiled(
+        build_search_statement(
+            [0.1] * DIMS, SearchFilters("acme", "v1", module_code=[]), limit=5
+        )
+    )
+    assert "chunks.module_code IN" not in sql
     assert "chunks.module_code = " not in sql
 
 
 def test_similarity_is_the_complement_of_distance():
-    hit = SearchHit("h", "c", "CA014", None, None, None, None, "texto", distance=0.25)
+    hit = SearchHit("h", "c", "CA014", None, None, None, None, None, "texto", distance=0.25)
     assert hit.similarity == pytest.approx(0.75)
 
 
