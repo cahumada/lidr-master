@@ -18,11 +18,15 @@ Monorepo de dos proyectos, el layout que fija el programa del Master:
 
 ```
 ai-service/         # el servicio Python + FastAPI (app/, scripts/, tests/, alembic/, data/, evals/)
-business-backend/   # el frontend y backend de negocio  (todavía no construido)
+business-backend/   # el frontend y backend de negocio: Next.js + Tailwind + shadcn/ui
 openspec/           # la fuente de verdad — documenta los dos
 scripts/            # herramientas del repo: hoy solo validate_specs.py
+.github/workflows/  # CI: un job por proyecto, ninguno que despliegue
 docker-compose.yml  # Postgres + pgvector para desarrollo local
 ```
+
+`ai-service/` se despliega en Railway y `business-backend/` en Vercel, cada uno
+por la integración nativa de su plataforma con GitHub.
 
 **Las rutas de código en las specs del servicio IA son relativas a
 `ai-service/`.** Una spec que dice `app/generation/rag/chunking/functional_spec.py`
@@ -50,6 +54,33 @@ scripts/validate_specs.py` desde la raíz, sin `uv` y sin `pyproject.toml` al
 lado.
 
 ## Stack
+
+### `business-backend/` — la consola web
+
+- Next.js 16 (App Router) + TypeScript, React 19.
+- Tailwind v4 y **shadcn/ui**: el código de cada componente vive en
+  `components/ui/`, no en `node_modules`. Se copian **solo los que se usan** —
+  un `components/ui/` de cuarenta archivos para seis en uso es la versión
+  shadcn de pre-construir capas vacías.
+- **Sin herramienta de monorepo de JS** (Turborepo, workspaces): hay una sola
+  app JS, y una herramienta de monorepo para un paquete es el mismo ruido que
+  una abstracción con una única implementación.
+- **El browser nunca llama al servicio IA.** Todo sale del servidor, por los
+  Route Handlers de `app/api/`; `lib/ai-service/base-client.ts` importa
+  `server-only`, así que usarlo desde un Client Component es un error de build.
+  `AI_SERVICE_URL` es privada, sin prefijo `NEXT_PUBLIC_`.
+- **Una sola capa habla HTTP con el servicio**: `lib/ai-service/`, un cliente
+  base más un cliente por contexto (`search`, `documents`, `corpus`). Los
+  contextos no se importan entre sí y ninguna pantalla hace `fetch` por su
+  cuenta.
+- **Los tipos espejan los schemas Pydantic 1:1** (`lib/ai-service/types.ts`).
+  Cuando el servicio agrega un campo, se agrega ahí primero.
+- **Vercel AI SDK: todavía no.** El curso fija que el cliente nunca llama a un
+  proveedor de modelos —toda la lógica de IA vive en el servicio— y acá no hay
+  endpoint de generación que streamear. Entra cuando exista, y apuntado al
+  Route Handler propio, sin claves de proveedor en esta app.
+
+### `ai-service/` — el servicio IA
 
 - Python 3.11, `uv` para dependencias y ejecución.
 - FastAPI + Pydantic v2 (contratos tipados, visibles en Swagger).
@@ -176,6 +207,16 @@ uv run pytest
 uv run ruff check .
 uv run uvicorn app.main:app --reload
 uv run python scripts/chunk_corpus.py --root "D:\EspecificacionesFuncionales_md" --out data/chunks
+```
+
+Los de la consola web, desde `business-backend/`:
+
+```bash
+cd business-backend
+npm install
+npm run dev
+npm run lint
+npm run build
 ```
 
 El validador de specs corre desde la raíz del repo, y sin `uv`:

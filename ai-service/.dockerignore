@@ -1,0 +1,24 @@
+# Lo que NO tiene que viajar a la imagen. || What must NOT travel into the image.
+
+# Documentos del cliente y corpus generado: 438 MB, y no son nuestros.
+# || Client documents and generated corpus: 438 MB, and not ours.
+data/
+
+# El entorno virtual local lleva rutas absolutas de Windows adentro.
+# || The local virtualenv carries absolute Windows paths inside it.
+.venv/
+
+# Secretos. El despliegue los inyecta como variables de entorno.
+# || Secrets. The deployment injects them as environment variables.
+.env
+.env.local
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Tests y evaluaciones no corren en producción; corren en CI.
+# || Tests and evals do not run in production; they run in CI.
+tests/
+evals/

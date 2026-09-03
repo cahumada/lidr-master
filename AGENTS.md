@@ -101,6 +101,16 @@ uv run ruff check .                       # lint
 uv run uvicorn app.main:app --reload      # servidor (Swagger en /docs)
 ```
 
+Los de la consola web, **desde `business-backend/`**:
+
+```bash
+cd business-backend
+npm install
+npm run dev                               # desarrollo
+npm run lint                              # eslint
+npm run build                             # build; corre TypeScript
+```
+
 El validador de specs corre **desde la raíz** y sin `uv` — es stdlib puro para
 que cualquier harness y CI lo corran igual:
 

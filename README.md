@@ -7,25 +7,24 @@ pgvector para poder preguntarles en lenguaje natural.
 
 Monorepo de dos proyectos, el layout que fija el programa:
 
-| | qué es | estado |
-|---|---|---|
-| [`ai-service/`](ai-service/README.md) | el servicio Python + FastAPI: ingesta, chunking, embeddings, recuperación | construido |
-| `business-backend/` | el frontend y backend de negocio | propuesto, ver [`openspec/changes/add-web-console/`](openspec/changes/add-web-console/proposal.md) |
+| | qué es | stack | se despliega en |
+|---|---|---|---|
+| [`ai-service/`](ai-service/README.md) | ingesta, chunking, embeddings, recuperación | Python · FastAPI · pgvector | Railway |
+| [`business-backend/`](business-backend/README.md) | el frontend y el backend de negocio | Next.js · Tailwind · shadcn/ui | Vercel |
 
 ## Empezar
 
+Las dos, en dos terminales:
+
 ```bash
-cd ai-service
-uv sync
-cp .env.example .env      # completar si vas a usar embeddings o el reranker
-uv run pytest
+cd ai-service && uv sync && uv run uvicorn app.main:app --reload
 ```
 
-El detalle de todo lo demás —el pipeline del corpus, la persistencia en
-pgvector, el mapa de procesos, las evaluaciones— está en el
-[README del servicio](ai-service/README.md).
+```bash
+cd business-backend && npm install && npm run dev
+```
 
-Postgres con pgvector para desarrollo local sale del compose de la raíz:
+Postgres con pgvector sale del compose de la raíz:
 
 ```bash
 docker compose up -d
@@ -34,6 +33,31 @@ docker compose up -d
 Vive acá y no dentro de `ai-service/` a propósito: el nombre del proyecto de
 compose sale del directorio donde está el archivo, así que moverlo renombraría
 el volumen y levantaría una base vacía sin decir nada.
+
+El detalle de cada proyecto está en su propio README: el
+[del servicio](ai-service/README.md) —el pipeline del corpus, pgvector, el mapa
+de procesos, las evaluaciones— y el [de la consola](business-backend/README.md).
+
+## Despliegue
+
+Cada proyecto va a su plataforma, y cada plataforma despliega desde GitHub por
+su propia integración. **No hay ningún job de CI que despliegue**: reproducirlo
+sería reimplementar en YAML lo que las dos ya hacen, con rollback incluido.
+
+| | Railway (`ai-service/`) | Vercel (`business-backend/`) |
+|---|---|---|
+| root directory | `ai-service` | `business-backend` |
+| build | `ai-service/Dockerfile` | Next.js |
+| healthcheck | `/health` | — |
+| variables | `DATABASE_URL`, `OPENAI_API_KEY`, `TENANT_ID`, `DOC_VERSION`, `CORPUS_ROOT` | `AI_SERVICE_URL` |
+| no redesplegar de más | *Watch Paths* = `ai-service/**` | *Ignored Build Step* que sale si el commit no toca `business-backend/` |
+
+`AI_SERVICE_URL` es la URL pública del servicio en Railway, y es **privada**:
+sin prefijo `NEXT_PUBLIC_`, porque el browser nunca la tiene que poder leer.
+Toda llamada al servicio sale del servidor de Next.
+
+`.github/workflows/ci.yml` prueba cada proyecto solo cuando cambian sus rutas,
+y valida el formato de las specs siempre.
 
 ## Los datos NO están en el repo
 
