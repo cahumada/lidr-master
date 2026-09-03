@@ -2,22 +2,22 @@
 
 Composition root: wires the config, configures logging, and includes the
 routers. Mirrors ``app/main.py`` on the ``session_16`` branch of
-LIDR-academy/ai-engineering, scaled down to what this project actually has
-(no lifespan-managed DB/graph checkpointer — nothing here needs one yet).
+LIDR-academy/ai-engineering, scaled down to what this project actually has.
 
 || Composition root: arma la config, configura el logging, e incluye los
 routers. Replica ``app/main.py`` en la rama ``session_16`` de
-LIDR-academy/ai-engineering, reducido a lo que este proyecto realmente
-tiene (sin checkpointer de DB/grafo manejado por lifespan — todavía nada
-acá lo necesita).
+LIDR-academy/ai-engineering, reducido a lo que este proyecto realmente tiene.
 """
 
 from __future__ import annotations
+
+from contextlib import AsyncExitStack, asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
 
 from app.api.answer import router as answer_router
+from app.api.answer_agentic import router as answer_agentic_router
 from app.api.corpus import router as corpus_router
 from app.api.documents import router as documents_router
 from app.api.search import router as search_router
@@ -53,12 +53,49 @@ def configure_logging() -> None:
     )
 
 
-configure_logging()
+log = structlog.get_logger()
 
-app = FastAPI(title="Visual Time RAG — servicio IA", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application startup and shutdown lifecycle.
+
+    || Ciclo de vida de arranque y apagado de la aplicación.
+    """
+    configure_logging()
+    settings = get_settings()
+
+    app.state.answer_graph = None
+    app.state._graph_stack = AsyncExitStack()
+
+    checkpointer = None
+    try:
+        from app.domain.graph.checkpointer import open_checkpointer
+
+        checkpointer = await app.state._graph_stack.enter_async_context(open_checkpointer())
+    except Exception as exc:  # noqa: BLE001 — graph is optional infrastructure.
+        log.error("answer_graph_checkpointer_init_failed", error=str(exc)[:400])
+
+    if checkpointer is not None:
+        try:
+            from app.domain.graph.build import build_answer_graph
+
+            app.state.answer_graph = build_answer_graph(checkpointer)
+            log.info("answer_graph_ready")
+        except Exception as exc:  # noqa: BLE001
+            log.error("answer_graph_init_failed", error=str(exc)[:400])
+
+    log.info("application_started", environment=settings.APP_ENV)
+    yield
+    await app.state._graph_stack.aclose()
+    log.info("application_shutdown")
+
+
+app = FastAPI(title="Visual Time RAG — servicio IA", version="0.1.0", lifespan=lifespan)
 app.include_router(documents_router)
 app.include_router(search_router)
 app.include_router(answer_router)
+app.include_router(answer_agentic_router)
 app.include_router(corpus_router)
 
 

@@ -170,6 +170,17 @@ class Settings(BaseSettings):
     ANSWER_MAX_TOKENS: int = 1024
     ANSWER_TEMPERATURE: float = 0.0
 
+    # Answer-orchestration graph (POST /answer/agentic). Separate from generation
+    # knobs: the supervisor has its own step budget and human-review threshold.
+    # || Grafo de orquestación (POST /answer/agentic). Separado de las perillas
+    # de generación: el supervisor tiene su propio tope de pasos y umbral de
+    # revisión humana.
+    ANSWER_ORCHESTRATOR_MAX_STEPS: int = 12
+    ANSWER_ORCHESTRATOR_CONFIDENCE_THRESHOLD: float = 0.6
+    ANSWER_ORCHESTRATOR_MAX_REQUERIES: int = 1
+    ANSWER_ORCHESTRATOR_PRIVILEGE_STRICT: bool = False
+    ANSWER_ORCHESTRATOR_AUDIT_ARGS_PREVIEW_CHARS: int = 200
+
     # Input cap of text-embedding-3-small. Every chunk is checked against this
     # BEFORE the first call: finding out when the API rejects it means paying
     # to learn it.

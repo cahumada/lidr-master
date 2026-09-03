@@ -154,6 +154,82 @@ pregunta real y con los resultados que dio.
 En una frase: la mejor configuración encuentra alrededor del **45% de los
 documentos relevantes que podría encontrar**.
 
+## Agentes y orquestación
+
+```bash
+curl -X POST http://localhost:8000/answer/agentic \
+  -H "Content-Type: application/json" \
+  -d '{"question": "¿Qué valida CA014 antes de aceptar la póliza?"}'
+```
+
+`POST /answer/agentic` no reemplaza a `/answer`: lo envuelve en un grafo
+LangGraph de cuatro agentes especialistas, cada uno con el mínimo privilegio
+que necesita, ruteados dinámicamente en vez de en un orden fijo:
+
+```mermaid
+flowchart TD
+    START([pregunta]) --> ORCH{orchestrator}
+    ORCH -->|1| QP[query_planner<br/>sin tools]
+    QP --> ORCH
+    ORCH -->|2| ER[evidence_retriever<br/>tool: search_corpus]
+    ER --> ORCH
+    ORCH -->|3| AS[answer_synthesizer<br/>sin tools]
+    AS --> ORCH
+    ORCH -->|4| CV[citation_validator<br/>sin tools]
+    CV --> ORCH
+    ORCH -->|requery si CV lo pide| ER
+    ORCH -->|listo o tope de pasos| GATE{{answer_review_gate}}
+    GATE -->|sin disparadores| END([respuesta · 200])
+    GATE -->|confianza baja / sin evidencia / cita sin respaldo| PAUSA([202 · awaiting_human_review])
+    PAUSA -.POST /answer/agentic/resume.-> GATE
+```
+
+- **`orchestrator`** (`app/domain/graph/orchestrator.py`) decide el próximo
+  agente vía `Command(goto=...)`, no un grafo estático — con tres frenos
+  deterministas: tope de pasos (`ANSWER_ORCHESTRATOR_MAX_STEPS`), una guarda
+  de legalidad que rechaza un destino cuyos inputs no están listos o que ya
+  corrió, y una escalera de fallback determinística
+  (`query_planner → evidence_retriever → answer_synthesizer →
+  citation_validator`) cuando el ruteo no tiene un candidato obvio.
+- **`query_planner`, `answer_synthesizer`, `citation_validator`** no tienen
+  ninguna tool — razonan sobre el estado. **`evidence_retriever`** es el
+  único con una, `search_corpus`, que envuelve el mismo `HybridRetriever`
+  que usan `/search` y `/answer` — no hay una segunda implementación de
+  recuperación. La tabla de privilegios vive en `app/domain/graph/privilege.py`
+  (`AGENT_PRIVILEGES`) y cada intento, permitido o denegado, queda auditado
+  en `agent_contributions`.
+- **`citation_validator`** puede pedir un *requery* a `evidence_retriever`
+  con una consulta refinada en vez de conformarse con hits insuficientes —
+  la diferencia real entre este endpoint y `/answer`, que no puede volver
+  a preguntar.
+- **`answer_review_gate`** (`app/domain/graph/gate.py`) pausa el grafo
+  (HTTP 202, `status: "awaiting_human_review"`) solo cuando
+  `review_reasons(state)` no está vacío: confianza bajo
+  `ANSWER_ORCHESTRATOR_CONFIDENCE_THRESHOLD`, una cita sin respaldo en los
+  hits, o ninguna evidencia encontrada. Sin disparadores, sigue de largo —
+  "un gate que siempre pausa es un formulario, no un control". Se resume
+  con `POST /answer/agentic/resume` (`thread_id` + `decision`:
+  `approve`/`reject`/`adjust`).
+- El estado persiste por `thread_id` en un `AsyncPostgresSaver`
+  (`app/domain/graph/checkpointer.py`), sobre el mismo Postgres del resto
+  del servicio — sin eso, resumir después de una pausa no tendría de dónde
+  partir.
+
+**Lo que el curso trae y acá no se replicó, con la razón:**
+
+- `sandbox.py` / `persistence_agent` — existen en el curso porque
+  `save_estimate` es una escritura irreversible que hay que aislar por
+  tenant. `/answer/agentic` no escribe nada todavía; sandboxear una
+  escritura que no existe es la abstracción prematura que
+  [`openspec/project.md`](../openspec/project.md) prohíbe. El día que
+  aparezca una escritura real (curar una respuesta como FAQ verificada, por
+  ejemplo), ese es el momento de traerlo.
+- `competition.py` (dos estimadores con prioridades opuestas, sintetizados
+  en un rango) — tiene sentido para un número en disputa (horas de
+  estimación); no hay un equivalente natural para una pregunta sobre una
+  especificación funcional, que tiene una respuesta correcta verificable
+  contra el documento, no un rango.
+
 ## Fuente de verdad
 
 `openspec/`, en la raíz del repo, documenta el comportamiento de los dos
@@ -178,11 +254,23 @@ app/
 ├── api/
 │   ├── documents.py                         # POST /documents/ingest (router delgado)
 │   ├── search.py                            # GET /search
-│   └── answer.py                            # POST /answer
+│   ├── answer.py                            # POST /answer
+│   └── answer_agentic.py                    # POST /answer/agentic (+ /resume)
 ├── foundation/
 │   ├── persistence/database.py              # Base, engine sync (psycopg) y async (asyncpg)
 │   ├── llm/wrapper.py                       # chat completions (cliente armado en DI)
 │   └── prompts/answer/v1/                   # system.j2 + user.j2
+├── domain/
+│   ├── schemas.py                           # AnswerAgentState y sus acumuladores keyed
+│   └── graph/
+│       ├── orchestrator.py                  # Command(goto=...), tres frenos deterministas
+│       ├── privilege.py                     # AGENT_PRIVILEGES, guarded_dispatch, auditoría
+│       ├── gate.py                          # review_reasons puro + answer_review_gate
+│       ├── tools.py                         # search_corpus envuelve HybridRetriever
+│       ├── checkpointer.py                  # AsyncPostgresSaver por thread_id
+│       ├── build.py                         # arma el StateGraph
+│       └── agents/                          # query_planner, evidence_retriever,
+│                                             # answer_synthesizer, citation_validator
 └── generation/rag/
     ├── schemas.py                           # Chunk, ChunkMetadata, Reference, manifiestos
     ├── chunking/
@@ -212,9 +300,10 @@ app/
 
 ### Próximos pasos (no de este cambio)
 
-- Pantalla de `/answer` en `business-backend/`.
 - Streaming de la respuesta.
-- Versiones de prompt `v2` / `v3`.
+- Versiones de prompt `v2` / `v3`, con evidencia de qué cambió y por qué.
+- Un segundo tipo de documento (`source_type` ya está en la clave única de
+  `chunks`, el chunker todavía no distingue un segundo caso real).
 
 No repliqué `app/ingestion/` del curso (catálogo YAML + jobs en background +
 Postgres): esa capa es para otro tipo de fuente y trae infraestructura que este
@@ -270,6 +359,11 @@ Swagger en `http://localhost:8000/docs`. Endpoints:
   `/search`, arma un prompt, llama al LLM y marca `grounded=false` si la
   prosa cita un `document_id` que no estaba en los hits. `citations` son
   esos hits, no los marcadores del modelo.
+- `POST /answer/agentic` (+ `POST /answer/agentic/resume`) — lo mismo que
+  `/answer`, orquestado por cuatro agentes con privilegio mínimo y un gate
+  humano que pausa (HTTP 202) cuando la confianza es baja o una cita no
+  tiene respaldo. Detalle completo en
+  [Agentes y orquestación](#agentes-y-orquestación).
 
 ```bash
 curl -X POST http://localhost:8000/documents/ingest-file \

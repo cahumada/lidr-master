@@ -46,6 +46,8 @@ dependencies = [
     # || Prompts versionados. No estaba en el repo; `str.format` no expresa el
     # layout versionado del curso.
     "jinja2>=3.1.6",
+    "langgraph>=1.2.2",
+    "langgraph-checkpoint-postgres>=3.1.0",
 ]
 
 [dependency-groups]

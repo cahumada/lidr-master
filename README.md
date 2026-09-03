@@ -9,8 +9,43 @@ Monorepo de dos proyectos, el layout que fija el programa:
 
 | | qué es | stack | se despliega en |
 |---|---|---|---|
-| [`ai-service/`](ai-service/README.md) | ingesta, chunking, embeddings, recuperación, generación | Python · FastAPI · pgvector | Railway |
+| [`ai-service/`](ai-service/README.md) | ingesta, chunking, embeddings, recuperación, generación, agentes | Python · FastAPI · pgvector | Railway |
 | [`business-backend/`](business-backend/README.md) | el frontend y el backend de negocio | Next.js · Tailwind · shadcn/ui | Vercel |
+
+## Arquitectura
+
+```mermaid
+flowchart LR
+    UI["business-backend (Next.js)<br/>Búsqueda · Respuesta · Ingesta · Corpus"]
+
+    subgraph AI["ai-service (FastAPI)"]
+        RET["HybridRetriever<br/>RRF + rerank + decompose"]
+        GEN["generate_answer<br/>prompt versionado + LLM + guardrail"]
+        ORCH["orchestrator (LangGraph)<br/>query_planner → evidence_retriever →<br/>answer_synthesizer → citation_validator"]
+        GATE{{"answer_review_gate<br/>pausa si hace falta"}}
+    end
+
+    PG[("Postgres + pgvector<br/>chunks, corpus_versions")]
+
+    UI -->|"GET /search"| RET
+    UI -->|"POST /answer"| GEN
+    UI -->|"POST /answer/agentic (/resume)"| ORCH
+    RET --> PG
+    GEN -->|reusa| RET
+    ORCH -->|reusa| GEN
+    ORCH -.confianza baja · sin evidencia · cita sin respaldo.-> GATE
+    GATE -.humano aprueba/rechaza/ajusta, HTTP 202 → resume.-> ORCH
+```
+
+Tres formas de llegar al mismo pipeline de recuperación, con costo y control
+crecientes: `/search` devuelve chunks sin interpretarlos, `/answer` los
+sintetiza en una respuesta citada de un solo paso, y `/answer/agentic` la
+envuelve en un grafo de cuatro agentes con privilegio mínimo (solo
+`evidence_retriever` tiene una tool) y un gate humano que pausa —no siempre,
+solo cuando la confianza es baja, no hay evidencia, o una cita no está
+respaldada por los hits recuperados. El detalle de cada agente y por qué el
+curso trae piezas que acá no se replicaron (sandbox, competencia entre
+estimadores) está en el [README del servicio](ai-service/README.md#agentes-y-orquestación).
 
 ## Empezar
 
@@ -64,6 +99,26 @@ y valida el formato de las specs siempre.
 `ai-service/data/` está gitignoreado. Contiene documentación funcional y un
 export de una tabla de producción que **pertenecen a un cliente**, más el
 corpus generado. El repo trae el pipeline, no los datos.
+
+## Limitaciones conocidas y próximos pasos
+
+- **Recuperación**: la mejor configuración medida encuentra ~45% de los
+  documentos relevantes que podría encontrar (`p@10` sobre un golden set
+  todavía `PENDING_REVIEW` — ver
+  [`ai-service/evals/COMO_LEER.md`](ai-service/evals/COMO_LEER.md)).
+- **Generación**: sin streaming ni versiones de prompt más allá de `v1`; el
+  guardrail de citas *marca* `grounded=false`, no reintenta solo.
+- **Agentes**: sin persistencia ni escritura — por eso no hay `sandbox.py` ni
+  un agente de competencia entre estimadores como en el curso, que sí
+  escribe (`save_estimate`). El día que exista una escritura real (por
+  ejemplo, curar una respuesta como FAQ verificada), esa es la señal para
+  traer ese patrón, no antes.
+- **Un solo tipo de documento** indexado (`functional_spec`); el pipeline
+  distingue por `source_type` pero no hay un segundo tipo todavía.
+- **Próximo paso más claro**: cerrar el despliegue continuo de las dos
+  plataformas (hoy documentado, pendiente de verificar de punta a punta) y
+  promover los `openspec/changes/` en curso a `openspec/specs/` una vez
+  verificados en producción.
 
 ## Fuente de verdad
 
