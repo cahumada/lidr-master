@@ -134,7 +134,17 @@ agrega cuando entre la segunda estrategia»— se cumple, no se elude.
 #### Scenario: Las dos fuentes producen lo mismo
 - **WHEN** el mismo conjunto de documentos se trocea desde un directorio y
   desde un bucket
-- **THEN** se producen los mismos chunks
+- **THEN** se producen los mismos chunks, **en el mismo orden**
+
+#### Scenario: El orden no depende del sistema operativo
+- **WHEN** se lista un directorio con nombres que difieren en mayúsculas
+- **THEN** el orden es el mismo en Windows y en Linux, porque se ordena por la
+  clave relativa y no por el `Path` —que en Windows compara sin distinguir
+  mayúsculas y reordenaría el corpus en silencio al desplegar
+
+#### Scenario: Una subcarpeta pertenece a su módulo de primer nivel
+- **WHEN** un documento está en `accounting/reports/cpl500.md`
+- **THEN** pertenece al módulo `accounting` y no a `accounting/reports`
 
 #### Scenario: El corpus declara de dónde salió
 - **WHEN** se escribe el manifiesto

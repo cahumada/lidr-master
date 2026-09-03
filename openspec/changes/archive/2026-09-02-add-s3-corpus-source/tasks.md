@@ -60,8 +60,24 @@
 - [x] 4.1 17 tests de las dos fuentes, sin red.
 - [x] 4.2 **Documentos reales por la interfaz del bucket**: 60 archivos de
       `policies` y `claims` servidos por un cliente falso dieron **3.688
-      chunks**, exactamente los mismos que desde disco. La abstracción no cambia
-      el comportamiento.
+      chunks**, los mismos que desde disco.
+
+      **Corregido después:** verifiqué el CONTEO y dije «exactamente los
+      mismos». El conteo coincidía; el **orden** no. Comparadas las dos fuentes
+      sobre el corpus entero, el módulo `designer` salía en orden distinto,
+      porque en Windows `Path` compara SIN distinguir mayúsculas y
+      `sorted(rglob(...))` daba `cag_chunk, README` mientras S3 daba
+      `README, cag_chunk`.
+
+      Y el problema era más grande que la diferencia entre fuentes: **el mismo
+      código local ordena distinto en Windows que en Linux**, así que desplegar
+      en Railway habría reordenado el corpus en silencio respecto a desarrollo.
+
+      Arreglado ordenando por la clave relativa, que es platform-independent y
+      es el orden de S3. Verificado: las dos fuentes dan las 28 claves de módulo
+      y los 2.169 documentos **idénticos, incluido el orden**. Reordenar no
+      cambia ningún hash —cada documento se trocea independiente— así que
+      re-embeber siguió costando 0.
 - [x] 4.3 La CLI corrida completa: 2.169 archivos → 62.228 chunks, los mismos
       números de siempre.
 - [x] 4.4 `embed_corpus --dry-run` reporta 0 para embeber y 57.131 reusadas: los

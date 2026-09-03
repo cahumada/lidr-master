@@ -74,6 +74,45 @@ def test_the_local_source_labels_itself_by_its_path(corpus):
     assert str(corpus) in LocalCorpusSource(corpus).label()
 
 
+def test_both_sources_order_documents_the_same_way(tmp_path):
+    """El caso que lo destapa es un nombre con mayusculas.
+
+    En Windows `Path` compara SIN distinguir mayusculas, asi que
+    `sorted(rglob(...))` daba `cag_chunk, README` y S3 daba `README, cag_chunk`:
+    el mismo corpus en otro orden segun el sistema operativo. Se ordena por la
+    clave relativa, que es platform-independent y es el orden de S3.
+    """
+    modulo = tmp_path / "designer"
+    modulo.mkdir()
+    for nombre in ("README_CAG.md", "cag_chunk_01.md", "Zeta.md", "alpha.md"):
+        (modulo / nombre).write_text("# x", encoding="utf-8")
+
+    local = LocalCorpusSource(tmp_path).modules()["designer"]
+    bucket = S3CorpusSource(
+        FakeS3(sorted(f"designer/{n}" for n in
+               ("README_CAG.md", "cag_chunk_01.md", "Zeta.md", "alpha.md"))),
+        bucket="b",
+    ).modules()["designer"]
+
+    assert local == bucket
+    assert local[0] == "designer/README_CAG.md"
+
+
+def test_a_nested_subfolder_belongs_to_its_top_level_module(tmp_path):
+    """El corpus real tiene 175 documentos a tres niveles, en 8 subcarpetas
+    (`reports`, `_cag`, `formats`). Se agrupan por su modulo de PRIMER nivel:
+    `accounting/reports/x.md` es de `accounting`, no de `accounting/reports`."""
+    profundo = tmp_path / "accounting" / "reports"
+    profundo.mkdir(parents=True)
+    (profundo / "cpl500.md").write_text("# x", encoding="utf-8")
+    (tmp_path / "accounting" / "cpl001.md").write_text("# y", encoding="utf-8")
+
+    modules = LocalCorpusSource(tmp_path).modules()
+
+    assert set(modules) == {"accounting"}
+    assert "accounting/reports/cpl500.md" in modules["accounting"]
+
+
 # --- Un bucket -----------------------------------------------------------------
 
 

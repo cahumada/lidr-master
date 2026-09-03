@@ -116,9 +116,33 @@ class LocalCorpusSource:
         self._root = root
 
     def modules(self) -> dict[str, list[str]]:
+        """Ordenado por la CLAVE relativa y no por el ``Path``.
+
+        No es un detalle: en Windows ``Path`` compara **sin distinguir
+        mayusculas**, asi que ``sorted(rglob(...))`` da
+        ``alpha, cag_chunk, README, Zeta``; en Linux da
+        ``README, Zeta, alpha, cag_chunk``. El mismo corpus quedaria en otro
+        orden segun el sistema operativo, y desplegar en Linux reordenaria en
+        silencio lo que en desarrollo se veia de otra forma.
+
+        Ordenar por la clave relativa es platform-independent y es tambien el
+        orden que devuelve S3, asi que las dos fuentes producen el corpus
+        identico y no solo equivalente.
+
+        || Sorted by the relative KEY and not by the ``Path``. Not a detail: on
+        Windows ``Path`` compares case-INSENSITIVELY, so ``sorted(rglob(...))``
+        gives one order and Linux gives another. The same corpus would come out
+        ordered differently depending on the OS, and deploying to Linux would
+        silently reorder what development saw. Sorting by the relative key is
+        platform-independent and is also S3's order, so both sources produce an
+        identical corpus and not merely an equivalent one.
+        """
         grouped: dict[str, list[str]] = {}
-        for path in sorted(self._root.rglob(f"*{SUFFIX}")):
-            relative = path.relative_to(self._root).as_posix()
+        keys = sorted(
+            path.relative_to(self._root).as_posix()
+            for path in self._root.rglob(f"*{SUFFIX}")
+        )
+        for relative in keys:
             if is_excluded(relative):
                 continue
             grouped.setdefault(module_of(relative), []).append(relative)
