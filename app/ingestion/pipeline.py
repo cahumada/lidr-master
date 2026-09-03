@@ -273,6 +273,10 @@ class ChunkStepResult:
     failed_files: list[dict] = field(default_factory=list)
     per_module: list[dict] = field(default_factory=list)
 
+    def summary(self) -> dict:
+        """JSON-safe, for the job row. || Serializable, para la fila del job."""
+        return {**asdict(self), "out_dir": str(self.out_dir)}
+
 
 @dataclass
 class EmbedStepResult:
@@ -303,7 +307,7 @@ class EmbedStepResult:
     def summary(self) -> dict:
         """JSON-safe, for the job row. || Serializable, para la fila del job."""
         return {
-            key: value
+            key: (str(value) if key == "out_dir" else value)
             for key, value in asdict(self).items()
             if key not in ("module_results", "manifest")
         }
@@ -324,6 +328,10 @@ class LoadStepResult:
     rows_written: int = 0
     pruned: int = 0
     per_module: list[dict] = field(default_factory=list)
+
+    def summary(self) -> dict:
+        """JSON-safe, for the job row. || Serializable, para la fila del job."""
+        return {**asdict(self), "chunks_dir": str(self.chunks_dir)}
 
 
 @dataclass

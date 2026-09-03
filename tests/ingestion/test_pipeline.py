@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import json as json_module
+from pathlib import Path
 
 import pytest
 
 from app.ingestion.pipeline import (
     EMBEDDING_MANIFEST_FILENAME,
     MANIFEST_FILENAME,
+    ChunkStepResult,
+    EmbedStepResult,
+    LoadStepResult,
     corpus_dir,
     corpus_identity,
     load_corpus,
@@ -121,3 +127,81 @@ def test_at_most_one_running_job_is_enforced_by_the_database():
     )
     assert index.unique is True
     assert RUNNING in str(index.dialect_options["postgresql"]["where"])
+
+
+
+# --- summary(): el resultado de un paso tiene que ser JSON-serializable ---------
+#
+# ingestion_jobs.result es JSONB. `asdict()` sobre un ChunkStepResult,
+# EmbedStepResult o LoadStepResult deja `out_dir`/`chunks_dir` como un `Path` de
+# verdad -- json.dumps no sabe serializarlo -- y eso rompio una corrida real: el
+# job e26c7cdc fallo con "Object of type WindowsPath is not JSON serializable" al
+# escribir el progreso despues del paso de trocear. `summary()` existe
+# especificamente para evitarlo, y sin este test nada impide que un campo `Path`
+# nuevo se cuele otra vez sin que `summary()` lo convierta.
+
+
+def _chunk_result(**overrides) -> ChunkStepResult:
+    base = {
+        "corpus_id": "c1", "out_dir": Path("data/chunks/v1"), "source": "s3://b",
+        "tenant_id": "t", "doc_version": "v1", "modules": 1, "files": 1,
+        "documents": 1, "chunks": 1, "tokens": 1,
+    }
+    base.update(overrides)
+    return ChunkStepResult(**base)
+
+
+def _embed_result(**overrides) -> EmbedStepResult:
+    base = {
+        "out_dir": Path("data/embeddings/v1"), "modules": 1, "to_embed": 0,
+        "reused": 1, "duplicates_saved": 0, "tokens_billed": 0, "batches": 0,
+        "estimated_cost_usd": 0.0,
+    }
+    base.update(overrides)
+    return EmbedStepResult(**base)
+
+
+def _load_result(**overrides) -> LoadStepResult:
+    base = {
+        "corpus_id": "c1", "chunks_dir": Path("data/chunks/v1"), "tenant_id": "t",
+        "doc_version": "v1", "modules": 1, "rows_ready": 1, "distinct_texts": 1,
+        "chunks_without_vector": 0,
+    }
+    base.update(overrides)
+    return LoadStepResult(**base)
+
+
+def test_asdict_alone_leaks_a_real_path_on_chunk_result():
+    """Documenta el defecto que `summary()` existe para evitar: `asdict()` a
+    secas NO convierte un campo `Path` a texto."""
+    leaked = dataclasses.asdict(_chunk_result())["out_dir"]
+    assert isinstance(leaked, Path)
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        json_module.dumps(leaked)
+
+
+def test_chunk_result_summary_is_json_serializable():
+    summary = _chunk_result().summary()
+    assert isinstance(summary["out_dir"], str)
+    json_module.dumps(summary)  # no debe lanzar
+
+
+def test_embed_result_summary_is_json_serializable():
+    summary = _embed_result().summary()
+    assert isinstance(summary["out_dir"], str)
+    json_module.dumps(summary)
+
+
+def test_embed_result_summary_drops_the_non_json_fields():
+    """`module_results` son objetos ModuleResult y `manifest` un
+    EmbeddingManifest: ninguno de los dos es JSON-serializable, y no hace falta
+    que lo sean porque son para el reporte de consola, no para la fila del job."""
+    summary = _embed_result().summary()
+    assert "module_results" not in summary
+    assert "manifest" not in summary
+
+
+def test_load_result_summary_is_json_serializable():
+    summary = _load_result().summary()
+    assert isinstance(summary["chunks_dir"], str)
+    json_module.dumps(summary)
