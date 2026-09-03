@@ -111,3 +111,43 @@ def get_reranker():
     from openai import OpenAI
 
     return LLMReranker(OpenAI(api_key=settings.OPENAI_API_KEY), model=settings.RERANK_MODEL)
+
+
+@lru_cache
+def get_corpus_source():
+    """Corpus source singleton: the bucket when one is configured, the local
+    directory otherwise.
+
+    `CORPUS_BUCKET` is what decides, and not a flag: a bucket name and a
+    directory path are mutually exclusive by nature, and a separate switch would
+    be one more thing that can disagree with them.
+
+    || Singleton de la fuente del corpus: el bucket cuando hay uno configurado,
+    el directorio local si no. `CORPUS_BUCKET` es lo que decide, y no un flag:
+    un nombre de bucket y una ruta son excluyentes por naturaleza, y un
+    interruptor aparte sería una cosa más que puede contradecirlos.
+    """
+    from app.ingestion.source import LocalCorpusSource, S3CorpusSource
+
+    settings = get_settings()
+    if settings.CORPUS_BUCKET:
+        import boto3
+
+        client = boto3.client(
+            "s3",
+            endpoint_url=settings.S3_ENDPOINT_URL or None,
+            aws_access_key_id=settings.S3_ACCESS_KEY_ID or None,
+            aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY or None,
+            region_name=settings.S3_REGION or None,
+        )
+        return S3CorpusSource(
+            client, bucket=settings.CORPUS_BUCKET, prefix=settings.CORPUS_BUCKET_PREFIX
+        )
+
+    if settings.CORPUS_ROOT is None:
+        raise RuntimeError(
+            "Neither CORPUS_BUCKET nor CORPUS_ROOT is configured, so there is no corpus "
+            "to read. || No hay CORPUS_BUCKET ni CORPUS_ROOT configurados, así que no hay "
+            "corpus que leer."
+        )
+    return LocalCorpusSource(settings.CORPUS_ROOT)

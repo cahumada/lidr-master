@@ -111,13 +111,13 @@ async def rebuild(
     # corrida bloquearía el caso más útil que hay: apuntar el servicio a una base
     # nueva y cargarle el corpus que ya está en disco, que no necesita ningún
     # documento fuente.
-    if CHUNK in steps and settings.CORPUS_ROOT is None:
+    if CHUNK in steps and not settings.CORPUS_BUCKET and settings.CORPUS_ROOT is None:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "CORPUS_ROOT is not configured, so there is nothing to chunk. Drop the 'chunk' "
-            "step to load the corpus already on disk. || CORPUS_ROOT no está configurada, así "
-            "que no hay nada que trocear. Saca el paso 'chunk' para cargar el corpus que ya "
-            "está en disco.",
+            "Neither CORPUS_BUCKET nor CORPUS_ROOT is configured, so there is nothing to "
+            "chunk. Drop the 'chunk' step to load the corpus already on disk. || No hay "
+            "CORPUS_BUCKET ni CORPUS_ROOT configurados, así que no hay nada que trocear. "
+            "Saca el paso 'chunk' para cargar el corpus que ya está en disco.",
         )
 
     already = await running_job(session)
@@ -138,7 +138,6 @@ async def rebuild(
         # es la garantía.
         raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
     options = {
-        "root": str(settings.CORPUS_ROOT),
         "modules": payload.modules,
         "prune": payload.prune,
         "dry_run": payload.dry_run,

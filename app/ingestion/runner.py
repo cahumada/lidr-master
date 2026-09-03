@@ -137,8 +137,10 @@ def _run_steps(job_id: str, steps: list[str], options: dict, report) -> dict:
                 progress=lambda **fields: report(progress=fields),
             )
         elif step == CHUNK:
+            from app.dependencies import get_corpus_source
+
             outcome = pipeline.chunk_corpus(
-                root=Path(options["root"]),
+                source=get_corpus_source(),
                 out_dir=chunks_dir,
                 modules=options.get("modules"),
                 progress=lambda **fields: report(progress=fields),

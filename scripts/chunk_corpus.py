@@ -28,11 +28,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.ingestion.pipeline import ChunkStepResult, chunk_corpus
+from app.ingestion.source import LocalCorpusSource
 
 REPORT_FILENAME = "chunking_report.md"
 
 
-def render_report(root: Path, result: ChunkStepResult, elapsed: float) -> str:
+def render_report(result: ChunkStepResult, elapsed: float) -> str:
     """El reporte markdown, armado del resultado estructurado del pipeline.
 
     || The markdown report, built from the pipeline's structured result.
@@ -40,7 +41,7 @@ def render_report(root: Path, result: ChunkStepResult, elapsed: float) -> str:
     lines = [
         "# Reporte de chunking del corpus",
         "",
-        f"Raíz: `{root}`",
+        f"Fuente: `{result.source}`",
         f"Módulos procesados: {result.modules}",
         f"Corpus: `{result.corpus_id}`",
         f"Tenant / versión: {result.tenant_id} / {result.doc_version}",
@@ -108,7 +109,7 @@ def main() -> int:
 
     started = time.perf_counter()
     result = chunk_corpus(
-        root=root,
+        source=LocalCorpusSource(root),
         out_dir=out_dir,
         modules=args.modules,
         tenant_id=args.tenant,
@@ -118,7 +119,7 @@ def main() -> int:
     elapsed = time.perf_counter() - started
 
     (out_dir / REPORT_FILENAME).write_text(
-        render_report(root, result, elapsed), encoding="utf-8"
+        render_report(result, elapsed), encoding="utf-8"
     )
 
     print(

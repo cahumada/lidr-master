@@ -43,6 +43,7 @@ import structlog
 from app.config import get_settings
 from app.generation.rag.chunking.functional_spec import FunctionalSpecChunker
 from app.generation.rag.schemas import CorpusManifest, EmbeddingManifest
+from app.ingestion.source import CorpusSource
 
 logger = structlog.get_logger(__name__)
 
@@ -103,30 +104,8 @@ def corpus_identity(chunks_dir: Path) -> tuple[str, str, str]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     return manifest["corpus_id"], manifest["tenant_id"], manifest["doc_version"]
 
-
-# Files that sit at the corpus root and are not specifications: the export's
-# own processing notes.
-# || Archivos que están en la raíz del corpus y no son especificaciones: las
-# notas de procesamiento del propio export.
-EXCLUDED_FILENAMES = {"processing_report.md", "prompt_procesamiento_rag.md"}
-
-
-def discover_modules(root: Path) -> dict[str, list[Path]]:
-    """Group every ``.md`` file under ``root`` by its top-level module directory.
-
-    || Agrupa cada archivo ``.md`` bajo ``root`` por su directorio de módulo de primer nivel.
-    """
-    modules: dict[str, list[Path]] = {}
-    for path in sorted(root.rglob("*.md")):
-        if path.parent == root and path.name in EXCLUDED_FILENAMES:
-            continue
-        module = path.relative_to(root).parts[0]
-        modules.setdefault(module, []).append(path)
-    return modules
-
-
 def chunk_module(
-    chunker: FunctionalSpecChunker, root: Path, module: str, paths: list[Path]
+    chunker: FunctionalSpecChunker, source: CorpusSource, module: str, keys: list[str]
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Chunk every file in one module.
 
@@ -143,22 +122,26 @@ def chunk_module(
     zero_chunk_files: list[dict] = []
     failed_files: list[dict] = []
 
-    for path in paths:
-        relative = str(path.relative_to(root))
+    for key in keys:
         try:
-            content = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError as exc:
-            failed_files.append({"file": relative, "error": f"decode error: {exc}"})
+            content = source.read(key)
+        except Exception as exc:  # noqa: BLE001 — one unreadable document must
+            # not abort a run of 2169. A local read fails differently from a
+            # bucket read, so both are caught the same way and reported.
+            # || un documento ilegible no puede abortar una corrida de 2169. Una
+            # lectura local falla distinto que una de un bucket, así que las dos
+            # se capturan igual y se reportan.
+            failed_files.append({"file": key, "error": f"read error: {type(exc).__name__}: {exc}"})
             continue
         try:
-            chunked = chunker.chunk(path.name, content)
+            chunked = chunker.chunk(source.name_of(key), content)
         except Exception as exc:  # noqa: BLE001 — one bad file must not abort the batch.
-            failed_files.append({"file": relative, "error": f"{type(exc).__name__}: {exc}"})
+            failed_files.append({"file": key, "error": f"{type(exc).__name__}: {exc}"})
             continue
 
         if not any(doc.chunks for doc in chunked):
             ids = ", ".join(doc.document_id for doc in chunked)
-            zero_chunk_files.append({"file": relative, "document_id": ids})
+            zero_chunk_files.append({"file": key, "document_id": ids})
 
         # One source file can describe several transactions, so it contributes
         # one entry per transaction rather than one entry per file.
@@ -167,7 +150,7 @@ def chunk_module(
         for doc in chunked:
             documents.append(
                 {
-                    "source_file": path.name,
+                    "source_file": source.name_of(key),
                     "module": module,
                     "document_id": doc.document_id,
                     "document_title": doc.document_title,
@@ -195,6 +178,11 @@ def chunk_module(
 @dataclass
 class ChunkStepResult:
     corpus_id: str
+    # De donde salio este corpus. En el manifiesto y en el reporte, porque un
+    # corpus sin procedencia no se puede rastrear.
+    # || Where this corpus came from. In the manifest and in the report, because
+    # a corpus with no provenance cannot be traced.
+    source: str
     tenant_id: str
     doc_version: str
     modules: int
@@ -265,29 +253,30 @@ class ResetStepResult:
 
 def chunk_corpus(
     *,
-    root: Path,
+    source: CorpusSource,
     out_dir: Path,
     modules: list[str] | None = None,
     tenant_id: str | None = None,
     doc_version: str | None = None,
     progress: Progress = _silent,
 ) -> ChunkStepResult:
-    """Chunk every module under ``root`` into ``out_dir``, and write the manifest.
+    """Chunk every module of ``source`` into ``out_dir``, and write the manifest.
 
-    || Trocea cada módulo bajo ``root`` a ``out_dir``, y escribe el manifiesto.
+    || Trocea cada módulo de ``source`` a ``out_dir``, y escribe el manifiesto.
     """
     settings = get_settings()
     tenant_id = tenant_id or settings.TENANT_ID
     doc_version = doc_version or settings.DOC_VERSION
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    discovered = discover_modules(root)
+    discovered = source.modules()
     if modules:
         wanted = set(modules)
-        discovered = {name: paths for name, paths in discovered.items() if name in wanted}
+        discovered = {name: keys for name, keys in discovered.items() if name in wanted}
     if not discovered:
         raise FileNotFoundError(
-            f"No module found under {root}. || No se encontró ningún módulo bajo {root}."
+            f"No module found in {source.label()}. "
+            f"|| No se encontró ningún módulo en {source.label()}."
         )
 
     # Built through the composition root so the batch run and the HTTP API share
@@ -317,6 +306,7 @@ def chunk_corpus(
 
     result = ChunkStepResult(
         corpus_id=str(uuid.uuid4()),
+        source=source.label(),
         tenant_id=tenant_id,
         doc_version=doc_version,
         modules=len(discovered),
@@ -326,8 +316,8 @@ def chunk_corpus(
         tokens=0,
     )
 
-    for module, paths in discovered.items():
-        documents, zero_chunk_files, failed_files = chunk_module(chunker, root, module, paths)
+    for module, keys in discovered.items():
+        documents, zero_chunk_files, failed_files = chunk_module(chunker, source, module, keys)
 
         module_chunks = sum(len(d["chunks"]) for d in documents)
         module_tokens = sum(c["token_count"] for d in documents for c in d["chunks"])
@@ -336,7 +326,7 @@ def chunk_corpus(
             encoding="utf-8",
         )
 
-        result.files += len(paths)
+        result.files += len(keys)
         result.documents += len(documents)
         result.chunks += module_chunks
         result.tokens += module_tokens
@@ -345,7 +335,7 @@ def chunk_corpus(
         result.per_module.append(
             {
                 "module": module,
-                "files": len(paths),
+                "files": len(keys),
                 "documents": len(documents),
                 "chunks": module_chunks,
                 "tokens": module_tokens,
@@ -368,7 +358,7 @@ def chunk_corpus(
         progress(
             step="chunk",
             module=module,
-            files=len(paths),
+            files=len(keys),
             chunks=module_chunks,
             done=len(result.per_module),
             total=result.modules,
@@ -385,7 +375,7 @@ def chunk_corpus(
         tenant_id=tenant_id,
         doc_version=doc_version,
         generated_at=datetime.now(UTC),
-        source_root=str(root),
+        source_root=source.label(),
         modules=sorted(discovered),
         total_documents=result.documents,
         total_chunks=result.chunks,

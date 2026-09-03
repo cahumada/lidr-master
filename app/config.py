@@ -68,6 +68,25 @@ class Settings(BaseSettings):
     # La CLI sigue tomando `--root`, porque ahi quien llama ya tiene el disco.
     CORPUS_ROOT: Path | None = None
 
+    # El bucket S3-compatible donde viven los documentos, cuando no estan en
+    # disco. `CORPUS_BUCKET` es lo que decide cual de las dos fuentes se usa:
+    # si esta puesto gana el bucket, y si no, `CORPUS_ROOT`.
+    #
+    # `S3_ENDPOINT_URL` es lo que hace que esto sirva para Railway, MinIO o
+    # cualquier otro S3-compatible y no solo para AWS. Vacio significa AWS.
+    # || The S3-compatible bucket where the documents live, when they are not on
+    # disk. `CORPUS_BUCKET` is what picks the source: set, the bucket wins;
+    # unset, `CORPUS_ROOT` does.
+    #
+    # `S3_ENDPOINT_URL` is what makes this work for Railway, MinIO or any other
+    # S3-compatible service and not only AWS. Empty means AWS.
+    CORPUS_BUCKET: str = ""
+    CORPUS_BUCKET_PREFIX: str = ""
+    S3_ENDPOINT_URL: str = ""
+    S3_ACCESS_KEY_ID: str = ""
+    S3_SECRET_ACCESS_KEY: str = ""
+    S3_REGION: str = "auto"
+
     # Version identity of the corpus being chunked. Stamped onto every
     # chunk so a vector store can isolate one client and one documentation
     # version; also declared in the corpus manifest. Overridable per run

@@ -29,6 +29,16 @@ dependencies = [
     "asyncpg>=0.29",
     "pgvector>=0.3",
     "greenlet>=3.0",
+    # Corpus source over S3-compatible object storage (Railway, MinIO, AWS). The
+    # S3 protocol requires signing every request with AWS SigV4, and writing
+    # that by hand is home-made authentication cryptography. boto3 is the
+    # reference client and talks to any S3-compatible endpoint via endpoint_url.
+    # || Fuente del corpus sobre object storage S3-compatible (Railway, MinIO,
+    # AWS). El protocolo S3 exige firmar cada request con AWS SigV4, y escribir
+    # eso a mano es criptografia de autenticacion hecha en casa. boto3 es el
+    # cliente de referencia y habla con cualquier endpoint S3-compatible por
+    # endpoint_url.
+    "boto3>=1.34",
 ]
 
 [dependency-groups]
