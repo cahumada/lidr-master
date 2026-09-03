@@ -42,6 +42,7 @@ app/
 ├── api/                       # Route Handlers: el proxy hacia el servicio IA
 │   ├── search/
 │   ├── answer/agentic/ · answer/agentic/resume/
+│   ├── answer/agentic/start/ · answer/agentic/[threadId]/progress/
 │   ├── documents/ingest-file/
 │   └── corpus/rebuild · jobs · jobs/[id]
 ├── search/                    # Búsqueda: la pantalla principal
@@ -57,16 +58,28 @@ components/ui/                 # shadcn: el código vive acá, no en node_module
 
 ### Respuesta agentica (`app/answer/`)
 
-Consume `POST /answer/agentic` del servicio IA: formulario de pregunta,
-respuesta con sus citas, y la traza de ruteo (`routing_history`) de los
-cuatro agentes que la produjeron. Cuando el servicio devuelve **202**
-(`awaiting_human_review`), la pantalla muestra el motivo (confianza baja,
-sin evidencia, cita sin respaldo) y botones para aprobar o rechazar (el
-schema también admite `adjust`, sin control propio en esta pantalla
-todavía) que llaman a `POST /answer/agentic/resume` — el 202 no es un error, es el
-gate humano funcionando. `base-client.ts` distingue explícitamente 200 de
-202 (`postJsonAllowingStatuses`) para que ese caso no caiga en la misma
-rama que un fallo real.
+No llama a `POST /answer/agentic` (el endpoint síncrono) sino a la variante
+de progreso en vivo: `POST /answer/agentic/start` agenda la corrida y
+devuelve un `thread_id` al instante, y la pantalla sondea
+`GET /answer/agentic/{thread_id}/progress` cada 1,2 s (`POLL_INTERVAL_MS`)
+mientras dura. Un panel **"Flujo en vivo"** anima los cuatro agentes
+(planificador, recuperación, síntesis, validación) más el gate como
+`idle` → `running` → `done`, con el último mensaje narrado de cada uno —
+el mismo patrón que la rama `agents_event` del curso (sin streaming real:
+es polling, pese al nombre).
+
+Cuando `/progress` deja `running`, dos caminos:
+
+- **`completed`** — se arma un `AnswerAgenticCompleted` con la respuesta,
+  sus citas, y la traza de ruteo (`routing_history`) de los cuatro agentes.
+- **`awaiting_human_review`** — la pantalla muestra el motivo (confianza
+  baja, sin evidencia, cita sin respaldo) y botones para aprobar o rechazar
+  (el schema también admite `adjust`, sin control propio todavía) que
+  llaman a `POST /answer/agentic/resume` — **sin sondeo**, porque resumir es
+  síncrono y devuelve el resultado final en la misma respuesta. El 202 de
+  `/start` y de `/answer/agentic` no es un error: `base-client.ts` distingue
+  explícitamente 200 de 202 (`postJsonAllowingStatuses`) para que ese caso
+  no caiga en la misma rama que un fallo real.
 
 Los contextos (`search`, `documents`, `corpus`) **no se importan entre sí**, y
 ninguna pantalla hace `fetch` al servicio por su cuenta: si falta una llamada,

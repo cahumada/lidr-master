@@ -145,6 +145,24 @@ def get_answer_llm():
 
 
 @lru_cache
+def get_activity_log():
+    """Activity log singleton for live agentic-run visibility.
+
+    A singleton and not per-request: the log has to outlive the request that
+    started the background run, since a later, unrelated request is the one
+    that polls it.
+
+    || Singleton del log de actividad para visibilidad en vivo de corridas
+    agenticas. Singleton y no por-request: el log tiene que sobrevivir al
+    request que arrancó la corrida en background, porque quien lo consulta es
+    otro request posterior y sin relación.
+    """
+    from app.domain.graph.activity import GraphActivityLog
+
+    return GraphActivityLog()
+
+
+@lru_cache
 def get_corpus_source():
     """Corpus source singleton: the bucket when one is configured, the local
     directory otherwise.

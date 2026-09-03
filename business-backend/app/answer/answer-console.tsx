@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -14,11 +14,122 @@ import { Textarea } from "@/components/ui/textarea";
 import type {
   AnswerAgenticCompleted,
   AnswerAgenticPaused,
-  AnswerAgenticResponse,
+  AnswerAgenticProgress,
+  AnswerAgenticStart,
+  GraphActivityEntry,
   RoutingRecord,
   SearchFacets,
   SearchHit,
 } from "@/lib/ai-service/types";
+
+/**
+ * Fixed dependency order the orchestrator's fallback ladder follows
+ * (`app/domain/graph/orchestrator.py`'s `_ORDER`) — used only to decide
+ * which row is "next" when no agent has reported yet, not to reorder
+ * anything the backend returns.
+ * || Orden de dependencia fijo que sigue la escalera de fallback del
+ * orquestador — solo para decidir qué fila es "la que sigue" cuando ningún
+ * agente reportó todavía.
+ */
+const AGENT_FLOW = [
+  { key: "query_planner", label: "Planificador de consulta" },
+  { key: "evidence_retriever", label: "Recuperación de evidencia" },
+  { key: "answer_synthesizer", label: "Síntesis de respuesta" },
+  { key: "citation_validator", label: "Validación de citas" },
+] as const;
+
+const GATE_KEY = "answer_review_gate";
+
+const POLL_INTERVAL_MS = 1200;
+
+function latestMessageByNode(activity: GraphActivityEntry[]): Record<string, string> {
+  const messages: Record<string, string> = {};
+  for (const entry of activity) {
+    if (entry.node === "orchestrator") continue;
+    messages[entry.node] = entry.message;
+  }
+  return messages;
+}
+
+function AgentRow({
+  label,
+  message,
+  state,
+}: {
+  label: string;
+  message?: string;
+  state: "idle" | "running" | "done";
+}) {
+  const dotClass =
+    state === "done"
+      ? "bg-emerald-500"
+      : state === "running"
+        ? "bg-primary animate-pulse"
+        : "bg-muted-foreground/30";
+  return (
+    <li className="flex items-start gap-3 rounded-lg border p-2.5">
+      <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${dotClass}`} />
+      <div className="flex min-w-0 flex-col">
+        <span className="text-sm font-medium">{label}</span>
+        <span className="text-muted-foreground truncate text-xs">
+          {message ?? (state === "running" ? "…" : "esperando")}
+        </span>
+      </div>
+    </li>
+  );
+}
+
+function LiveFlowPanel({ activity, running }: { activity: GraphActivityEntry[]; running: boolean }) {
+  const messages = latestMessageByNode(activity);
+  // Index of the first agent with no message yet — the one "running" right
+  // now, per the orchestrator's own dependency ladder. -1 means every agent
+  // already reported, so the gate is next.
+  // || Índice del primer agente sin mensaje todavía — el que está "corriendo"
+  // ahora, según la propia escalera de dependencia del orquestador. -1
+  // significa que todos los agentes ya reportaron, así que sigue el gate.
+  const runningIndex = running ? AGENT_FLOW.findIndex(({ key }) => !messages[key]) : -1;
+  const allAgentsDone = runningIndex === -1;
+
+  const rows = AGENT_FLOW.map(({ key, label }, index) => {
+    const message = messages[key];
+    const state: "idle" | "running" | "done" = message
+      ? "done"
+      : index === runningIndex
+        ? "running"
+        : "idle";
+    return <AgentRow key={key} label={label} message={message} state={state} />;
+  });
+
+  const gateMessage = messages[GATE_KEY];
+  const gateState: "idle" | "running" | "done" = gateMessage
+    ? "done"
+    : running && allAgentsDone
+      ? "running"
+      : "idle";
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+            Flujo en vivo
+            {running && (
+              <span className="bg-primary inline-block h-2 w-2 animate-pulse rounded-full" />
+            )}
+          </h2>
+          <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+            Cada agente reporta lo que hace según termina — se actualiza sola cada{" "}
+            {(POLL_INTERVAL_MS / 1000).toFixed(1)} s.
+          </p>
+        </div>
+        <ol className="flex flex-col gap-2">
+          {rows}
+          <AgentRow label="Gate de revisión" message={gateMessage} state={gateState} />
+        </ol>
+      </CardContent>
+    </Card>
+  );
+}
 
 const TOGGLES = [
   {
@@ -283,24 +394,96 @@ export function AnswerConsole({ initialFacets }: { initialFacets: SearchFacets }
   const [flags, setFlags] = useState({ rerank: true, split: true, lexical: false });
   const [completed, setCompleted] = useState<AnswerAgenticCompleted | null>(null);
   const [paused, setPaused] = useState<AnswerAgenticPaused | null>(null);
+  const [activity, setActivity] = useState<GraphActivityEntry[]>([]);
   const [reviewNote, setReviewNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+    };
+  }, []);
+
+  function pollProgress(threadId: string, startedAt: number, fallbackQuestion: string) {
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/answer/agentic/${threadId}/progress`, {
+          headers: { Accept: "application/json" },
+        });
+        const body = (await response.json()) as AnswerAgenticProgress & { error?: string };
+        if (!response.ok) {
+          setError(body.error ?? "No se pudo consultar el progreso.");
+          setPending(false);
+          return;
+        }
+
+        setActivity(body.activity);
+
+        if (body.status === "running") {
+          pollTimeoutRef.current = setTimeout(poll, POLL_INTERVAL_MS);
+          return;
+        }
+
+        setElapsedMs(Math.round(performance.now() - startedAt));
+        setPending(false);
+
+        if (body.status === "completed") {
+          setCompleted({
+            status: "completed",
+            thread_id: body.thread_id,
+            question: body.question ?? fallbackQuestion,
+            answer: body.answer ?? "",
+            citations: body.citations,
+            grounded: body.grounded ?? true,
+            confidence: body.confidence,
+            needs_human_review: body.needs_human_review ?? false,
+            review_reasons: body.review_reasons,
+            routing_history: body.routing_history,
+          });
+        } else if (body.status === "awaiting_human_review") {
+          setPaused({
+            status: "awaiting_human_review",
+            thread_id: body.thread_id,
+            question: body.question ?? fallbackQuestion,
+            answer: body.answer,
+            citations: body.citations,
+            review_reasons: body.review_reasons,
+            confidence: body.confidence,
+          });
+        } else {
+          setError(body.error ?? "La corrida agentica falló.");
+        }
+      } catch {
+        setError("No se pudo contactar a la consola.");
+        setPending(false);
+      }
+    };
+    void poll();
+  }
 
   async function ask(event: React.FormEvent) {
     event.preventDefault();
     if (!question.trim()) return;
 
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+
     setPending(true);
     setError(null);
     setCompleted(null);
     setPaused(null);
+    setActivity([]);
     setReviewNote("");
     const startedAt = performance.now();
+    const trimmedQuestion = question.trim();
 
     const payload = {
-      question: question.trim(),
+      question: trimmedQuestion,
       limit: Number(limit) || 10,
       max_per_document: 1,
       module_code: moduleCodes.length > 0 ? moduleCodes : undefined,
@@ -311,25 +494,20 @@ export function AnswerConsole({ initialFacets }: { initialFacets: SearchFacets }
     };
 
     try {
-      const response = await fetch("/api/answer/agentic", {
+      const response = await fetch("/api/answer/agentic/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const body = (await response.json()) as AnswerAgenticResponse & { error?: string };
+      const body = (await response.json()) as AnswerAgenticStart & { error?: string };
       if (!response.ok) {
-        setError(body.error ?? "La consulta agentica falló.");
+        setError(body.error ?? "No se pudo iniciar la consulta agentica.");
+        setPending(false);
         return;
       }
-      if (body.status === "awaiting_human_review") {
-        setPaused(body);
-      } else {
-        setCompleted(body);
-      }
+      pollProgress(body.thread_id, startedAt, trimmedQuestion);
     } catch {
       setError("No se pudo contactar a la consola.");
-    } finally {
-      setElapsedMs(Math.round(performance.now() - startedAt));
       setPending(false);
     }
   }
@@ -441,6 +619,10 @@ export function AnswerConsole({ initialFacets }: { initialFacets: SearchFacets }
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
+      )}
+
+      {activity.length > 0 && !completed && (
+        <LiveFlowPanel activity={activity} running={pending && !paused} />
       )}
 
       {paused && (

@@ -1,10 +1,12 @@
 import "server-only";
 
-import { postJson, postJsonAllowingStatuses } from "./base-client";
+import { getJson, postJson, postJsonAllowingStatuses } from "./base-client";
 import type {
   AnswerAgenticCompleted,
+  AnswerAgenticProgress,
   AnswerAgenticResponse,
   AnswerAgenticResumeRequest,
+  AnswerAgenticStart,
   AnswerRequest,
 } from "./types";
 
@@ -38,5 +40,25 @@ export function answerAgenticResume(
     "/answer/agentic/resume",
     body,
     AGENTIC_TIMEOUT_MS,
+  );
+}
+
+/**
+ * Schedules the graph in the background and returns at once — the caller
+ * polls `answerAgenticProgress` to watch the agents work.
+ * || Agenda el grafo en background y vuelve al instante — quien llama
+ * consulta `answerAgenticProgress` para ver a los agentes trabajar.
+ */
+export function answerAgenticStart(
+  body: AnswerRequest,
+): Promise<AnswerAgenticStart> {
+  return postJson<AnswerAgenticStart>("/answer/agentic/start", body);
+}
+
+export function answerAgenticProgress(
+  threadId: string,
+): Promise<AnswerAgenticProgress> {
+  return getJson<AnswerAgenticProgress>(
+    `/answer/agentic/${encodeURIComponent(threadId)}/progress`,
   );
 }

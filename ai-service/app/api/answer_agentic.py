@@ -4,13 +4,26 @@ Thin transport: builds initial state, invokes ``app.state.answer_graph``, maps
 human-review pauses to HTTP 202. Reuses the same retrieval and generation pieces
 as ``POST /answer`` — does not reimplement them.
 
+Also exposes a live-progress variant (``/start`` + ``/{thread_id}/progress``)
+for a frontend that wants to show the four agents working as they go, instead
+of a blank screen until the single blocking call returns. Both variants share
+the same graph, the same agents, and the same checkpointer thread — ``/start``
+just runs it via ``astream`` in a background task and narrates each node into
+``GraphActivityLog`` instead of awaiting the whole thing inline.
+
 || POST /answer/agentic — orquestación LangGraph sobre RAG. Transporte delgado:
 arma el estado inicial, invoca ``app.state.answer_graph``, mapea pausas de
 revisión humana a HTTP 202.
+
+También expone una variante de progreso en vivo (``/start`` +
+``/{thread_id}/progress``) para un frontend que quiera mostrar a los cuatro
+agentes trabajando a medida que avanzan, en vez de una pantalla en blanco
+hasta que vuelve la llamada bloqueante única.
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import Literal
 from uuid import uuid4
 
@@ -20,8 +33,16 @@ from langgraph.types import Command
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_answer_llm, get_embedder, get_reranker
-from app.domain.schemas import AnswerAgentState, RetrievalOptions
+from app.dependencies import get_activity_log, get_answer_llm, get_embedder, get_reranker
+from app.domain.graph.runner import (
+    THREAD_PREFIX as _THREAD_PREFIX,
+)
+from app.domain.graph.runner import (
+    completed_result,
+    initial_state,
+    run_agentic_background,
+    thread_config,
+)
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.retrieval.hybrid import HybridRetriever
 from app.generation.rag.schemas import AnswerRequest, SearchHit
@@ -30,7 +51,14 @@ from app.generation.rag.store.repository import ChunkRepository
 router = APIRouter(prefix="/answer/agentic", tags=["answer-agentic"])
 log = structlog.get_logger()
 
-_THREAD_PREFIX = "answer-agent"
+# Strong references to in-flight background runs. asyncio does not keep a
+# task alive on its own once nothing holds it — a fire-and-forget task with
+# no reference can be garbage-collected mid-run, silently.
+# || Referencias fuertes a corridas en background en curso. asyncio no
+# mantiene viva una tarea sola una vez que nada la referencia — una tarea
+# fire-and-forget sin referencia puede ser recolectada a mitad de camino, en
+# silencio.
+_BACKGROUND_RUNS: set[asyncio.Task] = set()
 
 
 class AnswerAgenticResponse(BaseModel):
@@ -71,33 +99,39 @@ class AnswerAgenticResumeRequest(BaseModel):
     note: str | None = None
 
 
-def _thread_config(thread_id: str, *, retriever, llm, reranker) -> dict:
-    return {
-        "configurable": {
-            "thread_id": f"{_THREAD_PREFIX}:{thread_id}",
-            "retriever": retriever,
-            "llm": llm,
-            "reranker": reranker,
-        }
-    }
+class GraphActivityEntry(BaseModel):
+    """One narrated line of live agent activity. || Una línea narrada de actividad en vivo."""
+
+    node: str
+    label: str
+    message: str
+    at: float
 
 
-def _initial_state(body: AnswerRequest) -> AnswerAgentState:
-    return {
-        "query": body.question,
-        "retrieval_options": RetrievalOptions(
-            limit=body.limit,
-            max_per_document=body.max_per_document,
-            lexical=body.lexical,
-            split=body.split,
-            rerank=body.rerank,
-        ),
-        "supervisor_steps": 0,
-        "retrieval_attempts": 0,
-        "routing_history": [],
-        "agent_contributions": [],
-        "review_reasons": [],
-    }
+class AnswerAgenticStartResponse(BaseModel):
+    """Ack for a run just scheduled in the background. || Ack de una corrida agendada en background."""
+
+    status: Literal["running"] = "running"
+    thread_id: str = Field(description="Poll ``/{thread_id}/progress`` with this. || Consultar con esto.")
+
+
+class AnswerAgenticProgress(BaseModel):
+    """Live status of a background agentic run. || Estado en vivo de una corrida agentica en background."""
+
+    status: Literal["running", "completed", "awaiting_human_review", "failed"]
+    thread_id: str
+    activity: list[GraphActivityEntry] = Field(default_factory=list)
+    question: str | None = None
+    answer: str | None = None
+    citations: list[SearchHit] = Field(default_factory=list)
+    grounded: bool | None = None
+    confidence: float | None = None
+    needs_human_review: bool | None = None
+    review_reasons: list[str] = Field(default_factory=list)
+    routing_history: list[dict] = Field(default_factory=list)
+    error: str | None = Field(
+        default=None, description="Set only when status='failed'. || Solo cuando status='failed'."
+    )
 
 
 def _hits_from_state(values: dict) -> list[SearchHit]:
@@ -166,7 +200,7 @@ async def answer_agentic(
     thread_id = str(uuid4())
     retriever = HybridRetriever(ChunkRepository(session), get_embedder())
     reranker = get_reranker() if body.rerank else None
-    config = _thread_config(
+    config = thread_config(
         thread_id,
         retriever=retriever,
         llm=get_answer_llm(),
@@ -174,7 +208,7 @@ async def answer_agentic(
     )
 
     try:
-        await graph.ainvoke(_initial_state(body), config)
+        await graph.ainvoke(initial_state(body), config)
         snapshot = await graph.aget_state(config)
     except Exception as exc:
         log.error("answer_agentic_failed", error_type=type(exc).__name__, error=str(exc)[:300])
@@ -212,7 +246,7 @@ async def answer_agentic_resume(
     graph = _require_graph(request)
     bare_thread = _strip_prefix(body.thread_id)
     retriever = HybridRetriever(ChunkRepository(session), get_embedder())
-    config = _thread_config(
+    config = thread_config(
         bare_thread,
         retriever=retriever,
         llm=get_answer_llm(),
@@ -245,4 +279,90 @@ async def answer_agentic_resume(
             "|| Falló la reanudación de la respuesta agentica.",
         ) from exc
 
-    return _completed_response(bare_thread, snapshot.values or {})
+    values = snapshot.values or {}
+    # Best-effort: a thread resumed straight from `POST /answer/agentic`
+    # (the synchronous path) never had an activity buffer, so there is
+    # nothing to append to — `get_activity_log().read()` would be `None` and
+    # `.finish()` would create an orphaned entry nobody polls. Only threads
+    # started via `/start` benefit from this, and only if their buffer is
+    # still there.
+    # || A lo sumo: un hilo resumido directo desde `POST /answer/agentic` (el
+    # camino sincrónico) nunca tuvo buffer de actividad — no hay nada a lo
+    # que agregarle. Solo los hilos arrancados vía `/start` se benefician de
+    # esto, y solo si su buffer sigue ahí.
+    activity_log = get_activity_log()
+    if activity_log.read(bare_thread) is not None:
+        action = body.decision
+        message = f"decisión humana: {action}" + (f" — {body.note}" if body.note else "")
+        activity_log.append(bare_thread, "answer_review_gate", "Gate de revisión", message)
+        activity_log.finish(bare_thread, "completed", result=completed_result(values, ""))
+
+    return _completed_response(bare_thread, values)
+
+
+@router.post(
+    "/start",
+    response_model=AnswerAgenticStartResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def answer_agentic_start(body: AnswerRequest, request: Request):
+    """Schedule the agentic answer graph in the background and return at once.
+
+    Poll ``GET /{thread_id}/progress`` to watch the four agents work and to
+    read the final answer (or the human-review pause) once it lands.
+
+    || Agenda el grafo agentico en background y vuelve al instante. Consultar
+    ``GET /{thread_id}/progress`` para ver a los cuatro agentes trabajar y
+    leer la respuesta final (o la pausa de revisión humana) cuando llegue.
+    """
+    graph = _require_graph(request)
+    thread_id = str(uuid4())
+
+    task = asyncio.create_task(run_agentic_background(thread_id, body, graph))
+    _BACKGROUND_RUNS.add(task)
+    task.add_done_callback(_BACKGROUND_RUNS.discard)
+
+    return AnswerAgenticStartResponse(thread_id=thread_id)
+
+
+@router.get("/{thread_id}/progress", response_model=AnswerAgenticProgress)
+async def answer_agentic_progress(thread_id: str):
+    """Current activity and, once available, the result for ``thread_id``.
+
+    || Actividad actual y, cuando está disponible, el resultado de ``thread_id``.
+    """
+    run = get_activity_log().read(thread_id)
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown or expired thread_id. Did you call POST /start first? "
+            "|| thread_id desconocido o expirado. ¿Llamaste antes a POST /start?",
+        )
+
+    activity = [
+        GraphActivityEntry(node=entry.node, label=entry.label, message=entry.message, at=entry.at)
+        for entry in run.entries
+    ]
+
+    if run.status in ("running", "failed"):
+        return AnswerAgenticProgress(
+            status=run.status,
+            thread_id=thread_id,
+            activity=activity,
+            error=run.error,
+        )
+
+    result = run.result or {}
+    return AnswerAgenticProgress(
+        status=run.status,
+        thread_id=thread_id,
+        activity=activity,
+        question=result.get("question"),
+        answer=result.get("answer"),
+        citations=[SearchHit.model_validate(hit) for hit in result.get("citations") or []],
+        grounded=result.get("grounded"),
+        confidence=result.get("confidence"),
+        needs_human_review=result.get("needs_human_review"),
+        review_reasons=result.get("review_reasons") or [],
+        routing_history=result.get("routing_history") or [],
+    )

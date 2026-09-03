@@ -258,3 +258,41 @@ export interface AnswerAgenticResumeRequest {
   decision: "approve" | "reject" | "adjust";
   note?: string | null;
 }
+
+/** One narrated line of live agent activity. || Una línea narrada de actividad en vivo. */
+export interface GraphActivityEntry {
+  node: string;
+  label: string;
+  message: string;
+  at: number;
+}
+
+/** Response of `POST /answer/agentic/start`. || Respuesta de `POST /answer/agentic/start`. */
+export interface AnswerAgenticStart {
+  status: "running";
+  thread_id: string;
+}
+
+/**
+ * Response of `GET /answer/agentic/{thread_id}/progress`. Fields beyond
+ * `status`/`thread_id`/`activity` are only populated once `status` leaves
+ * `"running"` — the service does not invent placeholders for an answer that
+ * does not exist yet.
+ * || Respuesta de `GET /answer/agentic/{thread_id}/progress`. Los campos más
+ * allá de `status`/`thread_id`/`activity` se completan recién cuando
+ * `status` deja `"running"`.
+ */
+export interface AnswerAgenticProgress {
+  status: "running" | "completed" | "awaiting_human_review" | "failed";
+  thread_id: string;
+  activity: GraphActivityEntry[];
+  question: string | null;
+  answer: string | null;
+  citations: SearchHit[];
+  grounded: boolean | null;
+  confidence: number | null;
+  needs_human_review: boolean | null;
+  review_reasons: string[];
+  routing_history: RoutingRecord[];
+  error: string | null;
+}

@@ -43,8 +43,12 @@ sintetiza en una respuesta citada de un solo paso, y `/answer/agentic` la
 envuelve en un grafo de cuatro agentes con privilegio mínimo (solo
 `evidence_retriever` tiene una tool) y un gate humano que pausa —no siempre,
 solo cuando la confianza es baja, no hay evidencia, o una cita no está
-respaldada por los hits recuperados. El detalle de cada agente y por qué el
-curso trae piezas que acá no se replicaron (sandbox, competencia entre
+respaldada por los hits recuperados. `/answer/agentic` tiene además una
+variante `/start` + `/{thread_id}/progress` que corre en background y narra
+el avance por polling, para que la consola muestre a los cuatro agentes
+trabajando en vez de una pantalla en blanco hasta que vuelve la respuesta.
+El detalle de cada agente y por qué el curso trae piezas que acá no se
+replicaron (sandbox, competencia entre
 estimadores) está en el [README del servicio](ai-service/README.md#agentes-y-orquestación).
 
 ## Empezar

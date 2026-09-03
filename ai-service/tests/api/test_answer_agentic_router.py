@@ -28,13 +28,23 @@ class FakeSnapshot:
 
 
 class FakeGraph:
-    def __init__(self, snapshot):
+    def __init__(self, snapshot, *, stream_updates=None):
         self.snapshot = snapshot
         self.calls = []
+        # Each item is a dict with one key (the node name) mapping to its
+        # partial-state update, matching what `astream(..., stream_mode=
+        # "updates")` yields for real. || Cada item es un dict con una clave
+        # (el nombre del nodo) que mapea a su update parcial de estado.
+        self.stream_updates = stream_updates or []
 
     async def ainvoke(self, payload, config):
         self.calls.append((payload, config))
         return self.snapshot.values
+
+    async def astream(self, payload, config, stream_mode="updates"):
+        self.calls.append((payload, config, stream_mode))
+        for update in self.stream_updates:
+            yield update
 
     async def aget_state(self, config):
         return self.snapshot

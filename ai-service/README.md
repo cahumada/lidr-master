@@ -215,6 +215,55 @@ flowchart TD
   del servicio — sin eso, resumir después de una pausa no tendría de dónde
   partir.
 
+### Progreso en vivo, no solo la llamada bloqueante
+
+```bash
+curl -X POST http://localhost:8000/answer/agentic/start \
+  -H "Content-Type: application/json" \
+  -d '{"question": "¿Qué valida CA014 antes de aceptar la póliza?"}'
+# → 202 {"status": "running", "thread_id": "..."}
+
+curl http://localhost:8000/answer/agentic/<thread_id>/progress
+# → mientras corre: {"status": "running", "activity": [...]}
+# → al terminar:    {"status": "completed" | "awaiting_human_review", "activity": [...], "answer": ..., ...}
+```
+
+`POST /answer/agentic` espera a que el grafo termine (o pause) antes de
+devolver algo — para una corrida de varios segundos con cuatro agentes, eso
+es pantalla en blanco y después el resultado. `POST /answer/agentic/start` +
+`GET /answer/agentic/{thread_id}/progress` resuelven lo mismo que el curso en
+la rama `agents_event`: **no es streaming real** (sin SSE ni WebSockets, pese
+al nombre) — es polling cada ~1,2 s contra un buffer de actividad.
+
+- **`app/domain/graph/activity.py`**: `GraphActivityLog`, un buffer en
+  memoria por `thread_id` (sin Redis — un solo proceso alcanza mientras el
+  servicio corra como una sola instancia en Railway; el día que haya más de
+  un worker, esa es la señal para cambiarlo, no antes) y
+  `describe_node(node_name, update)`, una función pura que traduce el update
+  crudo de cada nodo —incluido `__interrupt__`, la forma que toma una pausa
+  del gate en `stream_mode="updates"`— a una línea legible. Nunca lanza: una
+  forma no reconocida degrada a una línea genérica, porque corre dentro de un
+  loop de streaming en vivo donde un bug de formato no puede tirar abajo la
+  corrida que solo está narrando.
+- **`app/domain/graph/runner.py`**: `run_agentic_background` corre el grafo
+  vía `graph.astream(..., stream_mode="updates")` en una tarea de asyncio con
+  **su propia sesión de base** —el request que la agendó ya devolvió la
+  respuesta 202 antes de que el grafo termine, así que no puede reusar la
+  sesión que FastAPI le inyectó y cerró—, narrando cada nodo en el activity
+  log a medida que avanza.
+- `POST /answer/agentic/start` agenda la tarea con
+  `asyncio.create_task(...)` y guarda una referencia fuerte
+  (`_BACKGROUND_RUNS`): sin eso, asyncio puede recolectar una tarea
+  fire-and-forget a mitad de camino, en silencio.
+- `GET /answer/agentic/{thread_id}/progress` devuelve `404` para un
+  `thread_id` que no vino de `/start`; mientras corre, solo `activity`; al
+  terminar, el mismo resultado que devolvería `POST /answer/agentic` (o
+  `status="failed"` con el error, si la corrida en background reventó).
+- `POST /answer/agentic` (la llamada bloqueante) **no cambió**: sigue
+  devolviendo 200/202 en una sola respuesta para quien no necesita la vista
+  en vivo. Comparten el mismo grafo, los mismos agentes y el mismo
+  checkpointer — la única diferencia es `ainvoke` contra `astream` narrado.
+
 **Lo que el curso trae y acá no se replicó, con la razón:**
 
 - `sandbox.py` / `persistence_agent` — existen en el curso porque
@@ -268,6 +317,8 @@ app/
 │       ├── gate.py                          # review_reasons puro + answer_review_gate
 │       ├── tools.py                         # search_corpus envuelve HybridRetriever
 │       ├── checkpointer.py                  # AsyncPostgresSaver por thread_id
+│       ├── activity.py                      # GraphActivityLog + describe_node (progreso en vivo)
+│       ├── runner.py                        # corrida en background vía astream, sesión propia
 │       ├── build.py                         # arma el StateGraph
 │       └── agents/                          # query_planner, evidence_retriever,
 │                                             # answer_synthesizer, citation_validator
@@ -364,6 +415,10 @@ Swagger en `http://localhost:8000/docs`. Endpoints:
   humano que pausa (HTTP 202) cuando la confianza es baja o una cita no
   tiene respaldo. Detalle completo en
   [Agentes y orquestación](#agentes-y-orquestación).
+- `POST /answer/agentic/start` (+ `GET .../{thread_id}/progress`) — la misma
+  orquestación, corrida en background con progreso narrado por polling en
+  vez de una sola llamada bloqueante. Ver
+  [Progreso en vivo](#progreso-en-vivo-no-solo-la-llamada-bloqueante).
 
 ```bash
 curl -X POST http://localhost:8000/documents/ingest-file \
