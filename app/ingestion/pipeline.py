@@ -375,6 +375,59 @@ def chunk_corpus(
             f"|| No se encontró ningún módulo en {source.label()}."
         )
 
+    # A module removed from the source leaves an ORPHANED <module>.json under
+    # this version's directory: this function only WRITES the modules it finds,
+    # it never deletes one that vanished. `embed_corpus` and `load_corpus` then
+    # `module_files()`-glob every `*.json` in the directory, with no way to tell
+    # a fresh file from a leftover -- so a module that used to be chunked from a
+    # local root and later moved to a bucket that does not have it gets loaded
+    # into Postgres anyway, silently, sourced from stale disk state instead of
+    # the configured source.
+    #
+    # Demonstrated: switching this project's own corpus from a 28-module local
+    # root to a 24-module bucket left 4 stale module files behind
+    # (`civil_liability.json`, `financing.json`, `machinery.json`,
+    # `surety_bonds.json`), and the next `embed` + `load` run picked all 28 up --
+    # 24 documents from data the current source no longer has ended up in
+    # Railway's database.
+    #
+    # Only on a FULL run (``modules`` unset): a filtered run (``--module
+    # policies``) legitimately leaves its siblings untouched, and deleting them
+    # would destroy modules that are still valid.
+    # || Un módulo que se saca de la fuente deja un `<módulo>.json` HUÉRFANO bajo
+    # el directorio de esta versión: esta función solo ESCRIBE los módulos que
+    # encuentra, nunca borra uno que desapareció. `embed_corpus` y `load_corpus`
+    # después hacen `module_files()` -glob de todo `*.json` del directorio, sin
+    # forma de distinguir un archivo fresco de uno que sobró -- así que un módulo
+    # que se troceaba de una raíz local y después se movió a un bucket que no lo
+    # tiene se carga en Postgres igual, en silencio, con datos viejos de disco en
+    # lugar de la fuente configurada.
+    #
+    # Demostrado: cambiar el corpus de este proyecto de una raíz local de 28
+    # módulos a un bucket de 24 dejó 4 archivos huérfanos
+    # (`civil_liability.json`, `financing.json`, `machinery.json`,
+    # `surety_bonds.json`), y la siguiente corrida de `embed` + `load` los
+    # levantó los 28 — 24 documentos de datos que la fuente actual ya no tiene
+    # terminaron en la base de Railway.
+    #
+    # Solo en una corrida COMPLETA (``modules`` sin poner): una corrida filtrada
+    # (``--module policies``) deja legítimamente sus hermanos sin tocar, y
+    # borrarlos destruiría módulos que siguen siendo válidos.
+    if not modules:
+        orphaned = sorted(
+            path.stem
+            for path in out_dir.glob("*.json")
+            if path.name != MANIFEST_FILENAME and path.stem not in discovered
+        )
+        for stale in orphaned:
+            (out_dir / f"{stale}.json").unlink()
+        if orphaned:
+            logger.warning(
+                "removed_orphaned_module_files",
+                out_dir=str(out_dir),
+                modules=orphaned,
+            )
+
     # Built through the composition root so the batch run and the HTTP API share
     # one configuration -- including the WINDOWS navigation tree. Constructing
     # the chunker directly once left the breadcrumb unresolved for the whole

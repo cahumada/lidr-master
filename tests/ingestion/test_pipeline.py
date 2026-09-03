@@ -15,12 +15,14 @@ from app.ingestion.pipeline import (
     ChunkStepResult,
     EmbedStepResult,
     LoadStepResult,
+    chunk_corpus,
     corpus_dir,
     corpus_identity,
     load_corpus,
     module_files,
     version_slug,
 )
+from app.ingestion.source import LocalCorpusSource
 
 
 def test_the_manifest_is_not_a_module(tmp_path):
@@ -205,3 +207,77 @@ def test_load_result_summary_is_json_serializable():
     summary = _load_result().summary()
     assert isinstance(summary["chunks_dir"], str)
     json_module.dumps(summary)
+
+
+
+# --- chunk_corpus: no debe cargar modulos que la fuente ya no tiene ------------
+#
+# Un rebuild real dejo 24 documentos de 4 modulos que ya no estaban en el bucket
+# cargados en Postgres, porque `chunk_corpus` solo ESCRIBE los modulos que
+# encuentra y nunca borra el `<modulo>.json` de uno que desaparecio de la
+# fuente. `embed_corpus`/`load_corpus` globean *.json sin poder distinguir un
+# archivo fresco de uno que sobro.
+
+
+def test_a_module_removed_from_the_source_is_cleaned_up_on_a_full_run(tmp_path):
+    """Corrida completa (sin filtro de modulos): lo que la fuente ya no tiene,
+    tampoco debe seguir en el directorio versionado."""
+    origen = tmp_path / "fuente"
+    (origen / "policies").mkdir(parents=True)
+    (origen / "policies" / "ca014.md").write_text("# CA014", encoding="utf-8")
+
+    salida = tmp_path / "chunks"
+    chunk_corpus(source=LocalCorpusSource(origen), out_dir=salida, doc_version="v1")
+    huerfano_esperado = corpus_dir(salida, "v1") / "civil_liability.json"
+    huerfano_esperado.write_text('{"module": "civil_liability", "documents": []}', "utf-8")
+    assert huerfano_esperado.exists()
+
+    # Segunda corrida completa: "civil_liability" ya no esta en la fuente.
+    chunk_corpus(source=LocalCorpusSource(origen), out_dir=salida, doc_version="v1")
+
+    assert not huerfano_esperado.exists()
+
+
+def test_a_filtered_run_never_touches_its_siblings(tmp_path):
+    """`--module policies` deja a `claims` intacto: un filtro no es evidencia de
+    que los demas modulos desaparecieron de la fuente."""
+    origen = tmp_path / "fuente"
+    for modulo, archivo in (("policies", "ca014.md"), ("claims", "si001.md")):
+        d = origen / modulo
+        d.mkdir(parents=True)
+        (d / archivo).write_text(f"# {archivo}", encoding="utf-8")
+
+    salida = tmp_path / "chunks"
+    chunk_corpus(source=LocalCorpusSource(origen), out_dir=salida, doc_version="v1")
+
+    # Corrida FILTRADA a solo "policies": "claims" no se toca aunque no este en
+    # el conjunto de modulos de esta corrida.
+    chunk_corpus(
+        source=LocalCorpusSource(origen), out_dir=salida, doc_version="v1",
+        modules=["policies"],
+    )
+
+    assert (corpus_dir(salida, "v1") / "claims.json").exists()
+
+
+def test_removing_orphans_is_reported_not_silent(tmp_path):
+    """Borrar un modulo entero de una base de datos, aunque sea de un archivo
+    intermedio, no puede pasar sin dejar rastro."""
+    import structlog.testing
+
+    origen = tmp_path / "fuente"
+    (origen / "policies").mkdir(parents=True)
+    (origen / "policies" / "ca014.md").write_text("# CA014", encoding="utf-8")
+    salida = tmp_path / "chunks"
+
+    chunk_corpus(source=LocalCorpusSource(origen), out_dir=salida, doc_version="v1")
+    (corpus_dir(salida, "v1") / "financing.json").write_text(
+        '{"module": "financing", "documents": []}', "utf-8"
+    )
+
+    with structlog.testing.capture_logs() as logs:
+        chunk_corpus(source=LocalCorpusSource(origen), out_dir=salida, doc_version="v1")
+
+    eventos = [entry for entry in logs if entry.get("event") == "removed_orphaned_module_files"]
+    assert len(eventos) == 1
+    assert eventos[0]["modules"] == ["financing"]
