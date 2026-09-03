@@ -4,11 +4,27 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Theme "Woken" (tweakcn), applied verbatim from its shadcn registry item:
+ * https://tweakcn.com/themes/cmt3ah8fc000004id2kh74do2
+ * Colors, radius, shadows, font stacks and tracking all come from that item.
+ * Keeping the values literal is what makes the theme replaceable: swapping to
+ * another tweakcn theme means rewriting the `:root` / `.dark` blocks and the
+ * token names mapped in `@theme inline`, and nothing else in the app.
+ *
+ * || Tema "Woken" (tweakcn), aplicado literal desde su registry item de
+ * shadcn. Colores, radio, sombras, tipografías y tracking salen de ahí.
+ * Mantener los valores textuales es lo que hace al tema reemplazable: pasar a
+ * otro tema de tweakcn es reescribir los bloques `:root` / `.dark` y los
+ * nombres mapeados en `@theme inline`, y nada más de la app.
+ */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -26,6 +42,7 @@
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
@@ -46,75 +63,133 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+  --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
+  --tracking-tight: calc(var(--tracking-normal) - 0.025em);
+  --tracking-normal: var(--tracking-normal);
+  --tracking-wide: calc(var(--tracking-normal) + 0.025em);
+  --tracking-wider: calc(var(--tracking-normal) + 0.05em);
+  --tracking-widest: calc(var(--tracking-normal) + 0.1em);
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --background: oklch(0.9605 0.0046 258.3248);
+  --foreground: oklch(0.2153 0.0187 235.1251);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.2153 0.0187 235.1251);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --popover-foreground: oklch(0.2153 0.0187 235.1251);
+  --primary: oklch(0.488 0.243 264.376);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.932 0.032 255.585);
+  --secondary-foreground: oklch(0.488 0.243 264.376);
+  --muted: oklch(0.9605 0.0046 258.3248);
+  --muted-foreground: oklch(0.5589 0.0255 233.7233);
+  --accent: oklch(0.623 0.214 259.815);
+  --accent-foreground: oklch(0.928 0.006 264.531);
+  --destructive: oklch(0.6257 0.2058 29.0773);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9436 0.0051 228.8204);
+  --input: oklch(0.9436 0.0051 228.8204);
+  --ring: oklch(0.623 0.214 259.815);
+  --chart-1: oklch(0.623 0.214 259.815);
+  --chart-2: oklch(0.488 0.243 264.376);
+  --chart-3: oklch(0.5762 0.0995 182.3964);
+  --chart-4: oklch(0.7356 0.137 232.8053);
+  --chart-5: oklch(0.6509 0.1283 170.4258);
+  --radius: 1rem;
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.2153 0.0187 235.1251);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.932 0.032 255.585);
+  --sidebar-accent-foreground: oklch(0.488 0.243 264.376);
+  --sidebar-border: oklch(0.9436 0.0051 228.8204);
+  --sidebar-ring: oklch(0.623 0.214 259.815);
+  --font-sans:
+    "Segoe UI", "Helvetica Neue", Helvetica, "Lucida Grande", Arial, Ubuntu,
+    Cantarell, "Fira Sans", sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono:
+    SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  --shadow-2xs: 0px 2px 10px 0px hsl(0 0% 0% / 0.05);
+  --shadow-xs: 0px 2px 10px 0px hsl(0 0% 0% / 0.05);
+  --shadow-sm:
+    0px 2px 10px 0px hsl(0 0% 0% / 0.1), 0px 1px 2px -1px hsl(0 0% 0% / 0.1);
+  --shadow:
+    0px 2px 10px 0px hsl(0 0% 0% / 0.1), 0px 1px 2px -1px hsl(0 0% 0% / 0.1);
+  --shadow-md:
+    0px 2px 10px 0px hsl(0 0% 0% / 0.1), 0px 2px 4px -1px hsl(0 0% 0% / 0.1);
+  --shadow-lg:
+    0px 2px 10px 0px hsl(0 0% 0% / 0.1), 0px 4px 6px -1px hsl(0 0% 0% / 0.1);
+  --shadow-xl:
+    0px 2px 10px 0px hsl(0 0% 0% / 0.1), 0px 8px 10px -1px hsl(0 0% 0% / 0.1);
+  --shadow-2xl: 0px 2px 10px 0px hsl(0 0% 0% / 0.25);
+  --tracking-normal: 0em;
+
+  /* Tells the browser which built-in widgets to render (scrollbars, date
+     pickers, the file input). Without it the dark theme keeps light chrome.
+     || Le dice al browser qué widgets nativos pintar (scrollbars, selectores
+     de fecha, el input de archivo). Sin esto el tema oscuro conserva el
+     cromado claro. */
+  color-scheme: light;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.1854 0.0182 238.2143);
+  --foreground: oklch(0.9436 0.0051 228.8204);
+  --card: oklch(0.2848 0.023 235.6578);
+  --card-foreground: oklch(0.9436 0.0051 228.8204);
+  --popover: oklch(0.2848 0.023 235.6578);
+  --popover-foreground: oklch(0.9436 0.0051 228.8204);
+  --primary: oklch(0.707 0.165 254.624);
+  --primary-foreground: oklch(0.2153 0.0187 235.1251);
+  --secondary: oklch(0.379 0.146 265.522);
+  --secondary-foreground: oklch(0.707 0.165 254.624);
+  --muted: oklch(0.2456 0.0195 239.1061);
+  --muted-foreground: oklch(0.6637 0.0236 235.1968);
+  --accent: oklch(0.623 0.214 259.815);
+  --accent-foreground: oklch(0.707 0.022 261.325);
+  --destructive: oklch(0.6257 0.2058 29.0773);
+  --destructive-foreground: oklch(0.9436 0.0051 228.8204);
+  --border: oklch(0.3351 0.0253 234.8586);
+  --input: oklch(0.3351 0.0253 234.8586);
+  --ring: oklch(0.707 0.165 254.624);
+  --chart-1: oklch(0.623 0.214 259.815);
+  --chart-2: oklch(0.707 0.165 254.624);
+  --chart-3: oklch(0.5762 0.0995 182.3964);
+  --chart-4: oklch(0.7356 0.137 232.8053);
+  --chart-5: oklch(0.4335 0.0754 182.2315);
+  --sidebar: oklch(0.2153 0.0187 235.1251);
+  --sidebar-foreground: oklch(0.9436 0.0051 228.8204);
+  --sidebar-primary: oklch(0.707 0.165 254.624);
+  --sidebar-primary-foreground: oklch(0.2153 0.0187 235.1251);
+  --sidebar-accent: oklch(0.379 0.146 265.522);
+  --sidebar-accent-foreground: oklch(0.707 0.165 254.624);
+  --sidebar-border: oklch(0.3351 0.0253 234.8586);
+  --sidebar-ring: oklch(0.707 0.165 254.624);
+  --shadow-2xs: 0px 4px 12px 0px hsl(0 0% 0% / 0.2);
+  --shadow-xs: 0px 4px 12px 0px hsl(0 0% 0% / 0.2);
+  --shadow-sm:
+    0px 4px 12px 0px hsl(0 0% 0% / 0.4), 0px 1px 2px -1px hsl(0 0% 0% / 0.4);
+  --shadow:
+    0px 4px 12px 0px hsl(0 0% 0% / 0.4), 0px 1px 2px -1px hsl(0 0% 0% / 0.4);
+  --shadow-md:
+    0px 4px 12px 0px hsl(0 0% 0% / 0.4), 0px 2px 4px -1px hsl(0 0% 0% / 0.4);
+  --shadow-lg:
+    0px 4px 12px 0px hsl(0 0% 0% / 0.4), 0px 4px 6px -1px hsl(0 0% 0% / 0.4);
+  --shadow-xl:
+    0px 4px 12px 0px hsl(0 0% 0% / 0.4), 0px 8px 10px -1px hsl(0 0% 0% / 0.4);
+  --shadow-2xl: 0px 4px 12px 0px hsl(0 0% 0% / 1);
+  color-scheme: dark;
 }
 
 @layer base {
@@ -123,8 +198,13 @@
   }
   body {
     @apply bg-background text-foreground;
+    letter-spacing: var(--tracking-normal);
   }
   html {
-    @apply font-sans;
+    /* Layout base styles intentionally live here, not in `<html className>`,
+       so React hydration does not wipe the imperative `dark` theme class.
+       || Estilos base de layout a propósito acá, no en `<html className>`,
+       para que la hidratación de React no borre la clase `dark` imperativa. */
+    @apply h-full antialiased font-sans;
   }
 }
