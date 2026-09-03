@@ -27,6 +27,7 @@ from collections.abc import AsyncIterator, Iterator
 from functools import lru_cache
 
 from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -45,6 +46,33 @@ class Base(DeclarativeBase):
     """
 
 
+# libpq spells the TLS mode `sslmode`; asyncpg's `connect()` spells it `ssl`.
+# The VALUES are the same vocabulary -- disable / allow / prefer / require /
+# verify-ca / verify-full, parsed by asyncpg's own `SSLMode.parse` -- so this is
+# a rename and never a translation of meaning.
+#
+# Why it matters: asyncpg DOES understand `sslmode`, but only inside a DSN it
+# parses itself. SQLAlchemy's asyncpg dialect does not pass a DSN -- it passes
+# individual kwargs to `asyncpg.connect()`, whose signature has no `sslmode` and
+# no `**kwargs`. So a managed Postgres URL with `?sslmode=require` fails at
+# connect time on the async path ONLY: psycopg accepts it, so migrations and the
+# bulk COPY succeed and `GET /search` is the one thing that breaks. That is the
+# worst shape a failure can have -- everything looks like it worked.
+# || libpq lo llama `sslmode`; el `connect()` de asyncpg lo llama `ssl`. Los
+# VALORES son el mismo vocabulario, parseados por el propio `SSLMode.parse` de
+# asyncpg, así que esto es un renombre y nunca una traducción de significado.
+#
+# Por qué importa: asyncpg SÍ entiende `sslmode`, pero solo dentro de un DSN que
+# parsea él. El dialecto asyncpg de SQLAlchemy no le pasa un DSN — le pasa
+# kwargs a `asyncpg.connect()`, que no tiene `sslmode` ni `**kwargs`. Así que una
+# URL de Postgres gestionado con `?sslmode=require` falla al conectar SOLO en el
+# camino async: psycopg la acepta, así que las migraciones y el COPY masivo
+# andan y `GET /search` es lo único que se rompe. Es la peor forma que puede
+# tener una falla: todo parece haber funcionado.
+_LIBPQ_TLS_MODE = "sslmode"
+_ASYNCPG_TLS_MODE = "ssl"
+
+
 def to_async_url(url: str) -> str:
     """Rewrite a psycopg URL as its asyncpg equivalent.
 
@@ -55,13 +83,14 @@ def to_async_url(url: str) -> str:
     setting, dos stacks: una segunda URL sería una cosa más que puede terminar
     apuntando a otro lado sin que nadie lo note.
     """
-    if "+asyncpg" in url:
-        return url
-    if "+psycopg" in url:
-        return url.replace("+psycopg", "+asyncpg", 1)
-    if url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    return url
+    parsed = make_url(url)
+    if parsed.drivername.startswith("postgresql"):
+        parsed = parsed.set(drivername="postgresql+asyncpg")
+    if _LIBPQ_TLS_MODE in parsed.query:
+        query = dict(parsed.query)
+        query[_ASYNCPG_TLS_MODE] = query.pop(_LIBPQ_TLS_MODE)
+        parsed = parsed.set(query=query)
+    return parsed.render_as_string(hide_password=False)
 
 
 def to_sync_url(url: str) -> str:
@@ -69,11 +98,14 @@ def to_sync_url(url: str) -> str:
 
     || Reescribe una URL de asyncpg como su equivalente de psycopg.
     """
-    if "+asyncpg" in url:
-        return url.replace("+asyncpg", "+psycopg", 1)
-    if url.startswith("postgresql://"):
-        return url.replace("postgresql://", "postgresql+psycopg://", 1)
-    return url
+    parsed = make_url(url)
+    if parsed.drivername.startswith("postgresql"):
+        parsed = parsed.set(drivername="postgresql+psycopg")
+    if _ASYNCPG_TLS_MODE in parsed.query:
+        query = dict(parsed.query)
+        query[_LIBPQ_TLS_MODE] = query.pop(_ASYNCPG_TLS_MODE)
+        parsed = parsed.set(query=query)
+    return parsed.render_as_string(hide_password=False)
 
 
 def _apply_pgvector_session_settings(dbapi_connection, _record) -> None:

@@ -100,8 +100,19 @@ def _no_background(monkeypatch):
 
 @pytest.fixture
 def with_root(monkeypatch):
+    """Una fuente local configurada y NINGUN bucket.
+
+    Las dos cosas se fijan a proposito: dejar el `CORPUS_BUCKET` del `.env` sin
+    tocar hace que el test dependa de la maquina donde corre, y este mismo test
+    fallo cuando el `.env` real paso a tener bucket.
+
+    || A local source configured and NO bucket. Both are pinned on purpose:
+    leaving the `.env`'s `CORPUS_BUCKET` alone makes the test depend on the
+    machine it runs on, and this very test failed once the real `.env` had one.
+    """
     settings = get_settings()
     monkeypatch.setattr(settings, "CORPUS_ROOT", Path("D:/algun/corpus"))
+    monkeypatch.setattr(settings, "CORPUS_BUCKET", "")
     return settings
 
 
@@ -141,8 +152,10 @@ def test_reset_with_the_right_corpus_is_accepted(with_root):
     assert response.json()["steps"][0] == RESET
 
 
-def test_chunking_without_a_configured_root_is_refused(monkeypatch):
+def test_chunking_without_any_source_is_refused(monkeypatch):
+    """Sin bucket Y sin directorio no hay nada que trocear."""
     monkeypatch.setattr(get_settings(), "CORPUS_ROOT", None)
+    monkeypatch.setattr(get_settings(), "CORPUS_BUCKET", "")
 
     response = client_with(FakeSession()).post("/corpus/rebuild", json={"steps": [CHUNK]})
 
@@ -150,11 +163,22 @@ def test_chunking_without_a_configured_root_is_refused(monkeypatch):
     assert "CORPUS_ROOT" in response.json()["detail"]
 
 
+def test_chunking_with_only_a_bucket_is_allowed(monkeypatch):
+    """Un bucket alcanza: el directorio local no hace falta."""
+    monkeypatch.setattr(get_settings(), "CORPUS_ROOT", None)
+    monkeypatch.setattr(get_settings(), "CORPUS_BUCKET", "un-bucket")
+
+    response = client_with(FakeSession()).post("/corpus/rebuild", json={"steps": [CHUNK]})
+
+    assert response.status_code == 202
+
+
 def test_loading_without_a_configured_root_is_allowed(monkeypatch):
     """El caso más útil que hay: apuntar el servicio a una base nueva y cargarle
     el corpus que ya está en disco. Eso no necesita ningún documento fuente, así
     que exigir la raíz lo bloquearía."""
     monkeypatch.setattr(get_settings(), "CORPUS_ROOT", None)
+    monkeypatch.setattr(get_settings(), "CORPUS_BUCKET", "")
 
     response = client_with(FakeSession()).post("/corpus/rebuild", json={"steps": [LOAD]})
 

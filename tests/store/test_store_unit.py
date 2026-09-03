@@ -56,6 +56,53 @@ def test_rewriting_is_idempotent():
     assert to_async_url(once) == once
 
 
+# --- El modo TLS, que cada driver escribe distinto ------------------------------
+
+
+def test_sslmode_becomes_ssl_on_the_async_side():
+    """libpq lo llama `sslmode`; el `connect()` de asyncpg lo llama `ssl`.
+
+    Sin el renombre, una URL de Postgres gestionado con `?sslmode=require` falla
+    al conectar SOLO en el camino async: psycopg la acepta, asi que las
+    migraciones y el COPY masivo andan y `GET /search` es lo unico que se rompe.
+    """
+    url = "postgresql+psycopg://u:p@h:5432/d?sslmode=require"
+    assert to_async_url(url) == "postgresql+asyncpg://u:p@h:5432/d?ssl=require"
+
+
+def test_ssl_becomes_sslmode_on_the_sync_side():
+    url = "postgresql+asyncpg://u:p@h:5432/d?ssl=require"
+    assert to_sync_url(url) == "postgresql+psycopg://u:p@h:5432/d?sslmode=require"
+
+
+def test_the_tls_mode_survives_a_round_trip():
+    url = "postgresql+psycopg://u:p@h:5432/d?sslmode=verify-full"
+    assert to_sync_url(to_async_url(url)) == url
+
+
+@pytest.mark.parametrize(
+    "mode", ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
+)
+def test_every_libpq_mode_is_a_value_asyncpg_accepts(mode):
+    """Es un renombre y nunca una traduccion de significado: los dos drivers
+    usan el mismo vocabulario, y asyncpg lo parsea con su propio `SSLMode`."""
+    from asyncpg.connect_utils import SSLMode
+
+    translated = to_async_url(f"postgresql://u:p@h/d?sslmode={mode}")
+    assert f"ssl={mode}" in translated
+    assert SSLMode.parse(mode) is not None
+
+
+def test_a_url_without_a_tls_mode_is_left_alone():
+    assert to_async_url("postgresql://u:p@h/d") == "postgresql+asyncpg://u:p@h/d"
+
+
+def test_the_password_is_not_masked():
+    """`render_as_string` oculta la contrasena por default, y una URL con
+    `***` adentro no conecta con nada."""
+    assert "secreto" in to_async_url("postgresql://u:secreto@h/d")
+
+
 # --- The schema ------------------------------------------------------------
 
 
