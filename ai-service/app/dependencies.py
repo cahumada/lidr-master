@@ -114,6 +114,37 @@ def get_reranker():
 
 
 @lru_cache
+def get_answer_llm():
+    """Generation-LLM singleton. No key, no generation: unlike the reranker
+    there is no measured fallback, so this raises the way ``get_embedder`` does.
+
+    The OpenAI client is built HERE and nowhere else.
+
+    || Singleton del LLM de generación. Sin clave no hay generación: a
+    diferencia del reranker no hay un fallback medido, así que esto falla
+    como ``get_embedder``. El cliente de OpenAI se arma ACÁ y en ningún otro
+    lado.
+    """
+    from openai import OpenAI
+
+    from app.foundation.llm.wrapper import OpenAIChatLLM
+
+    settings = get_settings()
+    if not settings.OPENAI_API_KEY:
+        raise RuntimeError(
+            "OPENAI_API_KEY is not set. Copy .env.example to .env and fill it in. "
+            "|| OPENAI_API_KEY no está definida. Copiá .env.example a .env y completala."
+        )
+
+    return OpenAIChatLLM(
+        OpenAI(api_key=settings.OPENAI_API_KEY),
+        model=settings.ANSWER_MODEL,
+        max_tokens=settings.ANSWER_MAX_TOKENS,
+        temperature=settings.ANSWER_TEMPERATURE,
+    )
+
+
+@lru_cache
 def get_corpus_source():
     """Corpus source singleton: the bucket when one is configured, the local
     directory otherwise.

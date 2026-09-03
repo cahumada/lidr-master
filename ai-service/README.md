@@ -123,6 +123,16 @@ transacción no existe cuando lo que pasa es que no está en el menú.
 Si el contexto supera el techo, el build **falla** en vez de truncar: medio mapa
 se lee como uno entero.
 
+## Evaluación de la generación
+
+```bash
+uv run python scripts/eval_generation.py --source curated
+```
+
+Para cada pregunta del golden set con un `document_id` esperado, confirma que
+las `citations` de la respuesta lo incluyen. Método y números en
+[`evals/GENERATION_EVAL.md`](evals/GENERATION_EVAL.md).
+
 ## Evaluación de la recuperación
 
 ```bash
@@ -163,12 +173,16 @@ Replica la arquitectura por capas del curso (rama `session_16` de
 ```
 app/
 ├── config.py                                # Settings (pydantic-settings)
-├── dependencies.py                          # composition root: chunker y embedder
+├── dependencies.py                          # composition root: chunker, embedder, LLM
 ├── main.py                                  # FastAPI app, structlog, routers
 ├── api/
-│   └── documents.py                         # POST /documents/ingest (router delgado)
-├── foundation/persistence/
-│   └── database.py                          # Base, engine sync (psycopg) y async (asyncpg)
+│   ├── documents.py                         # POST /documents/ingest (router delgado)
+│   ├── search.py                            # GET /search
+│   └── answer.py                            # POST /answer
+├── foundation/
+│   ├── persistence/database.py              # Base, engine sync (psycopg) y async (asyncpg)
+│   ├── llm/wrapper.py                       # chat completions (cliente armado en DI)
+│   └── prompts/answer/v1/                   # system.j2 + user.j2
 └── generation/rag/
     ├── schemas.py                           # Chunk, ChunkMetadata, Reference, manifiestos
     ├── chunking/
@@ -187,11 +201,20 @@ app/
     │   ├── requisites.py                    # precedencia declarada en Requisitos
     │   ├── builder.py                       # armado desde las tres fuentes
     │   └── cag.py                           # el contexto precargable, medido
-    └── store/
-        ├── models.py                        # chunks, corpus_versions, process_map_edges
-        ├── loader.py                        # COPY masivo e idempotente
-        └── repository.py                    # búsqueda por similitud con filtros
+    ├── store/
+    │   ├── models.py                        # chunks, corpus_versions, process_map_edges
+    │   ├── loader.py                        # COPY masivo e idempotente
+    │   └── repository.py                    # búsqueda por similitud con filtros
+    ├── prompt_builder.py                    # contexto con procedencia visible
+    ├── guardrails.py                        # citas vs. hits recuperados
+    └── answer.py                            # orquestación retrieve → LLM → guardrail
 ```
+
+### Próximos pasos (no de este cambio)
+
+- Pantalla de `/answer` en `business-backend/`.
+- Streaming de la respuesta.
+- Versiones de prompt `v2` / `v3`.
 
 No repliqué `app/ingestion/` del curso (catálogo YAML + jobs en background +
 Postgres): esa capa es para otro tipo de fuente y trae infraestructura que este
@@ -234,7 +257,7 @@ uv sync
 uv run uvicorn app.main:app --reload
 ```
 
-Swagger en `http://localhost:8000/docs`. Dos endpoints:
+Swagger en `http://localhost:8000/docs`. Endpoints:
 
 - `POST /documents/ingest` — body JSON `{"filename": "...", "content": "..."}`.
   `content` es el **texto** del markdown, no una ruta — el servicio nunca lee
@@ -242,6 +265,11 @@ Swagger en `http://localhost:8000/docs`. Dos endpoints:
 - `POST /documents/ingest-file` — subida de archivo (multipart). En Swagger
   aparece como un botón "Choose File" nativo; es la forma más cómoda de
   probar a mano con los `.md` de `data/policies/`.
+- `GET /search` — chunks relevantes, con procedencia.
+- `POST /answer` — respuesta citada: recupera con el mismo pipeline que
+  `/search`, arma un prompt, llama al LLM y marca `grounded=false` si la
+  prosa cita un `document_id` que no estaba en los hits. `citations` son
+  esos hits, no los marcadores del modelo.
 
 ```bash
 curl -X POST http://localhost:8000/documents/ingest-file \

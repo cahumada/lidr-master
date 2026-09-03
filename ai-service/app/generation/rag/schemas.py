@@ -667,3 +667,126 @@ class SearchFacets(BaseModel):
         description="Distinct `window_type_name` values present in the corpus, sorted. "
         "|| Valores distintos de `window_type_name` presentes en el corpus, ordenados.",
     )
+
+
+# --- Answer generation || Generación de respuestas ---------------------------
+
+
+def search_hits_from_chunks(chunks: list) -> list[SearchHit]:
+    """Map retrieved chunks to the public ``SearchHit`` contract.
+
+    Shared by ``GET /search`` and ``POST /answer`` so the two endpoints cannot
+    drift on what a citation is.
+
+    || Mapea chunks recuperados al contrato público ``SearchHit``. Lo
+    comparten ``GET /search`` y ``POST /answer`` para que los dos endpoints
+    no puedan divergir en qué es una cita.
+    """
+    return [
+        SearchHit(
+            content_hash=chunk.content_hash,
+            chunk_id=chunk.chunk_id,
+            document_id=chunk.document_id,
+            document_title=chunk.document_title,
+            section=chunk.section,
+            bullet_path=chunk.bullet_path,
+            module_code=chunk.module_code,
+            document_kind=chunk.document_kind,
+            text=chunk.text,
+            score=chunk.score,
+            branches=chunk.branches,
+            ranks=chunk.ranks,
+        )
+        for chunk in chunks
+    ]
+
+
+class AnswerRequest(BaseModel):
+    """Payload for ``POST /answer``. || Payload de ``POST /answer``.
+
+    The retrieval knobs default to the measured pipeline — the same defaults
+    as ``GET /search`` — so a caller that only sends ``question`` gets the
+    configuration that scored ``p@10`` 0.171, not a cheaper unmeasured one.
+
+    ``question`` carries ``min_length=2``, the same rule ``Query(min_length=2)``
+    already enforces on ``/search``. That is the input guardrail; it is not
+    restated in a second function.
+
+    || Los knobs de recuperación defaultan al pipeline medido —los mismos que
+    ``GET /search``— así un llamador que solo manda ``question`` obtiene la
+    configuración que midió ``p@10`` 0,171, no una más barata sin medir.
+    ``question`` lleva ``min_length=2``, la misma regla que
+    ``Query(min_length=2)`` ya impone en ``/search``. Ese es el guardrail de
+    entrada; no se reitera en una segunda función.
+    """
+
+    question: str = Field(
+        min_length=2,
+        description="The question, in natural language or a transaction code. "
+        "|| La pregunta, en lenguaje natural o un código de transacción.",
+    )
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="How many chunks enter the prompt. || Cuántos chunks entran al prompt.",
+    )
+    max_per_document: int | None = Field(
+        default=1,
+        ge=1,
+        description="Cap of chunks per document. Default 1, the measured search default. "
+        "|| Tope de chunks por documento. Default 1, el default medido de la búsqueda.",
+    )
+    module_code: list[str] | None = Field(
+        default=None,
+        description="Restrict to one or more modules, e.g. ['CA', 'DF']. "
+        "|| Restringir a uno o varios módulos, ej. ['CA', 'DF'].",
+    )
+    window_type_name: list[str] | None = Field(
+        default=None,
+        description="Restrict by one or more window types. "
+        "|| Restringir por uno o varios tipos de ventana.",
+    )
+    lexical: bool = Field(
+        default=False,
+        description="Add the full-text branch. Off by default: the measured search default. "
+        "|| Agregar el camino full-text. Apagado por default: el default medido de la búsqueda.",
+    )
+    split: bool = Field(
+        default=True,
+        description="Split a compound question and add what the parts find. "
+        "|| Dividir una pregunta compuesta y agregar lo que encuentran las partes.",
+    )
+    rerank: bool = Field(
+        default=True,
+        description="Reorder the candidate set before building the prompt. "
+        "|| Reordenar el candidato antes de armar el prompt.",
+    )
+
+
+class AnswerResponse(BaseModel):
+    """Response for ``POST /answer``. || Respuesta de ``POST /answer``.
+
+    ``citations`` is the retrieved hits, not the markers the model wrote.
+    Verifying a citation means looking at this list. ``grounded`` says
+    whether the prose invented a ``document_id`` that is not in it.
+
+    || ``citations`` son los hits recuperados, no los marcadores que escribió
+    el modelo. Verificar una cita es mirar esta lista. ``grounded`` dice si
+    la prosa inventó un ``document_id`` que no está en ella.
+    """
+
+    question: str = Field(
+        description="The question as received. || La pregunta como llegó.",
+    )
+    answer: str = Field(
+        description="The generated answer. || La respuesta generada.",
+    )
+    citations: list[SearchHit] = Field(
+        description="The chunks the answer was generated from — the verifiable provenance. "
+        "|| Los chunks a partir de los cuales se generó la respuesta — la procedencia verificable.",
+    )
+    grounded: bool = Field(
+        description="False when the prose cites a document_id that is not in `citations`. "
+        "|| False cuando la prosa cita un document_id que no está en `citations`.",
+    )

@@ -17,6 +17,7 @@ from __future__ import annotations
 import structlog
 from fastapi import FastAPI
 
+from app.api.answer import router as answer_router
 from app.api.corpus import router as corpus_router
 from app.api.documents import router as documents_router
 from app.api.search import router as search_router
@@ -57,6 +58,7 @@ configure_logging()
 app = FastAPI(title="Visual Time RAG — servicio IA", version="0.1.0")
 app.include_router(documents_router)
 app.include_router(search_router)
+app.include_router(answer_router)
 app.include_router(corpus_router)
 
 

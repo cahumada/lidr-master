@@ -99,21 +99,24 @@ lado.
 - **Los tipos espejan los schemas Pydantic 1:1** (`lib/ai-service/types.ts`).
   Cuando el servicio agrega un campo, se agrega ahí primero.
 - **Vercel AI SDK: todavía no.** El curso fija que el cliente nunca llama a un
-  proveedor de modelos —toda la lógica de IA vive en el servicio— y acá no hay
-  endpoint de generación que streamear. Entra cuando exista, y apuntado al
-  Route Handler propio, sin claves de proveedor en esta app.
+  proveedor de modelos —toda la lógica de IA vive en el servicio—. `POST
+  /answer` ya existe; lo que no hay es streaming ni pantalla en esta app.
+  Cuando entren, apuntan al Route Handler propio, sin claves de proveedor
+  acá.
 
 ### `ai-service/` — el servicio IA
 
 - Python 3.11, `uv` para dependencias y ejecución.
 - FastAPI + Pydantic v2 (contratos tipados, visibles en Swagger).
-- `structlog` para logging; `tiktoken` para conteo de tokens.
+- `structlog` para logging; `tiktoken` para conteo de tokens; `jinja2` para
+  prompts versionados.
 - `pytest` + `ruff` (line-length 100).
 - SQLAlchemy 2.0 + Alembic + pgvector; psycopg3 para el `COPY` masivo y
   asyncpg para el camino de consulta.
 - El chunking es determinístico y local: **ninguna API key es necesaria para
-  trocear**. Sí lo son para embeber y para el reranker con modelo, y el reranker
-  cae al léxico si no hay clave.
+  trocear**. Sí lo son para embeber, para el reranker con modelo y para
+  `POST /answer`. El reranker cae al léxico si no hay clave; el embedder y
+  la generación no — sin LLM no hay respuesta que sintetizar.
 
 ## Arquitectura por capas
 
@@ -129,9 +132,12 @@ app/
 ├── main.py                                   # app FastAPI, structlog, routers
 ├── api/
 │   ├── documents.py                          # ingesta (síncrona, sin persistir)
-│   └── search.py                             # GET /search, con procedencia por hit
-├── foundation/persistence/
-│   └── database.py                           # Base, engines sync/async, settings de pgvector
+│   ├── search.py                             # GET /search, con procedencia por hit
+│   └── answer.py                             # POST /answer, thin: retrieve → generate
+├── foundation/
+│   ├── persistence/database.py               # Base, engines sync/async, settings de pgvector
+│   ├── llm/wrapper.py                        # chat completions; el cliente se arma en DI
+│   └── prompts/answer/v1/                    # system.j2 + user.j2, loader Jinja2 mínimo
 └── generation/rag/
     ├── schemas.py                            # contratos Pydantic de esta arquitectura de generación
     ├── navigation.py                         # árbol de WINDOWS: módulos, tipos de ventana
@@ -140,7 +146,10 @@ app/
     ├── embedding/                            # embedder, sidecar binario, runner reanudable
     ├── store/                                # models, loader (COPY), repository (3 caminos)
     ├── retrieval/                            # fusion (RRF), hybrid, decomposition, reranker
-    └── process_map/                          # grafo de transacciones y contexto CAG
+    ├── process_map/                          # grafo de transacciones y contexto CAG
+    ├── prompt_builder.py                     # contexto con procedencia visible
+    ├── guardrails.py                         # citas vs. hits recuperados
+    └── answer.py                             # orquestación retrieve → LLM → guardrail
 scripts/                                       # chunk, embed, load, build-map, evals
 tests/generation/rag/                          # espeja la ruta del código que testea
 ```
@@ -158,10 +167,12 @@ Capas del curso deliberadamente **no** replicadas, y por qué:
   pgvector. Lo que sigue siendo cierto es «sin catálogo» y un solo tipo de
   documento; la tabla de chunks por tipo de fuente del curso (`budget_chunks`,
   `transcript_chunks`, …) no aplica mientras haya uno solo.
-- `app/foundation/` — el wrapper de LLM y los guardrails del curso. La
-  persistencia SÍ entró (`app/foundation/persistence/`); lo que no hay todavía
-  es el wrapper de LLM, porque la única llamada a modelo la hace el reranker y
-  recibe su cliente inyectado.
+- `app/foundation/` — la persistencia entró con pgvector; el wrapper de LLM
+  entró con `POST /answer` (`app/foundation/llm/wrapper.py`). Los guardrails
+  de *entrada* del curso no se replicaron: la validación es
+  `min_length=2` en el contrato, la misma regla que `/search`. El de *salida*
+  vive junto a la generación (`app/generation/rag/guardrails.py`) porque su
+  único consumidor es esa capa.
 - `app/generation/rag/chunking/base.py` existe pero **sin** la clase abstracta
   `Chunker` del curso: acá hay una sola estrategia, y una abstracción con una
   única implementación es ruido. Se agrega cuando entre la segunda estrategia.
@@ -254,15 +265,18 @@ Construido: normalización + reparación de tablas rotas, chunking híbrido (fil
 de tabla vs. bullet narrativo), corrida batch sobre el corpus completo (2.169
 archivos → 62.228 chunks), embeddings con sidecar binario, persistencia en
 pgvector (57.101 filas), mapa de procesos y CAG, recuperación de tres caminos
-con fusión RRF, descomposición de consultas compuestas, reranker, y tres
-endpoints HTTP (`/documents/ingest`, `/documents/ingest-file`, `/search`).
+con fusión RRF, descomposición de consultas compuestas, reranker, generación
+de respuestas citadas (`POST /answer`: prompt versionado + LLM + guardrail
+de citas contra los hits recuperados), y cuatro endpoints HTTP
+(`/documents/ingest`, `/documents/ingest-file`, `/search`, `/answer`).
 
 Medido sobre 35 preguntas reales de usuarios: `p@10` 0,171 con 94% de hallazgo.
+La fidelidad de las citas de la generación se mide en
+`ai-service/evals/GENERATION_EVAL.md`.
 
-No construido todavía: **generación de respuestas** —la capa que falta para que
-esto sea un RAG y no un buscador—, ingesta batch expuesta por API con
-seguimiento de jobs, chunking jerárquico/semántico/con overlap, y el backend de
-negocio.
+No construido todavía: pantalla de `/answer` en `business-backend/`, streaming
+de la respuesta, versiones de prompt `v2`/`v3`, ingesta batch expuesta por API
+con seguimiento de jobs, y chunking jerárquico/semántico/con overlap.
 
 Existe además, generado fuera de este repo, un corpus JSON enriquecido por
 LLM para el módulo `policies` (`corpus_<tenant>_policies.json`, 174

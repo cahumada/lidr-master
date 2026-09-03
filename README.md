@@ -9,7 +9,7 @@ Monorepo de dos proyectos, el layout que fija el programa:
 
 | | qué es | stack | se despliega en |
 |---|---|---|---|
-| [`ai-service/`](ai-service/README.md) | ingesta, chunking, embeddings, recuperación | Python · FastAPI · pgvector | Railway |
+| [`ai-service/`](ai-service/README.md) | ingesta, chunking, embeddings, recuperación, generación | Python · FastAPI · pgvector | Railway |
 | [`business-backend/`](business-backend/README.md) | el frontend y el backend de negocio | Next.js · Tailwind · shadcn/ui | Vercel |
 
 ## Empezar

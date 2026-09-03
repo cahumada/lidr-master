@@ -152,6 +152,24 @@ class Settings(BaseSettings):
     # agrandar el modelo.
     RERANK_MODEL: str = "gpt-4o-mini"
 
+    # Generation knobs. NOT the reranker's: ranking candidates and synthesizing
+    # an answer are different jobs, and tuning one must not silently change the
+    # other. The default MODEL is the same cheap one because there is no
+    # measurement that justifies paying more; temperature and max tokens have
+    # no reranker equivalent (that call returns ids, this one returns prose).
+    # Temperature 0: insurance facts, not style. The fidelity eval has to be
+    # able to reproduce a run.
+    # || Perillas de generación. NO las del reranker: rankear candidatos y
+    # sintetizar una respuesta son trabajos distintos, y tunear uno no tiene
+    # que cambiar el otro en silencio. El MODEL default es el mismo barato
+    # porque no hay medición que justifique pagar más; temperatura y max
+    # tokens no tienen equivalente en el reranker (esa llamada devuelve ids,
+    # esta devuelve prosa). Temperatura 0: hechos de seguros, no estilo. El
+    # eval de fidelidad tiene que poder reproducir una corrida.
+    ANSWER_MODEL: str = "gpt-4o-mini"
+    ANSWER_MAX_TOKENS: int = 1024
+    ANSWER_TEMPERATURE: float = 0.0
+
     # Input cap of text-embedding-3-small. Every chunk is checked against this
     # BEFORE the first call: finding out when the API rejects it means paying
     # to learn it.

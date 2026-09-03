@@ -28,7 +28,7 @@ from app.dependencies import get_embedder, get_reranker
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.retrieval.decomposition import decompose
 from app.generation.rag.retrieval.hybrid import ALL_BRANCHES, DEFAULT_BRANCHES, HybridRetriever
-from app.generation.rag.schemas import SearchFacets, SearchHit, SearchResponse
+from app.generation.rag.schemas import SearchFacets, SearchResponse, search_hits_from_chunks
 from app.generation.rag.store.repository import ChunkRepository, SearchFilters
 
 log = structlog.get_logger()
@@ -131,23 +131,7 @@ async def search(
 
     return SearchResponse(
         query=q,
-        hits=[
-            SearchHit(
-                content_hash=chunk.content_hash,
-                chunk_id=chunk.chunk_id,
-                document_id=chunk.document_id,
-                document_title=chunk.document_title,
-                section=chunk.section,
-                bullet_path=chunk.bullet_path,
-                module_code=chunk.module_code,
-                document_kind=chunk.document_kind,
-                text=chunk.text,
-                score=chunk.score,
-                branches=chunk.branches,
-                ranks=chunk.ranks,
-            )
-            for chunk in result.chunks
-        ],
+        hits=search_hits_from_chunks(result.chunks),
         count=len(result.chunks),
         sub_queries=sub_queries,
         reranked=rerank,
