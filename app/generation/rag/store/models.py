@@ -48,6 +48,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.config import get_settings
 from app.foundation.persistence.database import Base
+from app.generation.rag.schemas import FUNCTIONAL_SPEC
 
 # Hard-coded rather than read from Settings: the column type is baked into the
 # schema by a migration, so it cannot follow a runtime setting. It must match
@@ -91,6 +92,29 @@ class ChunkRow(Base):
     tenant_id: Mapped[str] = mapped_column(String(64), nullable=False)
     doc_version: Mapped[str] = mapped_column(String(128), nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Part of the row's identity, not a metadata field. Today every row says
+    # `functional_spec`, and the point is that a second kind of source does not
+    # need to migrate the unique key of 57101 rows to exist.
+    #
+    # Note what this does NOT fix: cross-document collisions were already
+    # impossible, because the hashed text carries the contextual header
+    # `[Documento: CA014 - <titulo>]`. Measured on the corpus: 3017 hashes
+    # repeat, 0 of them across different `document_id`. This is insurance for a
+    # future source type that may not carry such a header, and -- the real
+    # reason -- it is what makes a mixed corpus filterable at all.
+    # || Parte de la identidad de la fila, no un campo de metadata. Hoy todas
+    # dicen `functional_spec`, y el punto es que una segunda clase de fuente no
+    # necesite migrar la clave unica de 57101 filas para existir.
+    #
+    # Ojo con lo que esto NO arregla: las colisiones entre documentos ya eran
+    # imposibles, porque el texto hasheado lleva el header contextual
+    # `[Documento: CA014 - <titulo>]`. Medido sobre el corpus: 3017 hashes se
+    # repiten, 0 entre `document_id` distintos. Esto es seguro para un tipo de
+    # fuente futuro que tal vez no lleve ese header y, la razon de verdad, es lo
+    # que hace filtrable un corpus mixto.
+    source_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=FUNCTIONAL_SPEC
+    )
 
     # Traceability back to the source document, not identity.
     # || Trazabilidad al documento fuente, no identidad.
@@ -141,7 +165,11 @@ class ChunkRow(Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "tenant_id", "doc_version", "content_hash", name="uq_chunks_tenant_version_hash"
+            "tenant_id",
+            "doc_version",
+            "source_type",
+            "content_hash",
+            name="uq_chunks_tenant_version_hash",
         ),
         # The operator class MUST match the operator the query uses (`<=>`).
         # When they disagree Postgres does not fail -- it ignores the index and
@@ -167,6 +195,7 @@ class ChunkRow(Base):
         Index("ix_chunks_document_id", "document_id"),
         Index("ix_chunks_module_code", "module_code"),
         Index("ix_chunks_window_type", "tenant_id", "doc_version", "window_type_name"),
+        Index("ix_chunks_source_type", "tenant_id", "doc_version", "source_type"),
     )
 
 

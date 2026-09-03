@@ -258,3 +258,61 @@ def test_a_chunk_with_no_vector_is_reported_not_invented(tmp_path):
 
     assert len(rows) == 1
     assert without_vector == ["CA014::campos::1"]
+
+
+# --- source_type: la puerta abierta a otros tipos de fuente --------------------
+
+
+def test_the_row_identity_includes_the_source_type():
+    """La identidad de una fila es cliente + versión + CLASE DE FUENTE + texto.
+
+    El tipo de fuente está en la clave única a propósito, aunque hoy haya un
+    solo valor: agregarlo después sería migrar la clave de 57.101 filas. Lo que
+    NO arregla es colisiones entre documentos, que ya eran imposibles porque el
+    texto hasheado lleva el header `[Documento: CA014 - <título>]` — medido, 0
+    de los 3.017 hashes repetidos del corpus cruzan `document_id`.
+    """
+    unique = next(
+        c for c in ChunkRow.__table__.constraints if c.name == "uq_chunks_tenant_version_hash"
+    )
+    assert tuple(column.name for column in unique.columns) == (
+        "tenant_id",
+        "doc_version",
+        "source_type",
+        "content_hash",
+    )
+
+
+def test_the_source_type_is_not_a_metadata_column():
+    """Es identidad, no metadata: un conflicto NO lo reescribe.
+
+    Si estuviera en `_METADATA_COLUMNS`, una carga podría cambiarle la clase de
+    fuente a una fila existente, que es justamente lo que la clave única
+    previene.
+    """
+    from app.generation.rag.store.loader import _METADATA_COLUMNS
+
+    assert "source_type" not in _METADATA_COLUMNS
+
+
+def test_the_source_type_travels_in_the_copy_row():
+    from app.generation.rag.store.loader import COPY_COLUMNS
+
+    assert "source_type" in COPY_COLUMNS
+
+
+def test_searching_every_source_type_is_the_default():
+    """`None` es todas. Filtrar al único valor que existe sería un no-op con
+    aspecto de decisión."""
+    assert SearchFilters("acme", "v1").source_type is None
+
+
+def test_the_source_type_narrows_the_search():
+    sql = compiled(
+        build_search_statement(
+            [0.1] * DIMS,
+            SearchFilters("acme", "v1", source_type="functional_spec"),
+            limit=5,
+        )
+    )
+    assert "chunks.source_type = " in sql

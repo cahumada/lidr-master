@@ -108,6 +108,7 @@ from app.generation.rag.chunking.normalizer import (
 )
 from app.generation.rag.navigation import UNRESOLVED, NavigationLocation, NavigationTree
 from app.generation.rag.schemas import (
+    FUNCTIONAL_SPEC,
     Chunk,
     ChunkedDocument,
     ChunkMetadata,
@@ -1460,6 +1461,16 @@ class FunctionalSpecChunker:
             chunk.metadata.submodule_code = location.submodule_code
             chunk.metadata.submodule_name = location.submodule_name
             chunk.metadata.window_type_name = location.window_type_name
+            # Set explicitly even though the model defaults to it. The default
+            # would be the WRONG value for a future chunker of another format,
+            # and a silent wrong value in the row's identity is worse than a
+            # missing one. Stamping it here means the default never decides.
+            # || Se estampa explicito aunque el modelo tenga ese default. El
+            # default seria el valor EQUIVOCADO para un chunker futuro de otro
+            # formato, y un valor mal puesto en silencio dentro de la identidad
+            # de la fila es peor que uno faltante. Estamparlo aca hace que el
+            # default nunca decida.
+            chunk.metadata.source_type = FUNCTIONAL_SPEC
             chunk.metadata.tenant_id = self._tenant_id
             chunk.metadata.doc_version = self._doc_version
             # The chunk's hash covers exactly the bytes that get embedded, so a

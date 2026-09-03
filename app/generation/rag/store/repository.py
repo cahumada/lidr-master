@@ -38,6 +38,13 @@ class SearchFilters:
 
     tenant_id: str
     doc_version: str
+    # Which kind of source to search. `None` means all of them, which is the
+    # right default while there is only one: filtering to the only value that
+    # exists would be a no-op that looks like a decision.
+    # || Que clase de fuente buscar. `None` es todas, que es el default
+    # correcto mientras hay una sola: filtrar al unico valor que existe seria
+    # un no-op con aspecto de decision.
+    source_type: str | None = None
     module_code: str | None = None
     transaction_type: str | None = None
     document_kind: str | None = None
@@ -110,6 +117,7 @@ def _apply(statement: Select, filters: SearchFilters) -> Select:
         ChunkRow.doc_version == filters.doc_version,
     )
     optional = {
+        ChunkRow.source_type: filters.source_type,
         ChunkRow.module_code: filters.module_code,
         ChunkRow.transaction_type: filters.transaction_type,
         ChunkRow.document_kind: filters.document_kind,

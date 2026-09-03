@@ -52,6 +52,7 @@ def make_row(tenant: str, body: str, *, index: int, **overrides) -> tuple:
         "tenant_id": tenant,
         "doc_version": "v1",
         "content_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        "source_type": "functional_spec",
         "chunk_id": f"CA014::campos::{index}",
         "document_id": "CA014",
         "document_title": "Datos de la póliza",

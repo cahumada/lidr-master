@@ -53,6 +53,7 @@ COPY_COLUMNS = (
     "tenant_id",
     "doc_version",
     "content_hash",
+    "source_type",
     "chunk_id",
     "document_id",
     "document_title",
@@ -115,6 +116,7 @@ def iter_rows(
                     metadata["tenant_id"],
                     metadata["doc_version"],
                     metadata["content_hash"],
+                    metadata.get("source_type", "functional_spec"),
                     chunk["chunk_id"],
                     document["document_id"],
                     document.get("document_title"),
@@ -145,7 +147,7 @@ def iter_rows(
 # la pena está en la tabla real.
 _TEMP_TABLE_DDL = """
 CREATE TEMPORARY TABLE chunks_staging (
-    tenant_id text, doc_version text, content_hash text,
+    tenant_id text, doc_version text, content_hash text, source_type text,
     chunk_id text, document_id text, document_title text,
     text text, embedding vector({dimensions}), token_count integer,
     chunk_type text, section text, bullet_path text, field text,
@@ -221,10 +223,10 @@ _METADATA_COLUMNS = (
 # CardinalityViolation.
 _INSERT_SQL = """
 INSERT INTO chunks ({columns})
-SELECT DISTINCT ON (tenant_id, doc_version, content_hash) {columns}
+SELECT DISTINCT ON (tenant_id, doc_version, source_type, content_hash) {columns}
 FROM chunks_staging
-ORDER BY tenant_id, doc_version, content_hash, chunk_id
-ON CONFLICT (tenant_id, doc_version, content_hash) DO UPDATE SET
+ORDER BY tenant_id, doc_version, source_type, content_hash, chunk_id
+ON CONFLICT (tenant_id, doc_version, source_type, content_hash) DO UPDATE SET
 {updates}
 """
 

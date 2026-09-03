@@ -43,6 +43,30 @@ ReferenceType = Literal["inline_transaction", "footnote_tag"]
 # que sobre todo enlaza a sus hijos.
 DocumentKind = Literal["content", "index"]
 
+# What KIND OF SOURCE the chunk came from -- not what it is inside that source.
+# `document_kind`, `chunk_type` and `transaction_type` all discriminate WITHIN a
+# functional spec; none of them can say "this is a functional spec rather than a
+# contract".
+#
+# Deliberately a plain `str` and not a `Literal`: the second source type is not
+# defined yet, and a closed enum would have to be edited to add it. What matters
+# now is that the column EXISTS, because it is part of the row's identity and
+# adding it later means a migration plus a backfill plus regenerating the
+# corpus. The chunker's wiring, by contrast, lives only in code and costs an
+# afternoon whenever the second type shows up -- so that one is left alone.
+# || DE QUÉ CLASE DE FUENTE viene el chunk, no qué es adentro de esa fuente.
+# `document_kind`, `chunk_type` y `transaction_type` discriminan TODOS dentro de
+# una especificación funcional; ninguno puede decir "esto es una especificación
+# funcional y no un contrato".
+#
+# A propósito un `str` y no un `Literal`: el segundo tipo de fuente todavía no
+# está definido, y un enum cerrado habría que editarlo para agregarlo. Lo que
+# importa ahora es que la columna EXISTA, porque es parte de la identidad de la
+# fila y agregarla después es una migración más un backfill más regenerar el
+# corpus. El cableado del chunker, en cambio, vive solo en código y cuesta una
+# tarde cuando aparezca el segundo tipo — así que a ese no se lo toca.
+FUNCTIONAL_SPEC = "functional_spec"
+
 
 class Reference(BaseModel):
     """A cross-reference to another functional document found inside a chunk.
@@ -91,6 +115,14 @@ class ChunkMetadata(BaseModel):
     exactamente uno de los dos.
     """
 
+    source_type: str = Field(
+        default=FUNCTIONAL_SPEC,
+        description="Which kind of source this came from. Today always "
+        "'functional_spec'; the column exists so a second kind does not need a "
+        "migration of the row's identity. || De qué clase de fuente viene. Hoy "
+        "siempre 'functional_spec'; la columna existe para que una segunda clase "
+        "no necesite migrar la identidad de la fila.",
+    )
     document_id: str = Field(description="Transaction id, e.g. 'CA014'. || Id de la transacción, ej. 'CA014'.")
     document_title: str = Field(description="Document title. || Título del documento.")
     section: str = Field(

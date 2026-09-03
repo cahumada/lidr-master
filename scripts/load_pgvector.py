@@ -158,8 +158,16 @@ def main() -> int:
             print(f"  pruned: {pruned:,} rows whose text is no longer in the corpus")
 
     elapsed = time.perf_counter() - started
-    inserted_total = sum(r[2] for r in results)
-    print(f"\n{inserted_total:,} rows inserted in {elapsed:.1f}s")
+    # "written" and not "inserted": the load upserts metadata, so this counts
+    # inserts AND updates. It can also EXCEED the table's row count, because the
+    # staging table is per module and the 30 hashes that appear in two modules
+    # get written twice. 57131 written against 57101 rows is exactly that.
+    # || "escritas" y no "insertadas": la carga hace upsert de la metadata, asi
+    # que esto cuenta inserts Y updates. Tambien puede SUPERAR el conteo de
+    # filas, porque la staging es por modulo y los 30 hashes que estan en dos
+    # modulos se escriben dos veces. 57131 escritas contra 57101 filas es eso.
+    written_total = sum(r[2] for r in results)
+    print(f"\n{written_total:,} rows written in {elapsed:.1f}s")
 
     report = render_report(corpus_id, tenant_id, doc_version, results, elapsed)
     (args.chunks / REPORT_FILENAME).write_text(report, encoding="utf-8")
