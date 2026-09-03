@@ -54,6 +54,20 @@ class Settings(BaseSettings):
     # OPCIONAL: si el archivo falta, todos los breadcrumb quedan sin resolver.
     WINDOWS_TREE_PATH: Path = Path("data/windows_tree.csv")
 
+    # Where the source markdown lives. `None` means the rebuild endpoint has
+    # nothing to chunk and says so, instead of guessing a path.
+    #
+    # A setting and NOT a request parameter: accepting an arbitrary path over
+    # HTTP is an arbitrary disk read by whoever can call the endpoint. The CLI
+    # still takes `--root`, because there the caller already has the filesystem.
+    # || Donde viven los markdown fuente. `None` significa que el endpoint de
+    # rebuild no tiene nada que trocear y lo dice, en lugar de adivinar una ruta.
+    #
+    # Un setting y NO un parametro del request: aceptar una ruta arbitraria por
+    # HTTP es una lectura de disco arbitraria de quien pueda llamar al endpoint.
+    # La CLI sigue tomando `--root`, porque ahi quien llama ya tiene el disco.
+    CORPUS_ROOT: Path | None = None
+
     # Version identity of the corpus being chunked. Stamped onto every
     # chunk so a vector store can isolate one client and one documentation
     # version; also declared in the corpus manifest. Overridable per run
