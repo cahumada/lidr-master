@@ -21,9 +21,11 @@
 - [x] 2.2 Un listado truncado **sin** token de continuación es un error y no un
       resultado parcial: la respuesta se contradice, y devolver lo que hay sería
       devolver un corpus incompleto sin avisar.
-- [x] 2.3 El prefijo se normaliza. S3 no tiene directorios, así que
-      `policies`, `/policies` y `policies/` son prefijos **distintos** y solo
-      uno matchea las claves reales. Test con las cuatro formas.
+- [x] 2.3 ~~El prefijo se normaliza.~~ **Quitado.** Lo había agregado para un
+      caso que no llegó: el bucket espeja el filesystem, con las carpetas de
+      módulo en la raíz, así que la clave ES la ruta relativa y el prefijo sería
+      siempre vacío. Un setting que nadie mueve contradice el mismo principio
+      que este cambio invocó para justificar la abstracción.
 - [x] 2.4 Una clave sin módulo se reporta y se saltea. Adivinarle un módulo la
       atribuiría al equivocado.
 - [x] 2.5 Un byte inválido se decodifica con `replace` y no aborta: un
@@ -44,6 +46,14 @@
 - [x] 3.5 La guarda del endpoint acepta cualquiera de las dos fuentes.
 - [x] 3.6 `boto3` como dependencia, justificada en el `proposal.md`: firmar
       SigV4 a mano es criptografía de autenticación hecha en casa.
+- [x] 3.7 `S3_REGION` vacía. La había puesto en `"auto"`, que es la convención
+      de Cloudflare R2 y **una adivinanza para Railway**. Verificado: boto3 no
+      necesita región con un endpoint custom, usa `us-east-1` solo. Y el valor
+      **no es decorativo** — es la región con la que se firma SigV4, así que
+      inventar uno puede romper la autenticación contra un servicio que la
+      valide.
+- [x] 3.8 Credenciales vacías caen a la cadena estándar de boto3 (variables
+      `AWS_*`, `~/.aws/credentials`, rol de IAM). Verificado.
 
 ## 4. Verificación
 

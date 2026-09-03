@@ -140,9 +140,7 @@ def get_corpus_source():
             aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY or None,
             region_name=settings.S3_REGION or None,
         )
-        return S3CorpusSource(
-            client, bucket=settings.CORPUS_BUCKET, prefix=settings.CORPUS_BUCKET_PREFIX
-        )
+        return S3CorpusSource(client, bucket=settings.CORPUS_BUCKET)
 
     if settings.CORPUS_ROOT is None:
         raise RuntimeError(

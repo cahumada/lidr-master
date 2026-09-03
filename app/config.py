@@ -81,11 +81,26 @@ class Settings(BaseSettings):
     # `S3_ENDPOINT_URL` is what makes this work for Railway, MinIO or any other
     # S3-compatible service and not only AWS. Empty means AWS.
     CORPUS_BUCKET: str = ""
-    CORPUS_BUCKET_PREFIX: str = ""
     S3_ENDPOINT_URL: str = ""
+    # Vacias caen a la cadena de credenciales estandar de boto3 (variables
+    # AWS_*, ~/.aws/credentials, rol de IAM). Verificado: pasarle None deja que
+    # boto3 resuelva.
+    # || Empty falls through to boto3's standard credential chain (AWS_* env
+    # vars, ~/.aws/credentials, IAM role). Verified: passing None lets boto3
+    # resolve.
     S3_ACCESS_KEY_ID: str = ""
     S3_SECRET_ACCESS_KEY: str = ""
-    S3_REGION: str = "auto"
+    # Vacia a proposito. boto3 NO necesita una region con un endpoint custom:
+    # verificado, usa us-east-1 solo. Y el valor NO es decorativo -- es la region
+    # con la que se firma SigV4, asi que inventar uno puede romper la
+    # autenticacion contra un servicio que la valide. Solo se pone si el
+    # proveedor pide una en concreto.
+    # || Empty on purpose. boto3 does NOT need a region with a custom endpoint:
+    # verified, it defaults to us-east-1 on its own. And the value is NOT
+    # cosmetic -- it is the region SigV4 signs with, so inventing one can break
+    # authentication against a service that validates it. Set it only if the
+    # provider asks for a specific one.
+    S3_REGION: str = ""
 
     # Version identity of the corpus being chunked. Stamped onto every
     # chunk so a vector store can isolate one client and one documentation

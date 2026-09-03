@@ -143,15 +143,6 @@ def test_a_truncated_listing_without_a_token_is_an_error():
         S3CorpusSource(Contradictory(), bucket="b").modules()
 
 
-def test_the_prefix_is_normalised():
-    """S3 no tiene directorios, asi que "policies", "/policies" y "policies/"
-    son prefijos DISTINTOS y solo uno matchea las claves reales."""
-    keys = ["corpus/policies/ca014.md"]
-    for prefix in ("corpus", "/corpus", "corpus/", "/corpus/"):
-        modules = S3CorpusSource(FakeS3(keys), bucket="b", prefix=prefix).modules()
-        assert set(modules) == {"policies"}, prefix
-
-
 def test_a_key_with_no_module_is_skipped_not_guessed():
     """Adivinarle un modulo lo atribuiria al equivocado."""
     client = FakeS3(["suelto.md", "policies/ca014.md"])
@@ -175,15 +166,14 @@ def test_a_bad_byte_does_not_abort_the_run():
 
 
 def test_the_bucket_source_labels_itself_by_its_location():
-    label = S3CorpusSource(FakeS3([]), bucket="mi-bucket", prefix="corpus").label()
-    assert label == "s3://mi-bucket/corpus/"
+    assert S3CorpusSource(FakeS3([]), bucket="mi-bucket").label() == "s3://mi-bucket"
 
 
 def test_the_filename_is_what_the_chunker_gets():
     """Es de ahi que sale el id cuando el documento no lo declara, asi que tiene
     que ser el nombre y nunca la clave entera."""
     source = S3CorpusSource(FakeS3([]), bucket="b")
-    assert source.name_of("corpus/policies/ca014.md") == "ca014.md"
+    assert source.name_of("policies/ca014.md") == "ca014.md"
 
 
 # --- El contrato ---------------------------------------------------------------

@@ -76,7 +76,7 @@ def module_of(relative: str) -> str:
 
     Mismo criterio en las dos fuentes. En un bucket es el primer segmento de la
     clave, porque S3 no tiene directorios: ``policies/ca014.md`` pertenece a
-    ``policies`` por su prefijo y no por estar adentro de nada.
+    ``policies`` porque su clave empieza con eso, no porque esté adentro de nada.
 
     || The first segment of the relative path. Same rule in both sources. In a
     bucket it is the key's first segment, because S3 has no directories.
@@ -148,34 +148,25 @@ class S3CorpusSource:
     import ``boto3``, so it is tested with a double and no network.
     """
 
-    def __init__(self, client, *, bucket: str, prefix: str = "") -> None:
+    def __init__(self, client, *, bucket: str) -> None:
         self._client = client
         self._bucket = bucket
-        # Normalizado sin barra inicial y con barra final: S3 no tiene
-        # directorios, así que "policies" y "/policies" y "policies/" son
-        # prefijos DISTINTOS y solo uno de los tres matchea las claves reales.
-        # || Normalised without a leading slash and with a trailing one: S3 has
-        # no directories, so "policies", "/policies" and "policies/" are
-        # DIFFERENT prefixes and only one of the three matches the real keys.
-        self._prefix = prefix.strip("/")
-        if self._prefix:
-            self._prefix += "/"
 
     def _keys(self) -> list[str]:
-        """Todas las claves ``.md`` bajo el prefijo, paginadas.
+        """Todas las claves ``.md`` del bucket, paginadas.
 
         Paginado a propósito: ``list_objects_v2`` devuelve 1.000 claves por
         página y el corpus tiene 2.169 documentos, así que sin paginar se
         perderían más de la mitad **en silencio**.
 
-        || Every ``.md`` key under the prefix, paginated. Paginated on purpose:
+        || Every ``.md`` key in the bucket, paginated. Paginated on purpose:
         ``list_objects_v2`` returns 1000 keys per page and the corpus has 2169
         documents, so without paging more than half would go missing SILENTLY.
         """
         keys: list[str] = []
         token: str | None = None
         while True:
-            request = {"Bucket": self._bucket, "Prefix": self._prefix}
+            request: dict = {"Bucket": self._bucket}
             if token:
                 request["ContinuationToken"] = token
             response = self._client.list_objects_v2(**request)
@@ -199,23 +190,25 @@ class S3CorpusSource:
                 )
         return sorted(keys)
 
-    def _relative(self, key: str) -> str:
-        return key[len(self._prefix) :] if self._prefix else key
-
     def modules(self) -> dict[str, list[str]]:
+        """El bucket espeja el filesystem: las carpetas de módulo están en la
+        raíz, así que la clave ES la ruta relativa.
+
+        || The bucket mirrors the filesystem: the module folders are at the
+        root, so the key IS the relative path.
+        """
         grouped: dict[str, list[str]] = {}
         for key in self._keys():
-            relative = self._relative(key)
-            if not relative or is_excluded(relative):
+            if is_excluded(key):
                 continue
-            if len(PurePosixPath(relative).parts) < 2:
+            if len(PurePosixPath(key).parts) < 2:
                 # Un documento sin módulo. Se reporta y se saltea: adivinarle un
                 # módulo lo atribuiria al equivocado.
                 # || A document with no module. Reported and skipped: guessing a
                 # module for it would attribute it to the wrong one.
                 logger.warning("corpus_key_without_module", key=key)
                 continue
-            grouped.setdefault(module_of(relative), []).append(key)
+            grouped.setdefault(module_of(key), []).append(key)
         return grouped
 
     def read(self, key: str) -> str:
@@ -231,4 +224,4 @@ class S3CorpusSource:
         return PurePosixPath(key).name
 
     def label(self) -> str:
-        return f"s3://{self._bucket}/{self._prefix}"
+        return f"s3://{self._bucket}"
