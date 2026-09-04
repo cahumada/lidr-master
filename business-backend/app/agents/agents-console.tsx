@@ -9,7 +9,28 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { AgentConfig, ServiceConfig } from "@/lib/ai-service/types";
+import type {
+  AgentConfig,
+  ModelConfig,
+  ProviderConfig,
+  ServiceConfig,
+} from "@/lib/ai-service/types";
+
+/** `provider:model` is the form's option value; the pair travels together.
+ * || `proveedor:modelo` es el value de la opción; el par viaja junto.
+ */
+function pairValue(provider: string, model: string): string {
+  return `${provider}:${model}`;
+}
+
+function splitPair(value: string): { provider: string; model: string } | null {
+  const separator = value.indexOf(":");
+  if (separator <= 0) return null;
+  return {
+    provider: value.slice(0, separator),
+    model: value.slice(separator + 1),
+  };
+}
 
 const KIND_LABEL: Record<string, string> = {
   supervisor: "orquestador",
@@ -81,18 +102,22 @@ function ReadOnlyAgent({ agent }: { agent: AgentConfig }) {
 function EditableAgent({
   agent,
   models,
+  providers,
   personaMaxChars,
   onSaved,
 }: {
   agent: AgentConfig;
-  models: string[];
+  models: ModelConfig[];
+  providers: ProviderConfig[];
   personaMaxChars: number;
   onSaved: (updated: AgentConfig) => void;
 }) {
   const effective = agent.effective;
   const [persona, setPersona] = useState(effective?.persona ?? "");
-  const [model, setModel] = useState(
-    effective?.sources.model === "profile" ? effective.model : "",
+  const [pair, setPair] = useState(
+    effective?.sources.model === "profile"
+      ? pairValue(effective.provider, effective.model)
+      : "",
   );
   const [temperature, setTemperature] = useState(
     effective?.sources.temperature === "profile" ? String(effective.temperature) : "",
@@ -103,6 +128,18 @@ function EditableAgent({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  // What the currently picked model accepts. An empty pick means "the service
+  // default", whose capability the service already reported on `effective`.
+  // || Lo que acepta el modelo elegido. Vacío significa "el default del
+  // servicio", cuya capacidad el servicio ya reportó en `effective`.
+  const picked = pair ? splitPair(pair) : null;
+  const pickedModel = picked
+    ? models.find((m) => m.provider === picked.provider && m.model === picked.model)
+    : undefined;
+  const acceptsTemperature = pickedModel
+    ? pickedModel.supports_temperature
+    : (effective?.supports_temperature ?? true);
 
   async function send(method: "PUT" | "DELETE") {
     setPending(true);
@@ -117,8 +154,14 @@ function EditableAgent({
           method === "PUT"
             ? JSON.stringify({
                 persona: persona.trim() || null,
-                model: model || null,
-                temperature: temperature === "" ? null : Number(temperature),
+                provider: picked?.provider ?? null,
+                model: picked?.model ?? null,
+                // A model that rejects sampling parameters gets no temperature
+                // at all — sending one would be answered with a 400.
+                // || Un modelo que rechaza los parámetros de sampling no lleva
+                // temperatura: mandarla se contesta con un 400.
+                temperature:
+                  !acceptsTemperature || temperature === "" ? null : Number(temperature),
                 max_tokens: maxTokens === "" ? null : Number(maxTokens),
               })
             : undefined,
@@ -133,7 +176,11 @@ function EditableAgent({
       // || Se recarga el formulario con lo que el servicio dice que quedó
       // vigente, así un valor que normalizó queda a la vista.
       setPersona(body.effective?.persona ?? "");
-      setModel(body.effective?.sources.model === "profile" ? body.effective.model : "");
+      setPair(
+        body.effective?.sources.model === "profile"
+          ? pairValue(body.effective.provider, body.effective.model)
+          : "",
+      );
       setTemperature(
         body.effective?.sources.temperature === "profile"
           ? String(body.effective.temperature)
@@ -170,7 +217,15 @@ function EditableAgent({
         </div>
 
         {effective && (
-          <div className="bg-muted/40 grid gap-2 rounded-md p-3 text-xs sm:grid-cols-3">
+          <div className="bg-muted/40 grid gap-2 rounded-md p-3 text-xs sm:grid-cols-4">
+            <div className="flex flex-col">
+              <span className="text-muted-foreground">Proveedor</span>
+              <span className="font-mono">
+                {providers.find((p) => p.id === effective.provider)?.label ??
+                  effective.provider}
+              </span>
+              <SourceNote source={effective.sources.provider} />
+            </div>
             <div className="flex flex-col">
               <span className="text-muted-foreground">Modelo vigente</span>
               <span className="font-mono">{effective.model}</span>
@@ -178,7 +233,9 @@ function EditableAgent({
             </div>
             <div className="flex flex-col">
               <span className="text-muted-foreground">Temperatura</span>
-              <span className="font-mono">{effective.temperature}</span>
+              <span className="font-mono">
+                {effective.temperature === null ? "—" : effective.temperature}
+              </span>
               <SourceNote source={effective.sources.temperature} />
             </div>
             <div className="flex flex-col">
@@ -187,6 +244,16 @@ function EditableAgent({
               <SourceNote source={effective.sources.max_tokens} />
             </div>
           </div>
+        )}
+
+        {effective && !effective.provider_available && (
+          <Alert variant="destructive">
+            <AlertDescription className="text-xs">
+              El proveedor vigente (<strong>{effective.provider}</strong>) no tiene clave
+              configurada en el servicio, así que la próxima respuesta va a fallar. Elegí
+              un modelo de un proveedor disponible o configurá su clave.
+            </AlertDescription>
+          </Alert>
         )}
 
         <div className="flex flex-col gap-1.5">
@@ -225,16 +292,36 @@ function EditableAgent({
             </Label>
             <select
               id={`model-${agent.key}`}
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
+              value={pair}
+              onChange={(event) => setPair(event.target.value)}
               className="border-input bg-background h-9 rounded-md border px-3 text-sm"
             >
               <option value="">Default del servicio</option>
-              {models.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
+              {providers.map((provider) => {
+                const owned = models.filter((m) => m.provider === provider.id);
+                if (owned.length === 0) return null;
+                return (
+                  <optgroup
+                    key={provider.id}
+                    label={
+                      provider.available
+                        ? provider.label
+                        : `${provider.label} — sin clave configurada`
+                    }
+                  >
+                    {owned.map((option) => (
+                      <option
+                        key={pairValue(option.provider, option.model)}
+                        value={pairValue(option.provider, option.model)}
+                        disabled={!option.available}
+                      >
+                        {option.model}
+                        {option.supports_temperature ? "" : " · sin temperatura"}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
             </select>
           </div>
           <div className="flex flex-col gap-1.5">
@@ -247,10 +334,17 @@ function EditableAgent({
               min={0}
               max={2}
               step={0.1}
-              value={temperature}
-              placeholder="default"
+              value={acceptsTemperature ? temperature : ""}
+              placeholder={acceptsTemperature ? "default" : "no aplica"}
+              disabled={!acceptsTemperature}
               onChange={(event) => setTemperature(event.target.value)}
             />
+            {!acceptsTemperature && (
+              <p className="text-muted-foreground text-[10px] leading-relaxed">
+                Este modelo rechaza los parámetros de sampling: mandarle una temperatura
+                devuelve un 400, así que no se manda.
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={`max-tokens-${agent.key}`} className="text-xs">
@@ -324,6 +418,50 @@ export function AgentsConsole({ initialConfig }: { initialConfig: ServiceConfig 
 
   return (
     <div className="flex flex-col gap-8">
+      <Card>
+        <CardContent className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight">Proveedores</h2>
+            <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+              Un proveedor sin clave en el servicio no se puede elegir: la consola lo
+              deshabilita en vez de dejar guardar un modelo que iba a fallar al
+              responder. Los <strong>embeddings del corpus no son multi-proveedor</strong>{" "}
+              — las 57.101 filas están en el espacio de <code>text-embedding-3-small</code>
+              , así que cambiarlos es reconstruir el corpus, no un setting.
+            </p>
+          </div>
+          <ul className="flex flex-col gap-2">
+            {config.providers.map((provider) => (
+              <li
+                key={provider.id}
+                className="flex flex-wrap items-center gap-2 rounded-lg border p-2.5 text-xs"
+              >
+                <span
+                  className={`h-2 w-2 shrink-0 rounded-full ${
+                    provider.available ? "bg-emerald-500" : "bg-muted-foreground/30"
+                  }`}
+                />
+                <span className="text-sm font-medium">{provider.label}</span>
+                <Badge variant="secondary" className="text-[10px]">
+                  {config.models.filter((m) => m.provider === provider.id).length} modelos
+                </Badge>
+                {!provider.available && (
+                  <span className="text-muted-foreground">
+                    sin clave: definí <code>{provider.api_key_setting}</code> en el
+                    servicio
+                  </span>
+                )}
+                {provider.note && (
+                  <span className="text-muted-foreground min-w-0 flex-1 italic">
+                    {provider.note}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+
       <section className="flex flex-col gap-3">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">Configurables</h2>
@@ -337,6 +475,7 @@ export function AgentsConsole({ initialConfig }: { initialConfig: ServiceConfig 
             key={agent.key}
             agent={agent}
             models={config.models}
+            providers={config.providers}
             personaMaxChars={config.persona_max_chars}
             onSaved={replaceAgent}
           />

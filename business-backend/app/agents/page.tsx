@@ -7,7 +7,12 @@ export const metadata = {
   title: "Agentes · Visual Time RAG",
 };
 
-const UNREACHABLE: ServiceConfig = { models: [], persona_max_chars: 0, agents: [] };
+const UNREACHABLE: ServiceConfig = {
+  providers: [],
+  models: [],
+  persona_max_chars: 0,
+  agents: [],
+};
 
 export default async function AgentsPage() {
   // Degrades to an empty catalog instead of a crash: the screen's job is to
@@ -25,8 +30,9 @@ export default async function AgentsPage() {
         <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
           El catálogo lo sirve el propio servicio IA (<code>GET /config</code>), no una
           copia escrita acá: el rol, las herramientas permitidas y el modelo vigente de
-          cada agente salen del grafo que los corre. La persona y el modelo se pueden
-          editar para los agentes que llaman a un modelo.
+          cada agente salen del grafo que los corre. Para los agentes que llaman a un
+          modelo se puede editar la persona y elegir el modelo entre{" "}
+          <strong>OpenAI, Anthropic y Moonshot (Kimi)</strong>.
         </p>
       </div>
       <AgentsConsole initialConfig={config} />

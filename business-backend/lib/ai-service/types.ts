@@ -264,19 +264,46 @@ export interface AnswerAgenticResumeRequest {
 /** Whether each effective value came from a profile or from the settings. || De dónde salió cada valor. */
 export interface ConfigSources {
   /** 'profile' | 'settings'. */
+  provider: string;
+  /** 'profile' | 'settings'. */
   model: string;
+  /** 'profile' | 'settings' | 'unsupported' (el modelo rechaza sampling). */
   temperature: string;
   max_tokens: string;
   /** 'profile' | 'unset'. */
   persona: string;
 }
 
+/** One generation provider and whether it can be used. || Un proveedor y si se puede usar. */
+export interface ProviderConfig {
+  id: string;
+  label: string;
+  /** False when no API key is configured for it. || False si no tiene clave. */
+  available: boolean;
+  api_key_setting: string;
+  note: string;
+}
+
+/** One selectable model, with what it accepts. || Un modelo elegible, con lo que acepta. */
+export interface ModelConfig {
+  provider: string;
+  model: string;
+  available: boolean;
+  /** False for models that reject sampling params (Claude actuales devuelven 400). */
+  supports_temperature: boolean;
+}
+
 /** What an LLM-driven agent runs with right now. || Con qué corre ahora un agente con modelo. */
 export interface EffectiveAgentConfig {
+  provider: string;
   model: string;
-  temperature: number;
+  /** Null when the model does not accept one. || Null cuando el modelo no acepta una. */
+  temperature: number | null;
   max_tokens: number;
   persona: string | null;
+  supports_temperature: boolean;
+  /** False when the effective provider has no key: the next answer would fail. */
+  provider_available: boolean;
   sources: ConfigSources;
 }
 
@@ -300,7 +327,8 @@ export interface AgentConfig {
 }
 
 export interface ServiceConfig {
-  models: string[];
+  providers: ProviderConfig[];
+  models: ModelConfig[];
   persona_max_chars: number;
   agents: AgentConfig[];
 }
@@ -313,6 +341,8 @@ export interface ServiceConfig {
  */
 export interface AgentProfileUpdate {
   persona?: string | null;
+  /** Travels together with `model` — the service validates the pair. */
+  provider?: string | null;
   model?: string | null;
   temperature?: number | null;
   max_tokens?: number | null;

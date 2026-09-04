@@ -264,6 +264,41 @@ al nombre) — es polling cada ~1,2 s contra un buffer de actividad.
   en vivo. Comparten el mismo grafo, los mismos agentes y el mismo
   checkpointer — la única diferencia es `ainvoke` contra `astream` narrado.
 
+### Multi-proveedor: OpenAI, Anthropic y Moonshot (Kimi)
+
+El modelo de respuesta puede ser de cualquiera de los tres, elegible por agente.
+**Tres proveedores, dos adaptadores**, y eso no es casualidad: Moonshot sirve una
+API **compatible con OpenAI**, así que reusa ese adaptador con otro `base_url` y
+otra clave. La Messages API de Anthropic sí es otra forma —`system` va como
+parámetro y no como mensaje, `max_tokens` es obligatorio, la respuesta es una
+lista de bloques de contenido— así que tiene el suyo
+(`app/foundation/llm/wrapper.py`).
+
+Un proveedor **sin clave se reporta no disponible** y elegirlo se rechaza con
+422 en `PUT /config/agents/...`, nombrando el setting que falta. La alternativa
+—guardarlo y que explote con un 500 en la próxima pregunta— convierte un error
+de configuración en un incidente.
+
+**`temperature` es una capacidad del modelo, no del proveedor.** Los modelos
+Claude de esta generación (`claude-opus-5`, `claude-sonnet-5`) **removieron los
+parámetros de sampling: mandar `temperature` devuelve 400**, mientras
+`claude-haiku-4-5` sí la acepta. Por eso el catálogo la publica por modelo
+(`supports_temperature`), `build_llm` la descarta —logueado, no en silencio— para
+el que no la toma, y la consola deshabilita el campo diciendo por qué. Elegir
+Sonnet no puede convertir el endpoint en uno roto.
+
+**Lo que NO es multi-proveedor: los embeddings.** Las 57.101 filas del corpus
+están en el espacio de `text-embedding-3-small`, y un embedding de otro
+proveedor no es comparable con ellas: cambiarlo es **reconstruir el corpus**, no
+tocar un setting. El reranker también sigue en OpenAI — no es configurable por
+agente, así que no tiene perfil que leer.
+
+Configuración: `ANTHROPIC_API_KEY`, `MOONSHOT_API_KEY`, `MOONSHOT_BASE_URL`,
+`ANSWER_PROVIDER`, y el catálogo como pares `proveedor:modelo` en
+`ANSWER_MODEL_CATALOG`. Los ids de Anthropic van **sin sufijo de fecha**; los de
+Moonshot conviene verificarlos contra su catálogo vigente — la lista es env-
+overridable justamente para ajustarlos sin tocar código.
+
 ### Perfiles: persona y modelo por agente
 
 ```bash
@@ -357,7 +392,8 @@ app/
 │   └── config.py                            # GET/PUT/DELETE /config (perfiles de agente)
 ├── foundation/
 │   ├── persistence/database.py              # Base, engine sync (psycopg) y async (asyncpg)
-│   ├── llm/wrapper.py                       # chat completions (cliente armado en DI)
+│   ├── llm/wrapper.py                       # dos adaptadores: OpenAI-compatible y Anthropic
+│   ├── llm/providers.py                     # qué proveedor, qué modelo, qué acepta cada uno
 │   └── prompts/answer/v1/                   # system.j2 + user.j2
 ├── domain/
 │   ├── schemas.py                           # AnswerAgentState y sus acumuladores keyed

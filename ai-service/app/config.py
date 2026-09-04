@@ -170,18 +170,64 @@ class Settings(BaseSettings):
     ANSWER_MAX_TOKENS: int = 1024
     ANSWER_TEMPERATURE: float = 0.0
 
+    # --- Proveedores de generación || Generation providers -----------------
+
+    # Claves por proveedor. Sin clave, el proveedor se reporta NO disponible y
+    # elegirlo falla en la consola con un mensaje claro, en vez de a la hora de
+    # responder con un 500. `OPENAI_API_KEY` (más arriba) sirve además a los
+    # embeddings y al reranker, que NO son multi-proveedor: las 57.101 filas
+    # están en el espacio de `text-embedding-3-small` y un embedding de otro
+    # proveedor no es comparable con ellas — cambiarlo es reconstruir el
+    # corpus, no un setting.
+    # || Per-provider keys. With no key the provider is reported unavailable
+    # and picking it fails in the console with a clear message instead of at
+    # answer time with a 500. `OPENAI_API_KEY` above also serves embeddings and
+    # the reranker, which are NOT multi-provider: the 57,101 rows live in
+    # `text-embedding-3-small` space and another provider's embedding is not
+    # comparable to them.
+    ANTHROPIC_API_KEY: str = ""
+    MOONSHOT_API_KEY: str = ""
+
+    # Moonshot (Kimi) sirve una API compatible con OpenAI, así que usa el mismo
+    # adaptador con otro base_url. Hay dos endpoints según la región
+    # (`api.moonshot.ai` internacional, `api.moonshot.cn` China): es un setting
+    # y no una constante porque la elección no es del código.
+    # || Moonshot (Kimi) serves an OpenAI-compatible API, so it reuses that
+    # adapter with another base_url. Two endpoints exist by region, so this is
+    # a setting and not a constant.
+    MOONSHOT_BASE_URL: str = "https://api.moonshot.ai/v1"
+
+    # El proveedor del `ANSWER_MODEL` de arriba. Un perfil de agente puede
+    # sobreescribir el par (proveedor, modelo); esto es el default.
+    # || The provider of `ANSWER_MODEL` above. An agent profile can override
+    # the (provider, model) pair; this is the default.
+    ANSWER_PROVIDER: str = "openai"
+
     # --- Perfiles de agente || Agent profiles ------------------------------
 
-    # Los modelos que la consola ofrece para elegir por agente. Una lista
-    # curada y no el catálogo del proveedor: pedirle a OpenAI la lista completa
-    # devuelve decenas de modelos que no sirven para esto (embeddings, audio,
-    # variantes viejas) y agrega una llamada de red al render de un formulario.
-    # Env-overridable para no necesitar un deploy si aparece uno nuevo.
-    # || The models the console offers to pick per agent. A curated list and
-    # not the provider's catalog: asking OpenAI for the whole list returns
-    # dozens of models that do not apply here, and adds a network call to
-    # rendering a form. Env-overridable so a new model does not need a deploy.
-    ANSWER_MODEL_CATALOG: list[str] = ["gpt-4o-mini", "gpt-4o"]
+    # Los modelos que la consola ofrece para elegir por agente, como
+    # `proveedor:modelo`. Una lista curada y no el catálogo de cada proveedor:
+    # pedirle la lista completa devuelve decenas de modelos que no sirven para
+    # esto (embeddings, audio, variantes viejas) y agrega una llamada de red al
+    # render de un formulario. Env-overridable para no necesitar un deploy si
+    # aparece uno nuevo.
+    #
+    # Los ids de Anthropic van SIN sufijo de fecha. Los de Moonshot conviene
+    # verificarlos contra su catálogo vigente: cambian más seguido y esta lista
+    # es justamente el lugar para ajustarlos sin tocar código.
+    # || The models the console offers per agent, as `provider:model`. A curated
+    # list, env-overridable. Anthropic ids carry NO date suffix. Moonshot's are
+    # worth checking against their current catalog — this list is exactly where
+    # to adjust them without touching code.
+    ANSWER_MODEL_CATALOG: list[str] = [
+        "openai:gpt-4o-mini",
+        "openai:gpt-4o",
+        "anthropic:claude-opus-5",
+        "anthropic:claude-sonnet-5",
+        "anthropic:claude-haiku-4-5",
+        "moonshot:kimi-k2-0905-preview",
+        "moonshot:moonshot-v1-8k",
+    ]
 
     # Tope de la persona de un agente, el mismo que el curso (2000). Es texto
     # que entra en cada system prompt: sin tope, un pegado accidental de un

@@ -62,6 +62,17 @@ class AgentProfileRow(Base):
     # contexto recuperado no se negocian por configuración.
     persona: Mapped[str | None] = mapped_column(Text)
 
+    # The provider travels WITH the model, in its own column rather than
+    # encoded into the model string. Two providers can serve a model whose
+    # name looks similar, and parsing `provider:model` back out of one column
+    # is a string-splitting bug waiting for the first id that contains a
+    # colon. Null means "the service default provider".
+    # || El proveedor viaja CON el modelo, en su propia columna y no
+    # codificado dentro del string del modelo: partir `proveedor:modelo` de una
+    # sola columna es un bug de string a la espera del primer id con dos
+    # puntos. Null significa "el proveedor default del servicio".
+    provider: Mapped[str | None] = mapped_column(String(32))
+
     model: Mapped[str | None] = mapped_column(String(64))
     temperature: Mapped[float | None] = mapped_column(Float)
     max_tokens: Mapped[int | None] = mapped_column(Integer)
@@ -81,15 +92,22 @@ class EffectiveAgentConfig:
     ``sources`` matters for the console: "temperatura 0.0" reads very
     differently when it is the service default than when somebody set it.
 
+    ``temperature`` is ``None`` when the chosen model does not accept one —
+    current Claude models reject sampling parameters with a 400, so "no
+    temperature" is a real state and not a missing value.
+
     || Con qué va a correr realmente el agente, y de dónde salió cada valor.
-    ``sources`` importa para la consola: "temperatura 0,0" se lee distinto
-    cuando es el default del servicio que cuando alguien la puso.
+    ``temperature`` es ``None`` cuando el modelo elegido no la acepta — los
+    modelos Claude actuales rechazan los parámetros de sampling con un 400,
+    así que "sin temperatura" es un estado real y no un valor faltante.
     """
 
+    provider: str
     model: str
-    temperature: float
+    temperature: float | None
     max_tokens: int
     persona: str | None
+    supports_temperature: bool
     sources: dict[str, str]
 
 
@@ -100,19 +118,45 @@ def resolve_agent_config(
 
     || Mezcla los overrides de un agente sobre los defaults del servicio.
     """
+    from app.foundation.llm.providers import supports_temperature
+
+    provider = getattr(profile, "provider", None)
     model = getattr(profile, "model", None)
     temperature = getattr(profile, "temperature", None)
     max_tokens = getattr(profile, "max_tokens", None)
     persona = getattr(profile, "persona", None)
 
+    # The pair moves together: a stored model with no stored provider would
+    # otherwise be read against the default provider, which may not serve it.
+    # || El par se mueve junto: un modelo guardado sin proveedor guardado se
+    # leería contra el proveedor default, que puede no servirlo.
+    effective_model = model or settings.ANSWER_MODEL
+    effective_provider = provider or (settings.ANSWER_PROVIDER if not model else provider)
+    if not effective_provider:
+        effective_provider = settings.ANSWER_PROVIDER
+
+    accepts_temperature = supports_temperature(effective_model)
+    if not accepts_temperature:
+        effective_temperature = None
+        temperature_source = "unsupported"
+    elif temperature is None:
+        effective_temperature = settings.ANSWER_TEMPERATURE
+        temperature_source = "settings"
+    else:
+        effective_temperature = temperature
+        temperature_source = "profile"
+
     return EffectiveAgentConfig(
-        model=model or settings.ANSWER_MODEL,
-        temperature=settings.ANSWER_TEMPERATURE if temperature is None else temperature,
+        provider=effective_provider,
+        model=effective_model,
+        temperature=effective_temperature,
         max_tokens=max_tokens or settings.ANSWER_MAX_TOKENS,
         persona=persona or None,
+        supports_temperature=accepts_temperature,
         sources={
+            "provider": "profile" if provider else "settings",
             "model": "profile" if model else "settings",
-            "temperature": "profile" if temperature is not None else "settings",
+            "temperature": temperature_source,
             "max_tokens": "profile" if max_tokens else "settings",
             "persona": "profile" if persona else "unset",
         },
@@ -138,7 +182,12 @@ async def synthesizer_runtime(
     from app.dependencies import build_answer_llm
 
     effective = await effective_config_for(SYNTHESIZER_AGENT, session, settings)
-    llm = build_answer_llm(effective.model, effective.max_tokens, effective.temperature)
+    llm = build_answer_llm(
+        effective.provider,
+        effective.model,
+        effective.max_tokens,
+        effective.temperature,
+    )
     return llm, effective.persona
 
 
@@ -181,6 +230,7 @@ class AgentProfileRepository:
         agent_key: str,
         *,
         persona: str | None,
+        provider: str | None,
         model: str | None,
         temperature: float | None,
         max_tokens: int | None,
@@ -198,6 +248,7 @@ class AgentProfileRepository:
         values = {
             "agent_key": agent_key,
             "persona": persona,
+            "provider": provider,
             "model": model,
             "temperature": temperature,
             "max_tokens": max_tokens,
@@ -209,6 +260,7 @@ class AgentProfileRepository:
                 index_elements=[AgentProfileRow.agent_key],
                 set_={
                     "persona": persona,
+                    "provider": provider,
                     "model": model,
                     "temperature": temperature,
                     "max_tokens": max_tokens,

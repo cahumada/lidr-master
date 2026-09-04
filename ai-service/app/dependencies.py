@@ -115,71 +115,45 @@ def get_reranker():
 
 @lru_cache
 def get_answer_llm():
-    """Generation-LLM singleton. No key, no generation: unlike the reranker
-    there is no measured fallback, so this raises the way ``get_embedder`` does.
+    """Generation-LLM singleton on the service defaults.
 
-    The OpenAI client is built HERE and nowhere else.
+    No key, no generation: unlike the reranker there is no measured fallback,
+    so this raises the way ``get_embedder`` does. The provider comes from
+    ``ANSWER_PROVIDER``, so the default is not hard-wired to OpenAI either.
 
-    || Singleton del LLM de generación. Sin clave no hay generación: a
-    diferencia del reranker no hay un fallback medido, así que esto falla
-    como ``get_embedder``. El cliente de OpenAI se arma ACÁ y en ningún otro
-    lado.
+    || Singleton del LLM de generación con los defaults del servicio. Sin
+    clave no hay generación: a diferencia del reranker no hay un fallback
+    medido, así que esto falla como ``get_embedder``. El proveedor sale de
+    ``ANSWER_PROVIDER``, así que el default tampoco está clavado a OpenAI.
     """
-    from openai import OpenAI
-
-    from app.foundation.llm.wrapper import OpenAIChatLLM
+    from app.foundation.llm.providers import build_llm
 
     settings = get_settings()
-    if not settings.OPENAI_API_KEY:
-        raise RuntimeError(
-            "OPENAI_API_KEY is not set. Copy .env.example to .env and fill it in. "
-            "|| OPENAI_API_KEY no está definida. Copiá .env.example a .env y completala."
-        )
-
-    return OpenAIChatLLM(
-        OpenAI(api_key=settings.OPENAI_API_KEY),
-        model=settings.ANSWER_MODEL,
+    return build_llm(
+        settings.ANSWER_PROVIDER,
+        settings.ANSWER_MODEL,
         max_tokens=settings.ANSWER_MAX_TOKENS,
         temperature=settings.ANSWER_TEMPERATURE,
     )
 
 
 @lru_cache
-def _openai_client():
-    """The OpenAI client, built once. || El cliente de OpenAI, armado una vez."""
-    from openai import OpenAI
-
-    settings = get_settings()
-    if not settings.OPENAI_API_KEY:
-        raise RuntimeError(
-            "OPENAI_API_KEY is not set. Copy .env.example to .env and fill it in. "
-            "|| OPENAI_API_KEY no está definida. Copiá .env.example a .env y completala."
-        )
-    return OpenAI(api_key=settings.OPENAI_API_KEY)
-
-
-@lru_cache
-def build_answer_llm(model: str, max_tokens: int, temperature: float):
-    """A generation LLM for one explicit configuration.
+def build_answer_llm(provider: str, model: str, max_tokens: int, temperature: float | None):
+    """A generation LLM for one explicit provider and configuration.
 
     ``get_answer_llm()`` is the default-settings case; this is the one an
-    agent profile asks for when it overrides the model or the temperature.
-    Cached per (model, max_tokens, temperature) triple so a request does not
-    build a client per call, while the underlying OpenAI client stays single.
+    agent profile asks for when it overrides the provider, the model or the
+    sampling. Cached per tuple so a request does not build a client per call —
+    the provider clients underneath are themselves single per provider.
 
-    || Un LLM de generación para una configuración explícita.
+    || Un LLM de generación para un proveedor y una configuración explícitos.
     ``get_answer_llm()`` es el caso de los defaults; este es el que pide un
-    perfil de agente cuando sobreescribe modelo o temperatura. Cacheado por
-    terna, y el cliente de OpenAI de abajo sigue siendo uno solo.
+    perfil de agente. Cacheado por tupla, y los clientes de cada proveedor son
+    uno solo por proveedor.
     """
-    from app.foundation.llm.wrapper import OpenAIChatLLM
+    from app.foundation.llm.providers import build_llm
 
-    return OpenAIChatLLM(
-        _openai_client(),
-        model=model,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
+    return build_llm(provider, model, max_tokens=max_tokens, temperature=temperature)
 
 
 @lru_cache

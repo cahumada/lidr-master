@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.config import router as config_router
+from app.config import Settings
 from app.domain.profiles import AgentProfileRow
 from app.foundation.persistence.database import get_async_session
 
@@ -33,10 +34,11 @@ class FakeProfileRepository:
     async def get(self, agent_key: str) -> AgentProfileRow | None:
         return self.rows.get(agent_key)
 
-    async def upsert(self, agent_key, *, persona, model, temperature, max_tokens):
+    async def upsert(self, agent_key, *, persona, provider, model, temperature, max_tokens):
         row = AgentProfileRow(
             agent_key=agent_key,
             persona=persona,
+            provider=provider,
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -48,10 +50,41 @@ class FakeProfileRepository:
         return self.rows.pop(agent_key, None) is not None
 
 
+def _settings() -> Settings:
+    """Fixed settings, so the assertions do not depend on the machine's .env.
+
+    Anthropic and Moonshot deliberately have NO key: that is what makes the
+    "provider not available" path testable, and it must not flip depending on
+    whether the developer running the suite happens to have those keys.
+
+    || Settings fijos, para que las aserciones no dependan del .env de la
+    máquina. Anthropic y Moonshot a propósito SIN clave: es lo que hace
+    testeable el camino de "proveedor no disponible", y no puede cambiar según
+    quién corra la suite.
+    """
+    return Settings(
+        OPENAI_API_KEY="sk-test",
+        ANTHROPIC_API_KEY="",
+        MOONSHOT_API_KEY="",
+        ANSWER_PROVIDER="openai",
+        ANSWER_MODEL="gpt-4o-mini",
+        ANSWER_MAX_TOKENS=1024,
+        ANSWER_TEMPERATURE=0.0,
+        AGENT_PERSONA_MAX_CHARS=2000,
+        ANSWER_MODEL_CATALOG=[
+            "openai:gpt-4o-mini",
+            "openai:gpt-4o",
+            "anthropic:claude-sonnet-5",
+            "moonshot:kimi-k2-0905-preview",
+        ],
+    )
+
+
 @pytest.fixture
 def client(monkeypatch):
     FakeProfileRepository.rows = {}
     monkeypatch.setattr("app.api.config.AgentProfileRepository", FakeProfileRepository)
+    monkeypatch.setattr("app.api.config.get_settings", _settings)
 
     async def no_session():
         yield None
@@ -82,6 +115,29 @@ class TestReadConfig:
         assert body["models"]
         assert body["persona_max_chars"] > 0
 
+    def test_every_model_names_its_provider_and_its_capabilities(self, client):
+        models = client.get("/config").json()["models"]
+
+        assert {m["provider"] for m in models} <= {"openai", "anthropic", "moonshot"}
+        for entry in models:
+            assert isinstance(entry["available"], bool)
+            assert isinstance(entry["supports_temperature"], bool)
+
+    def test_the_three_providers_are_listed_with_their_key_setting(self, client):
+        providers = client.get("/config").json()["providers"]
+
+        by_id = {p["id"]: p for p in providers}
+        assert set(by_id) == {"openai", "anthropic", "moonshot"}
+        assert by_id["anthropic"]["api_key_setting"] == "ANTHROPIC_API_KEY"
+        assert by_id["moonshot"]["label"] == "Moonshot (Kimi)"
+
+    def test_claude_models_are_reported_as_rejecting_temperature(self, client):
+        models = client.get("/config").json()["models"]
+
+        sonnet = next((m for m in models if m["model"] == "claude-sonnet-5"), None)
+        assert sonnet is not None
+        assert sonnet["supports_temperature"] is False
+
     def test_only_llm_driven_agents_carry_an_effective_config(self, client):
         body = client.get("/config").json()
 
@@ -97,7 +153,11 @@ class TestUpdateProfile:
     def test_a_persona_and_a_model_are_stored_and_reported_as_overrides(self, client):
         response = client.put(
             "/config/agents/answer_synthesizer",
-            json={"persona": "Respondé como un analista funcional.", "model": "gpt-4o"},
+            json={
+                "persona": "Respondé como un analista funcional.",
+                "provider": "openai",
+                "model": "gpt-4o",
+            },
         )
 
         assert response.status_code == 200
@@ -118,7 +178,10 @@ class TestUpdateProfile:
         assert agent["effective"]["persona"] == "Sé breve."
 
     def test_nulls_clear_the_overrides_back_to_the_defaults(self, client):
-        client.put("/config/agents/answer_synthesizer", json={"model": "gpt-4o"})
+        client.put(
+            "/config/agents/answer_synthesizer",
+            json={"provider": "openai", "model": "gpt-4o"},
+        )
 
         response = client.put("/config/agents/answer_synthesizer", json={})
 
@@ -142,10 +205,44 @@ class TestUpdateProfile:
 
     def test_a_model_outside_the_catalog_is_rejected(self, client):
         response = client.put(
-            "/config/agents/answer_synthesizer", json={"model": "gpt-inventado"}
+            "/config/agents/answer_synthesizer",
+            json={"provider": "openai", "model": "gpt-inventado"},
         )
 
         assert response.status_code == 422
+
+    def test_a_model_under_the_wrong_provider_is_rejected(self, client):
+        # `gpt-4o` exists, `anthropic` exists, and the pair does not.
+        # || `gpt-4o` existe, `anthropic` existe, y el par no.
+        response = client.put(
+            "/config/agents/answer_synthesizer",
+            json={"provider": "anthropic", "model": "gpt-4o"},
+        )
+
+        assert response.status_code == 422
+        assert "catálogo" in response.json()["detail"]
+
+    def test_a_provider_without_a_key_is_rejected_before_it_can_fail_later(self, client):
+        # Anthropic is in the catalog but has no key in the test environment.
+        # Rejecting here beats storing a profile whose next answer 500s.
+        # || Anthropic está en el catálogo pero no tiene clave en el entorno de
+        # test. Rechazar acá le gana a guardar un perfil cuya próxima
+        # respuesta explota.
+        response = client.put(
+            "/config/agents/answer_synthesizer",
+            json={"provider": "anthropic", "model": "claude-sonnet-5"},
+        )
+
+        assert response.status_code == 422
+        assert "ANTHROPIC_API_KEY" in response.json()["detail"]
+
+    def test_a_provider_without_a_model_is_rejected(self, client):
+        response = client.put(
+            "/config/agents/answer_synthesizer", json={"provider": "anthropic"}
+        )
+
+        assert response.status_code == 422
+        assert "par" in response.json()["detail"]
 
     def test_a_persona_over_the_cap_is_rejected(self, client):
         cap = client.get("/config").json()["persona_max_chars"]
@@ -166,7 +263,10 @@ class TestUpdateProfile:
 
 class TestDeleteProfile:
     def test_deleting_returns_the_agent_on_its_defaults(self, client):
-        client.put("/config/agents/answer_synthesizer", json={"model": "gpt-4o"})
+        client.put(
+            "/config/agents/answer_synthesizer",
+            json={"provider": "openai", "model": "gpt-4o"},
+        )
 
         response = client.delete("/config/agents/answer_synthesizer")
 

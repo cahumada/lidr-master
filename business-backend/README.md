@@ -90,11 +90,23 @@ herramientas permitidas y su modelo vigente salen del servicio que corre el
 grafo, no de una copia declarada acá — la consola no puede describir un grafo
 que ya no existe.
 
+Arriba, una tira de **proveedores** (OpenAI, Anthropic, Moonshot/Kimi) con su
+estado: el que no tiene clave en el servicio aparece apagado, con el nombre del
+setting que lo habilitaría, y sus modelos van `disabled` en el selector — la
+consola no deja elegir algo que iba a fallar al responder.
+
 Dos secciones, porque los agentes no son iguales: el que **llama a un modelo**
 (`answer_synthesizer`) tiene formulario de persona, modelo, temperatura y tope
 de tokens, con un contador contra el tope de persona y un botón para volver a
 los defaults; los **deterministas** son fichas de solo lectura que dicen por qué
-no tienen nada que configurar. Un campo vacío significa "usar el default del
+no tienen nada que configurar.
+
+El selector de modelo agrupa por proveedor y el par `proveedor:modelo` viaja
+junto — el servicio valida el par, así que "gpt-4o bajo Anthropic" se rechaza en
+vez de guardarse. Los modelos que **rechazan los parámetros de sampling** (los
+Claude de esta generación devuelven 400 por `temperature`) quedan anotados
+`· sin temperatura` y, al elegirlos, el campo de temperatura se deshabilita
+diciendo por qué. Un campo vacío significa "usar el default del
 servicio", y la pantalla marca cada valor vigente como `perfil` o `default del
 servicio` para que no haya que adivinar.
 

@@ -53,6 +53,15 @@ y —para el único que llama a un modelo— su persona, modelo, temperatura y t
 de tokens, editables y persistidos. Los otros son deterministas a propósito, y
 la pantalla dice por qué no tienen nada que configurar.
 
+El modelo de respuesta es **multi-proveedor**: OpenAI, Anthropic o Moonshot
+(Kimi), elegible por agente. Tres proveedores con dos adaptadores, porque
+Moonshot habla el formato de OpenAI; un proveedor sin clave se reporta no
+disponible en vez de fallar al responder; y `temperature` se trata como
+capacidad **del modelo** —los Claude de esta generación la rechazan con 400— así
+que se descarta para el que no la acepta en vez de romper la llamada. Los
+**embeddings no son multi-proveedor**: el corpus vive en el espacio de
+`text-embedding-3-small` y cambiarlo sería reconstruirlo.
+
 El detalle de cada agente y por qué el curso trae piezas que acá no se
 replicaron (sandbox, competencia entre
 estimadores) está en el [README del servicio](ai-service/README.md#agentes-y-orquestación).
