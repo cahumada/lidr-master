@@ -145,6 +145,44 @@ def get_answer_llm():
 
 
 @lru_cache
+def _openai_client():
+    """The OpenAI client, built once. || El cliente de OpenAI, armado una vez."""
+    from openai import OpenAI
+
+    settings = get_settings()
+    if not settings.OPENAI_API_KEY:
+        raise RuntimeError(
+            "OPENAI_API_KEY is not set. Copy .env.example to .env and fill it in. "
+            "|| OPENAI_API_KEY no está definida. Copiá .env.example a .env y completala."
+        )
+    return OpenAI(api_key=settings.OPENAI_API_KEY)
+
+
+@lru_cache
+def build_answer_llm(model: str, max_tokens: int, temperature: float):
+    """A generation LLM for one explicit configuration.
+
+    ``get_answer_llm()`` is the default-settings case; this is the one an
+    agent profile asks for when it overrides the model or the temperature.
+    Cached per (model, max_tokens, temperature) triple so a request does not
+    build a client per call, while the underlying OpenAI client stays single.
+
+    || Un LLM de generación para una configuración explícita.
+    ``get_answer_llm()`` es el caso de los defaults; este es el que pide un
+    perfil de agente cuando sobreescribe modelo o temperatura. Cacheado por
+    terna, y el cliente de OpenAI de abajo sigue siendo uno solo.
+    """
+    from app.foundation.llm.wrapper import OpenAIChatLLM
+
+    return OpenAIChatLLM(
+        _openai_client(),
+        model=model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+
+
+@lru_cache
 def get_activity_log():
     """Activity log singleton for live agentic-run visibility.
 

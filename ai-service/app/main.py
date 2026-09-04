@@ -18,6 +18,7 @@ from fastapi import FastAPI
 
 from app.api.answer import router as answer_router
 from app.api.answer_agentic import router as answer_agentic_router
+from app.api.config import router as config_router
 from app.api.corpus import router as corpus_router
 from app.api.documents import router as documents_router
 from app.api.search import router as search_router
@@ -96,6 +97,7 @@ app.include_router(documents_router)
 app.include_router(search_router)
 app.include_router(answer_router)
 app.include_router(answer_agentic_router)
+app.include_router(config_router)
 app.include_router(corpus_router)
 
 

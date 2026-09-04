@@ -264,6 +264,46 @@ al nombre) — es polling cada ~1,2 s contra un buffer de actividad.
   en vivo. Comparten el mismo grafo, los mismos agentes y el mismo
   checkpointer — la única diferencia es `ainvoke` contra `astream` narrado.
 
+### Perfiles: persona y modelo por agente
+
+```bash
+curl http://localhost:8000/config
+```
+
+El catálogo de agentes lo sirve el servicio, no una copia escrita en la
+consola: rol, explicación, herramientas permitidas (derivadas de
+`AGENT_PRIVILEGES`, no repetidas) y el modelo vigente de cada uno. El curso
+declara ese catálogo dos veces —el grafo en Python y `Agents::GraphFlow::NODES`
+en Rails— y es lo que les permite divergir; acá hay un test que falla si el
+catálogo y los nodos del grafo compilado no coinciden.
+
+`PUT /config/agents/{agent_key}` guarda un perfil: `persona`, `model`,
+`temperature`, `max_tokens`. Todos nullable, y un knob nulo significa "usar el
+default del servicio" — así vaciar un campo en el formulario es una operación
+real y no un valor que la API no puede expresar. `GET /config` además dice **de
+dónde salió cada valor** (`profile` o `settings`), porque "temperatura 0,0" se
+lee distinto si es el default que si alguien la puso.
+
+**Un solo agente es configurable, y la pantalla lo dice.** `answer_synthesizer`
+es el único que llama a un modelo; `query_planner`, `evidence_retriever` y
+`citation_validator` son deterministas a propósito, que es lo que mantiene
+reproducibles los números de las evaluaciones. Un `PUT` sobre uno de esos
+devuelve **422**: un setting que el servicio va a ignorar es peor que no
+tenerlo. En el curso casi todos los nodos son LLM-driven y por eso allá esto
+significa algo en cinco nodos y acá en uno.
+
+La persona se appendea al system prompt `answer/v1` **después** de las reglas de
+grounding, con la instrucción explícita de que las reglas ganan si algo entra en
+conflicto: cambia la voz, no puede convencer al modelo de dejar de citar sus
+fuentes. Sin persona configurada el prompt se renderiza **byte-idéntico** al
+anterior, y hay un test que lo verifica — es lo que mantiene comparable el eval
+de fidelidad.
+
+Los tres caminos de síntesis (`/answer`, `/answer/agentic`, el runner en
+background) resuelven LLM y persona por la misma función
+(`synthesizer_runtime`), así un perfil no puede aplicar a uno y no a los otros.
+El grafo los recibe por su config; el agente nunca lee la base.
+
 **Lo que el curso trae y acá no se replicó, con la razón:**
 
 - `sandbox.py` / `persistence_agent` — existen en el curso porque
@@ -278,6 +318,15 @@ al nombre) — es polling cada ~1,2 s contra un buffer de actividad.
   estimación); no hay un equivalente natural para una pregunta sobre una
   especificación funcional, que tiene una respuesta correcta verificable
   contra el documento, no un rango.
+- `avatar`, `is_default` y varios perfiles por agente (de `Agents::Profile`) —
+  la identidad visual no cambia ninguna respuesta, y "varios perfiles con uno
+  default" es para elegir entre configuraciones guardadas. Con un agente
+  configurable, una fila por agente alcanza.
+- Los otros knobs del `config` del curso: `max_iterations`, `search_top_k` y
+  `search_distance_threshold` ya existen acá como
+  `ANSWER_ORCHESTRATOR_MAX_STEPS`, `ANSWER_ORCHESTRATOR_MAX_REQUERIES` y los
+  parámetros por request de `/search`; `reasoning_effort` no aplica a los
+  modelos del catálogo.
 
 ## Fuente de verdad
 
@@ -304,14 +353,17 @@ app/
 │   ├── documents.py                         # POST /documents/ingest (router delgado)
 │   ├── search.py                            # GET /search
 │   ├── answer.py                            # POST /answer
-│   └── answer_agentic.py                    # POST /answer/agentic (+ /resume)
+│   ├── answer_agentic.py                    # POST /answer/agentic (+ /resume)
+│   └── config.py                            # GET/PUT/DELETE /config (perfiles de agente)
 ├── foundation/
 │   ├── persistence/database.py              # Base, engine sync (psycopg) y async (asyncpg)
 │   ├── llm/wrapper.py                       # chat completions (cliente armado en DI)
 │   └── prompts/answer/v1/                   # system.j2 + user.j2
 ├── domain/
 │   ├── schemas.py                           # AnswerAgentState y sus acumuladores keyed
+│   ├── profiles.py                          # agent_profiles: persona y modelo por agente
 │   └── graph/
+│       ├── catalog.py                       # qué es cada agente, declarado una vez
 │       ├── orchestrator.py                  # Command(goto=...), tres frenos deterministas
 │       ├── privilege.py                     # AGENT_PRIVILEGES, guarded_dispatch, auditoría
 │       ├── gate.py                          # review_reasons puro + answer_review_gate
@@ -419,6 +471,9 @@ Swagger en `http://localhost:8000/docs`. Endpoints:
   orquestación, corrida en background con progreso narrado por polling en
   vez de una sola llamada bloqueante. Ver
   [Progreso en vivo](#progreso-en-vivo-no-solo-la-llamada-bloqueante).
+- `GET /config` (+ `PUT`/`DELETE /config/agents/{agent_key}`) — el catálogo de
+  agentes y el perfil de cada uno: persona, modelo, temperatura y tope de
+  tokens. Ver [Perfiles](#perfiles-persona-y-modelo-por-agente).
 
 ```bash
 curl -X POST http://localhost:8000/documents/ingest-file \

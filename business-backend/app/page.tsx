@@ -34,6 +34,12 @@ const SCREENS = [
       "Grafo orquestador con revisión humana opcional: planifica, recupera, sintetiza y valida citas sobre el corpus indexado.",
   },
   {
+    href: "/agents",
+    title: "Agentes",
+    description:
+      "Qué hace cada agente del grafo, qué herramientas tiene permitidas, y con qué modelo y persona corre el que llama a un modelo.",
+  },
+  {
     href: "/documents",
     title: "Ingesta",
     description:

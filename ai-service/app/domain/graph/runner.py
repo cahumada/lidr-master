@@ -10,8 +10,10 @@ from typing import Any
 
 import structlog
 
-from app.dependencies import get_activity_log, get_answer_llm, get_embedder, get_reranker
+from app.config import get_settings
+from app.dependencies import get_activity_log, get_embedder, get_reranker
 from app.domain.graph.activity import describe_node
+from app.domain.profiles import synthesizer_runtime
 from app.domain.schemas import AnswerAgentState
 from app.foundation.persistence.database import get_async_session_factory
 from app.generation.rag.retrieval.hybrid import HybridRetriever
@@ -23,7 +25,14 @@ log = structlog.get_logger()
 THREAD_PREFIX = "answer-agent"
 
 
-def thread_config(thread_id: str, *, retriever: Any, llm: Any, reranker: Any) -> dict:
+def thread_config(
+    thread_id: str,
+    *,
+    retriever: Any,
+    llm: Any,
+    reranker: Any,
+    persona: str | None = None,
+) -> dict:
     """Runnable config for one graph thread. || Config del runnable para un hilo del grafo."""
     return {
         "configurable": {
@@ -31,8 +40,11 @@ def thread_config(thread_id: str, *, retriever: Any, llm: Any, reranker: Any) ->
             "retriever": retriever,
             "llm": llm,
             "reranker": reranker,
+            "persona": persona,
         }
     }
+
+
 
 
 def initial_state(body: AnswerRequest) -> AnswerAgentState:
@@ -93,13 +105,16 @@ async def _stream_and_log(
     retriever: Any,
     llm: Any,
     reranker: Any,
+    persona: str | None = None,
 ):
     """Run the graph via ``astream``, narrating each node into the activity log.
 
     || Corre el grafo vía ``astream``, narrando cada nodo en el log de actividad.
     """
     activity_log = get_activity_log()
-    config = thread_config(thread_id, retriever=retriever, llm=llm, reranker=reranker)
+    config = thread_config(
+        thread_id, retriever=retriever, llm=llm, reranker=reranker, persona=persona
+    )
 
     async for update in graph.astream(initial_state(body), config, stream_mode="updates"):
         for node_name, node_update in update.items():
@@ -129,13 +144,15 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
         async with session_factory() as session:
             retriever = HybridRetriever(ChunkRepository(session), get_embedder())
             reranker = get_reranker() if body.rerank else None
+            llm, persona = await synthesizer_runtime(session, get_settings())
             snapshot = await _stream_and_log(
                 thread_id,
                 body,
                 graph,
                 retriever=retriever,
-                llm=get_answer_llm(),
+                llm=llm,
                 reranker=reranker,
+                persona=persona,
             )
     except Exception as exc:  # noqa: BLE001 — a background failure must not vanish silently.
         log.error("answer_agentic_background_failed", thread_id=thread_id, error=str(exc)[:300])

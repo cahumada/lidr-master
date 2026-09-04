@@ -16,7 +16,7 @@ from app.api.answer_agentic import router as answer_agentic_router
 from app.api.corpus import router as corpus_router
 from app.api.documents import router as documents_router
 from app.api.search import router as search_router
-from app.dependencies import get_answer_llm, get_embedder, get_reranker
+from app.dependencies import get_embedder, get_reranker
 from app.foundation.persistence.database import get_async_session
 
 
@@ -86,7 +86,6 @@ def client():
     test_app.dependency_overrides[get_async_session] = no_session
     test_app.dependency_overrides[get_embedder] = lambda: object()
     test_app.dependency_overrides[get_reranker] = lambda: None
-    test_app.dependency_overrides[get_answer_llm] = lambda: object()
 
     with TestClient(test_app) as test_client:
         yield test_client
@@ -120,7 +119,6 @@ def test_paused_run_returns_202():
     test_app.dependency_overrides[get_async_session] = no_session
     test_app.dependency_overrides[get_embedder] = lambda: object()
     test_app.dependency_overrides[get_reranker] = lambda: None
-    test_app.dependency_overrides[get_answer_llm] = lambda: object()
 
     with TestClient(test_app) as client:
         response = client.post("/answer/agentic", json={"question": "fuera del corpus"})

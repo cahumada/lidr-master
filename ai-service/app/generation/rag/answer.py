@@ -45,10 +45,19 @@ async def generate_answer(
     branches: tuple[str, ...] = DEFAULT_BRANCHES,
     decompose_query: bool = True,
     reranker=None,
+    persona: str | None = None,
 ) -> AnswerResponse:
     """Retrieve, generate, and mark whether the prose stayed inside the hits.
 
+    ``persona`` comes from the ``answer_synthesizer`` agent profile and is
+    appended to the system prompt; ``None`` renders the prompt exactly as
+    before, which is what keeps the fidelity eval comparable across runs that
+    did not configure one.
+
     || Recupera, genera, y marca si la prosa se quedó dentro de los hits.
+    ``persona`` viene del perfil del agente ``answer_synthesizer`` y se
+    appendea al system prompt; ``None`` renderiza el prompt exactamente como
+    antes, que es lo que mantiene comparable el eval de fidelidad.
     """
     result = await retriever.retrieve(
         question,
@@ -70,7 +79,7 @@ async def generate_answer(
             grounded=True,
         )
 
-    system, user = build_messages(question, citations)
+    system, user = build_messages(question, citations, persona=persona)
     answer = llm.complete(system=system, user=user)
     grounding = check_grounding(answer, citations)
 

@@ -22,7 +22,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.dependencies import get_answer_llm, get_embedder, get_reranker
+from app.dependencies import get_embedder, get_reranker
+from app.domain.profiles import synthesizer_runtime
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.answer import generate_answer
 from app.generation.rag.retrieval.hybrid import ALL_BRANCHES, DEFAULT_BRANCHES, HybridRetriever
@@ -49,14 +50,22 @@ async def answer(
         window_type_name=body.window_type_name,
     )
     retriever = HybridRetriever(ChunkRepository(session), get_embedder())
+    # The synthesizer's profile, if somebody configured one in the console.
+    # Resolved here and not inside `generate_answer` so the eval script keeps
+    # calling the same function with an explicit LLM and no database.
+    # || El perfil del sintetizador, si alguien configuró uno en la consola. Se
+    # resuelve acá y no dentro de `generate_answer` para que el script de eval
+    # siga llamando a la misma función con un LLM explícito y sin base.
+    llm, persona = await synthesizer_runtime(session, settings)
     return await generate_answer(
         body.question,
         filters=filters,
         retriever=retriever,
-        llm=get_answer_llm(),
+        llm=llm,
         limit=body.limit,
         max_per_document=body.max_per_document,
         branches=ALL_BRANCHES if body.lexical else DEFAULT_BRANCHES,
         decompose_query=body.split,
         reranker=get_reranker() if body.rerank else None,
+        persona=persona,
     )

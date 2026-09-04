@@ -77,3 +77,30 @@ def test_the_system_prompt_instructs_grounding_citations_and_refusal():
     assert "[document_id · section]" in system
     assert "SOLO" in system
     assert "No hay información suficiente" in system
+
+
+def test_no_persona_renders_the_prompt_exactly_as_before():
+    # What keeps the fidelity eval comparable across runs where nobody
+    # configured a persona: the prompt has to be byte-identical.
+    # || Lo que mantiene comparable el eval de fidelidad cuando nadie configuró
+    # una persona: el prompt tiene que ser idéntico.
+    without_argument, _ = build_messages("pregunta", [_hit()])
+    with_none, _ = build_messages("pregunta", [_hit()], persona=None)
+
+    assert without_argument == with_none
+    assert "perfil de agente" not in without_argument
+
+
+def test_a_persona_is_appended_after_the_rules_and_subordinate_to_them():
+    system, _ = build_messages(
+        "pregunta", [_hit()], persona="Respondé como un analista funcional."
+    )
+
+    assert "Respondé como un analista funcional." in system
+    # The rules still come first, and the persona block says outright that it
+    # cannot override them — a persona is for the voice, not for opting out of
+    # citing sources.
+    # || Las reglas siguen primero, y el bloque de persona dice explícitamente
+    # que no puede sobreescribirlas.
+    assert system.index("[document_id · section]") < system.index("Respondé como")
+    assert "ignóralo y sigue las reglas" in system

@@ -170,6 +170,27 @@ class Settings(BaseSettings):
     ANSWER_MAX_TOKENS: int = 1024
     ANSWER_TEMPERATURE: float = 0.0
 
+    # --- Perfiles de agente || Agent profiles ------------------------------
+
+    # Los modelos que la consola ofrece para elegir por agente. Una lista
+    # curada y no el catálogo del proveedor: pedirle a OpenAI la lista completa
+    # devuelve decenas de modelos que no sirven para esto (embeddings, audio,
+    # variantes viejas) y agrega una llamada de red al render de un formulario.
+    # Env-overridable para no necesitar un deploy si aparece uno nuevo.
+    # || The models the console offers to pick per agent. A curated list and
+    # not the provider's catalog: asking OpenAI for the whole list returns
+    # dozens of models that do not apply here, and adds a network call to
+    # rendering a form. Env-overridable so a new model does not need a deploy.
+    ANSWER_MODEL_CATALOG: list[str] = ["gpt-4o-mini", "gpt-4o"]
+
+    # Tope de la persona de un agente, el mismo que el curso (2000). Es texto
+    # que entra en cada system prompt: sin tope, un pegado accidental de un
+    # documento entero se paga en tokens en cada llamada.
+    # || Cap on an agent's persona, the same as the course's (2000). It is text
+    # that enters every system prompt: without a cap, an accidental paste of a
+    # whole document is paid for in tokens on every call.
+    AGENT_PERSONA_MAX_CHARS: int = 2000
+
     # Answer-orchestration graph (POST /answer/agentic). Separate from generation
     # knobs: the supervisor has its own step budget and human-review threshold.
     # || Grafo de orquestación (POST /answer/agentic). Separado de las perillas

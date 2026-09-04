@@ -28,6 +28,11 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
     llm = deps.get("llm")
     if llm is None:
         raise RuntimeError("answer_synthesizer requires configurable.llm")
+    # From this agent's profile, when one is configured. Injected and not read
+    # from the database here, so this stays testable without one.
+    # || Del perfil de este agente, cuando hay uno configurado. Inyectada y no
+    # leída de la base acá, así esto sigue siendo testeable sin base.
+    persona = deps.get("persona")
 
     step = int(state.get("supervisor_steps") or 0)
     query = state.get("query") or ""
@@ -49,16 +54,26 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
         }
 
     started = perf_counter()
-    system, user = build_messages(query, hits)
+    system, user = build_messages(query, hits, persona=persona)
     answer = llm.complete(system=system, user=user)
     contribution = record_model_action(
         "answer_synthesizer",
         "synthesize_answer",
         step=step,
-        summary=f"answer over {len(hits)} hits",
+        summary=(
+            f"answer over {len(hits)} hits"
+            f" · {getattr(llm, 'model', '?')}"
+            f"{' · persona' if persona else ''}"
+        ),
         duration_ms=int((perf_counter() - started) * 1000),
     )
-    log.info("agent_answer_synthesizer", hits=len(hits), answer_chars=len(answer))
+    log.info(
+        "agent_answer_synthesizer",
+        hits=len(hits),
+        answer_chars=len(answer),
+        model=getattr(llm, "model", None),
+        persona_chars=len(persona or ""),
+    )
     return {
         "answer": answer,
         "citations": [hit.model_dump() for hit in hits],

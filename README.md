@@ -10,7 +10,7 @@ Monorepo de dos proyectos, el layout que fija el programa:
 | | qué es | stack | se despliega en |
 |---|---|---|---|
 | [`ai-service/`](ai-service/README.md) | ingesta, chunking, embeddings, recuperación, generación, agentes | Python · FastAPI · pgvector | Railway |
-| [`business-backend/`](business-backend/README.md) | el frontend y el backend de negocio | Next.js · Tailwind · shadcn/ui | Vercel |
+| [`business-backend/`](business-backend/README.md) | el frontend y el backend de negocio: búsqueda, respuesta agentica, agentes, ingesta, corpus | Next.js · Tailwind · shadcn/ui | Vercel |
 
 ## Arquitectura
 
@@ -47,6 +47,12 @@ respaldada por los hits recuperados. `/answer/agentic` tiene además una
 variante `/start` + `/{thread_id}/progress` que corre en background y narra
 el avance por polling, para que la consola muestre a los cuatro agentes
 trabajando en vez de una pantalla en blanco hasta que vuelve la respuesta.
+La consola además tiene una pantalla de **agentes** que sirve el propio
+servicio (`GET /config`): qué hace cada uno, qué herramientas tiene permitidas
+y —para el único que llama a un modelo— su persona, modelo, temperatura y tope
+de tokens, editables y persistidos. Los otros son deterministas a propósito, y
+la pantalla dice por qué no tienen nada que configurar.
+
 El detalle de cada agente y por qué el curso trae piezas que acá no se
 replicaron (sandbox, competencia entre
 estimadores) está en el [README del servicio](ai-service/README.md#agentes-y-orquestación).

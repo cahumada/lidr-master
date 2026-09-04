@@ -259,6 +259,65 @@ export interface AnswerAgenticResumeRequest {
   note?: string | null;
 }
 
+// --- Configuración de agentes || Agent configuration -------------------------
+
+/** Whether each effective value came from a profile or from the settings. || De dónde salió cada valor. */
+export interface ConfigSources {
+  /** 'profile' | 'settings'. */
+  model: string;
+  temperature: string;
+  max_tokens: string;
+  /** 'profile' | 'unset'. */
+  persona: string;
+}
+
+/** What an LLM-driven agent runs with right now. || Con qué corre ahora un agente con modelo. */
+export interface EffectiveAgentConfig {
+  model: string;
+  temperature: number;
+  max_tokens: number;
+  persona: string | null;
+  sources: ConfigSources;
+}
+
+/** One agent of the answer graph, as the service describes it. || Un agente del grafo. */
+export interface AgentConfig {
+  key: string;
+  label: string;
+  role: string;
+  explanation: string;
+  /** 'supervisor' | 'agent' | 'gate'. */
+  kind: string;
+  /** Tools it may call, from the service's privilege table. || Herramientas permitidas. */
+  tools: string[];
+  /** False for the deterministic agents: no model to pick. || False para los deterministas. */
+  llm_driven: boolean;
+  /** Whether a profile changes what this agent does. || Si un perfil cambia lo que hace. */
+  configurable: boolean;
+  config_source: string | null;
+  /** Present only for LLM-driven agents. || Presente solo para agentes con modelo. */
+  effective: EffectiveAgentConfig | null;
+}
+
+export interface ServiceConfig {
+  models: string[];
+  persona_max_chars: number;
+  agents: AgentConfig[];
+}
+
+/**
+ * Body of `PUT /config/agents/{key}`. Every field is optional and `null` means
+ * "back to the service default" — a cleared field in the form is a real
+ * operation, not a value the API cannot express.
+ * || Body de `PUT /config/agents/{key}`. `null` significa "volver al default".
+ */
+export interface AgentProfileUpdate {
+  persona?: string | null;
+  model?: string | null;
+  temperature?: number | null;
+  max_tokens?: number | null;
+}
+
 /** One narrated line of live agent activity. || Una línea narrada de actividad en vivo. */
 export interface GraphActivityEntry {
   node: string;

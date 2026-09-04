@@ -33,7 +33,8 @@ from langgraph.types import Command
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_activity_log, get_answer_llm, get_embedder, get_reranker
+from app.config import get_settings
+from app.dependencies import get_activity_log, get_embedder, get_reranker
 from app.domain.graph.runner import (
     THREAD_PREFIX as _THREAD_PREFIX,
 )
@@ -43,6 +44,7 @@ from app.domain.graph.runner import (
     run_agentic_background,
     thread_config,
 )
+from app.domain.profiles import synthesizer_runtime
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.retrieval.hybrid import HybridRetriever
 from app.generation.rag.schemas import AnswerRequest, SearchHit
@@ -200,11 +202,13 @@ async def answer_agentic(
     thread_id = str(uuid4())
     retriever = HybridRetriever(ChunkRepository(session), get_embedder())
     reranker = get_reranker() if body.rerank else None
+    llm, persona = await synthesizer_runtime(session, get_settings())
     config = thread_config(
         thread_id,
         retriever=retriever,
-        llm=get_answer_llm(),
+        llm=llm,
         reranker=reranker,
+        persona=persona,
     )
 
     try:
@@ -246,11 +250,13 @@ async def answer_agentic_resume(
     graph = _require_graph(request)
     bare_thread = _strip_prefix(body.thread_id)
     retriever = HybridRetriever(ChunkRepository(session), get_embedder())
+    llm, persona = await synthesizer_runtime(session, get_settings())
     config = thread_config(
         bare_thread,
         retriever=retriever,
-        llm=get_answer_llm(),
+        llm=llm,
         reranker=get_reranker(),
+        persona=persona,
     )
 
     snapshot = await graph.aget_state(config)

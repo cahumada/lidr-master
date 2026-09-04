@@ -162,6 +162,28 @@ export async function postJson<T>(
   return (await response.json()) as T;
 }
 
+export async function putJson<T>(
+  path: string,
+  body: unknown,
+  timeoutMs?: number,
+): Promise<T> {
+  const response = await call(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    timeoutMs,
+  });
+  return (await response.json()) as T;
+}
+
+export async function deleteJson<T>(
+  path: string,
+  timeoutMs?: number,
+): Promise<T> {
+  const response = await call(path, { method: "DELETE", timeoutMs });
+  return (await response.json()) as T;
+}
+
 export async function postFormData<T>(
   path: string,
   form: FormData,

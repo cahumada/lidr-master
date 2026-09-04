@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies import get_answer_llm, get_embedder, get_reranker
+from app.dependencies import get_embedder, get_reranker
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.answer import INSUFFICIENT_CONTEXT_MESSAGE
 from app.generation.rag.retrieval.hybrid import RetrievalResult, RetrievedChunk
@@ -75,6 +75,25 @@ def llm() -> FakeLLM:
     )
 
 
+def _use_llm(monkeypatch, llm: FakeLLM, persona: str | None = None) -> None:
+    """Patch the one seam the router resolves its LLM and persona through.
+
+    ``synthesizer_runtime`` reads the ``answer_synthesizer`` profile from the
+    database and builds an OpenAI client for whatever it says; these tests
+    have neither, and the endpoint contract does not depend on either.
+
+    || Parchea el único punto por donde el router resuelve su LLM y su
+    persona. ``synthesizer_runtime`` lee el perfil de la base y arma un
+    cliente de OpenAI con lo que diga; estos tests no tienen ninguno de los
+    dos, y el contrato del endpoint no depende de eso.
+    """
+
+    async def _runtime(session, settings):
+        return llm, persona
+
+    monkeypatch.setattr("app.api.answer.synthesizer_runtime", _runtime)
+
+
 @pytest.fixture
 def client(retriever, llm):
     async def no_session():
@@ -83,7 +102,6 @@ def client(retriever, llm):
     app.dependency_overrides[get_async_session] = no_session
     app.dependency_overrides[get_embedder] = lambda: object()
     app.dependency_overrides[get_reranker] = lambda: object()
-    app.dependency_overrides[get_answer_llm] = lambda: llm
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -91,7 +109,7 @@ def client(retriever, llm):
 
 def test_the_answer_carries_the_retrieved_citations(client, monkeypatch, llm):
     monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
-    monkeypatch.setattr("app.api.answer.get_answer_llm", lambda: llm)
+    _use_llm(monkeypatch, llm)
 
     body = client.post("/answer", json={"question": "tope de capital"}).json()
 
@@ -111,7 +129,7 @@ def test_an_invented_citation_marks_ungrounded_and_does_not_reject(
     """citations stay the retrieved hits; grounded tells the prose invented one."""
     llm.text = "Según [ZZ999 · Función] el campo es obligatorio."
     monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
-    monkeypatch.setattr("app.api.answer.get_answer_llm", lambda: llm)
+    _use_llm(monkeypatch, llm)
 
     response = client.post("/answer", json={"question": "tope de capital"})
 
@@ -124,7 +142,7 @@ def test_an_invented_citation_marks_ungrounded_and_does_not_reject(
 def test_empty_retrieval_does_not_call_the_llm(client, monkeypatch, retriever, llm):
     retriever.result = RetrievalResult(chunks=[])
     monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
-    monkeypatch.setattr("app.api.answer.get_answer_llm", lambda: llm)
+    _use_llm(monkeypatch, llm)
 
     body = client.post("/answer", json={"question": "algo que no existe"}).json()
 
@@ -136,7 +154,7 @@ def test_empty_retrieval_does_not_call_the_llm(client, monkeypatch, retriever, l
 
 def test_the_defaults_are_the_measured_pipeline(client, retriever, monkeypatch, llm):
     monkeypatch.setattr("app.api.answer.get_reranker", lambda: "un-reranker")
-    monkeypatch.setattr("app.api.answer.get_answer_llm", lambda: llm)
+    _use_llm(monkeypatch, llm)
 
     client.post("/answer", json={"question": "tope de capital"})
 
@@ -150,7 +168,7 @@ def test_the_defaults_are_the_measured_pipeline(client, retriever, monkeypatch, 
 
 def test_the_filters_reach_the_repository(client, retriever, monkeypatch, llm):
     monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
-    monkeypatch.setattr("app.api.answer.get_answer_llm", lambda: llm)
+    _use_llm(monkeypatch, llm)
 
     client.post(
         "/answer",
@@ -168,7 +186,7 @@ def test_the_filters_reach_the_repository(client, retriever, monkeypatch, llm):
 
 def test_lexical_on_adds_the_third_branch(client, retriever, monkeypatch, llm):
     monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
-    monkeypatch.setattr("app.api.answer.get_answer_llm", lambda: llm)
+    _use_llm(monkeypatch, llm)
 
     client.post("/answer", json={"question": "tope de capital", "lexical": True})
 
@@ -182,7 +200,7 @@ def test_a_one_character_question_is_rejected(client):
 
 def test_the_prompt_the_llm_sees_carries_provenance(client, monkeypatch, llm):
     monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
-    monkeypatch.setattr("app.api.answer.get_answer_llm", lambda: llm)
+    _use_llm(monkeypatch, llm)
 
     client.post("/answer", json={"question": "tope de capital"})
 

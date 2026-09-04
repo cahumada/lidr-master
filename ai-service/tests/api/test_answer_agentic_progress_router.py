@@ -29,7 +29,7 @@ from app.api.answer_agentic import router as answer_agentic_router
 from app.api.corpus import router as corpus_router
 from app.api.documents import router as documents_router
 from app.api.search import router as search_router
-from app.dependencies import get_answer_llm, get_embedder, get_reranker
+from app.dependencies import get_embedder, get_reranker
 from app.foundation.persistence.database import get_async_session
 
 
@@ -82,7 +82,6 @@ def _override_deps(test_app: FastAPI) -> None:
     test_app.dependency_overrides[get_async_session] = no_session
     test_app.dependency_overrides[get_embedder] = lambda: object()
     test_app.dependency_overrides[get_reranker] = lambda: None
-    test_app.dependency_overrides[get_answer_llm] = lambda: object()
 
 
 def _poll_until_finished(client: TestClient, thread_id: str, *, attempts: int = 50):

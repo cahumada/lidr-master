@@ -28,6 +28,7 @@ from app.foundation.persistence.database import Base, to_sync_url
 # is what autogenerate compares against.
 # || Se importa por el efecto de registrar las tablas en Base.metadata, que es
 # contra lo que compara autogenerate.
+from app.domain import profiles  # noqa: F401
 from app.generation.rag.store import models  # noqa: F401
 from app.ingestion import jobs  # noqa: F401
 
@@ -39,6 +40,36 @@ config.set_main_option("sqlalchemy.url", to_sync_url(get_settings().DATABASE_URL
 
 target_metadata = Base.metadata
 
+# Tablas que otra herramienta crea y administra: el `AsyncPostgresSaver` de
+# LangGraph las arma en el arranque del servicio y no las declara en
+# `Base.metadata`. Sin este filtro, autogenerate las ve "de mas" y propone
+# borrarlas -- lo que borraria cada hilo pausado esperando revision humana.
+# Verificado: la primera autogeneracion despues de agregar el checkpointer
+# incluia esos cuatro `drop_table`.
+# || Tables another tool owns: LangGraph's `AsyncPostgresSaver` creates them at
+# service startup and never declares them on `Base.metadata`. Without this
+# filter, autogenerate sees them as extra and proposes dropping them -- which
+# would delete every thread paused for human review. Verified: the first
+# autogenerate after adding the checkpointer included those four drops.
+_FOREIGN_TABLES = frozenset(
+    {
+        "checkpoints",
+        "checkpoint_writes",
+        "checkpoint_blobs",
+        "checkpoint_migrations",
+    }
+)
+
+
+def include_name(name, type_, parent_names):
+    """Keep foreign-owned tables out of the autogenerate comparison.
+
+    || Deja las tablas de otra herramienta fuera de la comparacion.
+    """
+    if type_ == "table":
+        return name not in _FOREIGN_TABLES
+    return True
+
 
 def run_migrations_offline() -> None:
     context.configure(
@@ -47,6 +78,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -60,7 +92,10 @@ def run_migrations_online() -> None:
     )
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata, compare_type=True
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            include_name=include_name,
         )
         with context.begin_transaction():
             context.run_migrations()

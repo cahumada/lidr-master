@@ -43,16 +43,18 @@ app/
 │   ├── search/
 │   ├── answer/agentic/ · answer/agentic/resume/
 │   ├── answer/agentic/start/ · answer/agentic/[threadId]/progress/
+│   ├── config/ · config/agents/[agentKey]/
 │   ├── documents/ingest-file/
 │   └── corpus/rebuild · jobs · jobs/[id]
 ├── search/                    # Búsqueda: la pantalla principal
 ├── answer/                    # Respuesta agentica: formulario, traza y gate humano
+├── agents/                    # Catálogo de agentes y sus perfiles (persona, modelo)
 ├── documents/                 # Vista previa de ingesta (no persiste)
 └── corpus/                    # Reconstrucción del corpus y sus trabajos
 lib/ai-service/                # LA ÚNICA capa que habla HTTP con el servicio
 ├── base-client.ts             # fetch, timeouts, y los errores del servicio
 ├── types.ts                   # espejo 1:1 de los schemas Pydantic
-├── search.ts · documents.ts · corpus.ts · answer.ts   # un cliente por contexto
+├── search.ts · documents.ts · corpus.ts · answer.ts · config.ts   # un cliente por contexto
 components/ui/                 # shadcn: el código vive acá, no en node_modules
 ```
 
@@ -81,7 +83,26 @@ Cuando `/progress` deja `running`, dos caminos:
   explícitamente 200 de 202 (`postJsonAllowingStatuses`) para que ese caso
   no caiga en la misma rama que un fallo real.
 
-Los contextos (`search`, `documents`, `corpus`) **no se importan entre sí**, y
+### Agentes (`app/agents/`)
+
+Arma toda la pantalla desde `GET /config`: el rol de cada agente, sus
+herramientas permitidas y su modelo vigente salen del servicio que corre el
+grafo, no de una copia declarada acá — la consola no puede describir un grafo
+que ya no existe.
+
+Dos secciones, porque los agentes no son iguales: el que **llama a un modelo**
+(`answer_synthesizer`) tiene formulario de persona, modelo, temperatura y tope
+de tokens, con un contador contra el tope de persona y un botón para volver a
+los defaults; los **deterministas** son fichas de solo lectura que dicen por qué
+no tienen nada que configurar. Un campo vacío significa "usar el default del
+servicio", y la pantalla marca cada valor vigente como `perfil` o `default del
+servicio` para que no haya que adivinar.
+
+La validación vive en el servicio (agente desconocido, agente determinista,
+modelo fuera del catálogo, persona sobre el tope) y sus 404/422 viajan tal cual:
+duplicar esas reglas acá sería un segundo lugar que mantener sincronizado.
+
+Los contextos (`search`, `documents`, `corpus`, `answer`, `config`) **no se importan entre sí**, y
 ninguna pantalla hace `fetch` al servicio por su cuenta: si falta una llamada,
 se agrega al cliente del contexto que corresponde.
 
