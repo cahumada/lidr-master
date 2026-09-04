@@ -293,11 +293,66 @@ proveedor no es comparable con ellas: cambiarlo es **reconstruir el corpus**, no
 tocar un setting. El reranker también sigue en OpenAI — no es configurable por
 agente, así que no tiene perfil que leer.
 
-Configuración: `ANTHROPIC_API_KEY`, `MOONSHOT_API_KEY`, `MOONSHOT_BASE_URL`,
-`ANSWER_PROVIDER`, y el catálogo como pares `proveedor:modelo` en
-`ANSWER_MODEL_CATALOG`. Los ids de Anthropic van **sin sufijo de fecha**; los de
-Moonshot conviene verificarlos contra su catálogo vigente — la lista es env-
-overridable justamente para ajustarlos sin tocar código.
+### Proveedores y modelos: en la base, no en env vars
+
+Los proveedores y sus modelos son **filas** (`providers`, `provider_models`),
+editables desde la pantalla `/agents`. Agregar un modelo —o un proveedor entero
+que hable un wire implementado, como Groq o un vLLM local— es una escritura y no
+un deploy. `ANSWER_MODEL_CATALOG` quedó como la **semilla** del primer arranque:
+el sembrado es idempotente y aditivo, así que ocultar un modelo sobrevive a cada
+reinicio.
+
+```bash
+# Le pregunta al proveedor qué modelos sirve y guarda los nuevos, OCULTOS.
+curl -X POST http://localhost:8000/config/providers/openai/models/refresh
+```
+
+Los ids nuevos llegan ocultos porque el listado de un proveedor no es un menú
+curado: medido acá, **OpenAI reporta 124 modelos** y valen la pena 2 —el resto
+es `babbage-002`, `davinci-002`, `chatgpt-image-latest`, `gpt-3.5-turbo-*`. La
+curaduría (`visible`) también se respeta en la escritura: elegir un modelo
+oculto devuelve 422, para que ocultarlo no sea solo cosmético en el desplegable.
+
+`supports_temperature` es editable por fila y no solo derivado del código: un
+proveedor puede sacar un modelo cuyo comportamiento el código nunca vio, y
+esperar un deploy para poder decir "este rechaza sampling" es cómo un 400 se
+queda roto.
+
+### Credenciales: cifradas, write-only, y el entorno gana
+
+Las claves se pueden guardar **desde la consola**, cifradas con Fernet y una
+master key (`SECRETS_KEY`) que vive en el **entorno** y nunca en la base — eso
+es lo que hace que un `pg_dump` filtrado se lleve ciphertext y ninguna forma de
+leerlo. Tres propiedades que el código hace cumplir:
+
+1. **Sin master key no se guarda nada.** `SECRETS_KEY` vacía deshabilita el
+   guardado (409, y la consola lo dice en vez de ofrecer un formulario que iba a
+   fallar). A propósito no existe el camino "por ahora en texto plano": así es
+   como un backup termina con claves vivas adentro.
+2. **Ningún endpoint devuelve una clave.** De una guardada se ven cuatro
+   caracteres, lo justo para distinguirla de otra. Hay un test que recorre el
+   body de cada endpoint de proveedor buscándola, porque "nunca la devolvemos"
+   es la clase de promesa que un campo agregado de buena fe rompe sin que nadie
+   note.
+3. **El entorno le gana a la base.** Un despliegue con gestión de secretos de
+   verdad (las variables de Railway) no queda sobreescrito por algo tipeado en
+   la consola; la copia cifrada es el fallback, no la autoridad.
+
+Rotar la master key vuelve **ilegibles** las credenciales guardadas: el servicio
+las reporta como "sin credencial" en vez de pasarle al proveedor un valor roto,
+y hay que volver a cargarlas. Restaurar un dump en otro entorno necesita la
+misma clave, que es la propiedad y no un problema.
+
+```bash
+uv run python scripts/generate_secrets_key.py   # imprime una clave; no la guarda
+```
+
+**El tradeoff, dicho de frente:** guardar credenciales en la base las pone en
+cada backup, aunque sea como ciphertext, y este servicio todavía **no tiene
+autenticación** — quien llegue al servicio puede escribir una clave (no leerla).
+Fue una decisión explícita del dueño del proyecto después de ver esto escrito;
+la alternativa —solo env vars— sigue disponible y es la que gana cuando ambas
+existen.
 
 ### Perfiles: persona y modelo por agente
 
@@ -393,11 +448,13 @@ app/
 ├── foundation/
 │   ├── persistence/database.py              # Base, engine sync (psycopg) y async (asyncpg)
 │   ├── llm/wrapper.py                       # dos adaptadores: OpenAI-compatible y Anthropic
-│   ├── llm/providers.py                     # qué proveedor, qué modelo, qué acepta cada uno
+│   ├── llm/providers.py                     # los wires, la semilla, y el cache de clientes
+│   ├── secrets.py                           # cifrado de credenciales (master key del entorno)
 │   └── prompts/answer/v1/                   # system.j2 + user.j2
 ├── domain/
 │   ├── schemas.py                           # AnswerAgentState y sus acumuladores keyed
 │   ├── profiles.py                          # agent_profiles: persona y modelo por agente
+│   ├── providers_store.py                   # providers y provider_models: catálogo y claves
 │   └── graph/
 │       ├── catalog.py                       # qué es cada agente, declarado una vez
 │       ├── orchestrator.py                  # Command(goto=...), tres frenos deterministas
@@ -510,6 +567,9 @@ Swagger en `http://localhost:8000/docs`. Endpoints:
 - `GET /config` (+ `PUT`/`DELETE /config/agents/{agent_key}`) — el catálogo de
   agentes y el perfil de cada uno: persona, modelo, temperatura y tope de
   tokens. Ver [Perfiles](#perfiles-persona-y-modelo-por-agente).
+- `PUT /config/providers/{id}` (+ `/key`, `/models`, `/models/refresh`) — los
+  proveedores y su catálogo, en la base. La clave es **write-only**: se guarda
+  cifrada y ningún endpoint la devuelve.
 
 ```bash
 curl -X POST http://localhost:8000/documents/ingest-file \

@@ -112,13 +112,23 @@ class EffectiveAgentConfig:
 
 
 def resolve_agent_config(
-    profile: AgentProfileRow | None, settings: Settings
+    profile: AgentProfileRow | None,
+    settings: Settings,
+    *,
+    supports_temperature: bool | None = None,
 ) -> EffectiveAgentConfig:
     """Merge an agent's overrides over the service defaults.
 
+    ``supports_temperature`` comes from the model's row when the database has
+    one; ``None`` falls back to what the code knows, which is what a model
+    nobody has recorded yet gets.
+
     || Mezcla los overrides de un agente sobre los defaults del servicio.
+    ``supports_temperature`` viene de la fila del modelo cuando la base tiene
+    una; ``None`` cae a lo que sabe el código, que es lo que le toca a un
+    modelo que nadie registró todavía.
     """
-    from app.foundation.llm.providers import supports_temperature
+    from app.foundation.llm.providers import supports_temperature_default
 
     provider = getattr(profile, "provider", None)
     model = getattr(profile, "model", None)
@@ -135,7 +145,11 @@ def resolve_agent_config(
     if not effective_provider:
         effective_provider = settings.ANSWER_PROVIDER
 
-    accepts_temperature = supports_temperature(effective_model)
+    accepts_temperature = (
+        supports_temperature_default(effective_model)
+        if supports_temperature is None
+        else supports_temperature
+    )
     if not accepts_temperature:
         effective_temperature = None
         temperature_source = "unsupported"
@@ -179,16 +193,35 @@ async def synthesizer_runtime(
     El grafo los recibe por su config en vez de que el agente lea la base, que
     es lo que mantiene al agente testeable sin base.
     """
-    from app.dependencies import build_answer_llm
+    from app.foundation.llm.providers import build_llm_for
 
     effective = await effective_config_for(SYNTHESIZER_AGENT, session, settings)
-    llm = build_answer_llm(
-        effective.provider,
+    resolved = await resolved_provider(session, settings, effective.provider)
+    llm = build_llm_for(
+        resolved,
         effective.model,
-        effective.max_tokens,
-        effective.temperature,
+        max_tokens=effective.max_tokens,
+        temperature=effective.temperature,
+        supports_temperature=effective.supports_temperature,
     )
     return llm, effective.persona
+
+
+async def resolved_provider(session: AsyncSession, settings: Settings, provider_id: str):
+    """The provider row for ``provider_id``, with its credential resolved.
+
+    || La fila del proveedor, con su credencial resuelta.
+    """
+    from app.domain.providers_store import ProviderRepository, resolve_provider
+    from app.foundation.llm.providers import LLMProviderError
+
+    row = await ProviderRepository(session).provider(provider_id)
+    if row is None:
+        raise LLMProviderError(
+            f"provider {provider_id!r} is not configured in this service "
+            f"|| el proveedor {provider_id!r} no está configurado en este servicio"
+        )
+    return resolve_provider(row, settings)
 
 
 async def effective_config_for(
@@ -198,13 +231,25 @@ async def effective_config_for(
 
     One call for the two entry points that synthesize (``POST /answer`` and
     the graph's ``answer_synthesizer``), so a persona configured in the
-    console cannot apply to one of them and not the other.
+    console cannot apply to one of them and not the other. The model's
+    sampling capability is read from its row, so a model recorded after this
+    code shipped is still handled correctly.
 
     || Carga el perfil de ``agent_key`` y lo mezcla sobre los defaults. Una
-    sola llamada para los dos puntos de entrada que sintetizan, así una
-    persona configurada en la consola no puede aplicar a uno y no al otro.
+    sola llamada para los dos puntos de entrada que sintetizan. La capacidad de
+    sampling del modelo se lee de su fila, así un modelo registrado después de
+    que este código salió igual se maneja bien.
     """
-    return resolve_agent_config(await AgentProfileRepository(session).get(agent_key), settings)
+    from app.domain.providers_store import ProviderRepository
+
+    profile = await AgentProfileRepository(session).get(agent_key)
+    provisional = resolve_agent_config(profile, settings)
+    row = await ProviderRepository(session).model(provisional.provider, provisional.model)
+    return resolve_agent_config(
+        profile,
+        settings,
+        supports_temperature=row.supports_temperature if row else None,
+    )
 
 
 class AgentProfileRepository:

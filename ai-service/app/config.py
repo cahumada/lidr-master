@@ -188,6 +188,20 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     MOONSHOT_API_KEY: str = ""
 
+    # Master key con la que se cifran las credenciales que se guardan en la
+    # base desde la consola (tabla `providers`). Vive en el ENTORNO y nunca en
+    # la base: eso es lo que hace que un `pg_dump` filtrado se lleve ciphertext
+    # y ninguna forma de leerlo.
+    #
+    # VACÍA = guardar credenciales está DESHABILITADO. A propósito no existe un
+    # camino "por ahora en texto plano": así es como un dump termina con claves
+    # vivas adentro. Las env vars de arriba siguen funcionando sin esto.
+    # || Master key for credentials stored in the database from the console. It
+    # lives in the ENVIRONMENT and never in the database, which is what makes a
+    # leaked `pg_dump` carry ciphertext and no way to read it. EMPTY = storing
+    # credentials is DISABLED; there is deliberately no plaintext fallback.
+    SECRETS_KEY: str = ""
+
     # Moonshot (Kimi) sirve una API compatible con OpenAI, así que usa el mismo
     # adaptador con otro base_url. Hay dos endpoints según la región
     # (`api.moonshot.ai` internacional, `api.moonshot.cn` China): es un setting

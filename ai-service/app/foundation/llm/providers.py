@@ -1,47 +1,44 @@
-"""Which providers exist, which models they serve, and what each model accepts.
+"""Which wire formats exist, and how to build a client for one.
 
-One place decides three things, so nothing downstream has to guess:
+This module used to own the provider list. It no longer does: providers and
+their models live in the database (`app/domain/providers_store.py`), so adding
+one is a row and not a deploy. What stays here is the part that genuinely IS
+code:
 
-1. **Which client to build.** Moonshot (Kimi) speaks OpenAI's wire format, so
-   it is the OpenAI client pointed at another ``base_url`` — two adapters for
-   three providers. Anthropic gets its own.
-2. **Whether a provider is usable at all.** A provider with no API key
-   configured is reported unavailable, so choosing it fails in the console
-   with a clear message instead of at answer time with a 500.
-3. **Whether a model accepts ``temperature``.** Current Claude models
-   (``claude-opus-5``, ``claude-sonnet-5``) **reject sampling parameters with
-   a 400** — `temperature` was removed on that generation; `claude-haiku-4-5`
-   still takes it. Sending it anyway would turn "pick Sonnet" into a broken
-   endpoint, so the catalog carries the capability and the adapter omits what
-   the model will not take.
+1. **The wires.** Two adapters cover every provider we can talk to:
+   ``openai_compatible`` (OpenAI itself, Moonshot/Kimi, and anything else
+   serving `/chat/completions` — Groq, DeepSeek, a local vLLM) and
+   ``anthropic_messages``. A provider row claiming a wire nobody implemented
+   would be a lie the console would display, so the wires are validated
+   against this list.
+2. **The seed.** `SEED_PROVIDERS` and the capability defaults are what a fresh
+   install starts from, so the service behaves as it did before there were
+   tables to read.
+3. **The client cache.** SDK clients are cached by (wire, base_url, key) so a
+   request does not build one per call.
 
-What this deliberately does NOT touch: **embeddings**. The 57.101 stored
-vectors are in ``text-embedding-3-small`` space, and an embedding from another
-provider is not comparable to them — switching that is a corpus rebuild, not a
-setting. Multi-provider here means the *answer* model. The reranker also stays
-on OpenAI: it is not agent-configurable, so it has no profile to read.
+What this deliberately does NOT touch: **embeddings**. The stored vectors
+belong to one embedding model's space, so switching that provider is a corpus
+rebuild, not a setting. Multi-provider here means the *answer* model.
 
-|| Qué proveedores existen, qué modelos sirven, y qué acepta cada modelo. Un
-solo lugar decide tres cosas: qué cliente armar (Moonshot habla el formato de
-OpenAI, así que son dos adaptadores para tres proveedores), si un proveedor es
-usable (sin clave se reporta no disponible, y elegirlo falla en la consola con
-un mensaje claro en vez de a la hora de responder con un 500), y si un modelo
-acepta ``temperature`` — los modelos Claude actuales la RECHAZAN con un 400.
+|| Este módulo ya no es dueño de la lista de proveedores: viven en la base, así
+que agregar uno es una fila y no un deploy. Acá queda lo que sí es código: los
+dos wires (`openai_compatible` cubre OpenAI, Moonshot y cualquier otro que
+sirva `/chat/completions`; `anthropic_messages` el suyo), la semilla del primer
+arranque, y el cache de clientes del SDK.
 
-Lo que a propósito NO toca: los **embeddings**. Las 57.101 filas están en el
-espacio de ``text-embedding-3-small`` y un embedding de otro proveedor no es
-comparable con ellas — cambiarlo es reconstruir el corpus, no un setting.
+Lo que a propósito NO toca: los embeddings. Los vectores guardados pertenecen
+al espacio de un modelo; cambiar ese proveedor es reconstruir el corpus.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Any
 
 import structlog
 
-from app.config import Settings, get_settings
 from app.foundation.llm.wrapper import LLM, AnthropicChatLLM, OpenAICompatibleChatLLM
 
 log = structlog.get_logger()
@@ -54,71 +51,80 @@ class LLMProviderError(RuntimeError):
     """
 
 
-ProviderId = Literal["openai", "anthropic", "moonshot"]
-
 OPENAI = "openai"
 ANTHROPIC = "anthropic"
 MOONSHOT = "moonshot"
 
-# Wire formats, not brands: `openai_compatible` is whatever speaks
-# `/chat/completions`, which today is OpenAI itself and Moonshot.
-# || Formatos de wire, no marcas.
-_OPENAI_COMPATIBLE = "openai_compatible"
-_ANTHROPIC_MESSAGES = "anthropic_messages"
+# Wire formats, not brands. Adding a provider that speaks one of these is a
+# database row; adding a NEW wire is this file plus an adapter.
+# || Formatos de wire, no marcas. Agregar un proveedor que habla uno de estos
+# es una fila; agregar un wire NUEVO es este archivo más un adaptador.
+OPENAI_COMPATIBLE = "openai_compatible"
+ANTHROPIC_MESSAGES = "anthropic_messages"
+
+WIRES: frozenset[str] = frozenset({OPENAI_COMPATIBLE, ANTHROPIC_MESSAGES})
+
+WIRE_LABELS: dict[str, str] = {
+    OPENAI_COMPATIBLE: "OpenAI-compatible (/chat/completions)",
+    ANTHROPIC_MESSAGES: "Anthropic Messages API",
+}
 
 
 @dataclass(frozen=True)
-class ProviderSpec:
-    """One provider: how to reach it and how to talk to it.
+class SeedProvider:
+    """A provider the service knows how to reach out of the box.
 
-    || Un proveedor: cómo llegarle y cómo hablarle.
+    || Un proveedor que el servicio sabe alcanzar de fábrica.
     """
 
     id: str
     label: str
     wire: str
     api_key_setting: str
-    base_url_setting: str | None = None
-    docs_note: str = ""
+    base_url: str | None = None
+    note: str = ""
 
 
-PROVIDER_SPECS: tuple[ProviderSpec, ...] = (
-    ProviderSpec(
+SEED_PROVIDERS: tuple[SeedProvider, ...] = (
+    SeedProvider(
         id=OPENAI,
         label="OpenAI",
-        wire=_OPENAI_COMPATIBLE,
+        wire=OPENAI_COMPATIBLE,
         api_key_setting="OPENAI_API_KEY",
-        docs_note="También es el proveedor de los embeddings del corpus, que no son configurables.",
+        note=(
+            "También sirve a los embeddings del corpus y al reranker, que no son "
+            "multi-proveedor: los vectores guardados viven en el espacio de "
+            "text-embedding-3-small."
+        ),
     ),
-    ProviderSpec(
+    SeedProvider(
         id=ANTHROPIC,
         label="Anthropic",
-        wire=_ANTHROPIC_MESSAGES,
+        wire=ANTHROPIC_MESSAGES,
         api_key_setting="ANTHROPIC_API_KEY",
-        docs_note="Messages API: `system` va como parámetro y no como mensaje.",
+        note="Messages API: `system` va como parámetro y no como mensaje.",
     ),
-    ProviderSpec(
+    SeedProvider(
         id=MOONSHOT,
         label="Moonshot (Kimi)",
-        wire=_OPENAI_COMPATIBLE,
+        wire=OPENAI_COMPATIBLE,
         api_key_setting="MOONSHOT_API_KEY",
-        base_url_setting="MOONSHOT_BASE_URL",
-        docs_note="API compatible con OpenAI: mismo adaptador, otro base_url.",
+        base_url="https://api.moonshot.ai/v1",
+        note="API compatible con OpenAI: mismo adaptador, otro base_url.",
     ),
 )
 
-_PROVIDERS_BY_ID = {spec.id: spec for spec in PROVIDER_SPECS}
-
-# Models that do NOT accept `temperature`. Anthropic removed the sampling
-# parameters on this generation: sending one returns a 400. Kept as an
-# explicit deny-list rather than "anthropic rejects temperature", because
-# `claude-haiku-4-5` still accepts it — the capability belongs to the model,
-# not to the provider.
-# || Modelos que NO aceptan `temperature`. Anthropic removió los parámetros de
-# sampling en esta generación: mandar uno devuelve 400. Es una lista explícita
-# y no "anthropic no acepta temperature", porque `claude-haiku-4-5` sí la
-# acepta — la capacidad es del modelo, no del proveedor.
-_MODELS_WITHOUT_TEMPERATURE = frozenset(
+# Models known NOT to accept `temperature`. This is only the SEED for a
+# model row's capability — once the row exists, the database is the authority,
+# because a provider can ship a model whose behaviour this list has never
+# seen and waiting for a deploy to record that is how a 400 stays broken.
+#
+# Anthropic removed the sampling parameters on this generation: sending
+# `temperature` returns a 400. `claude-haiku-4-5` still accepts it, which is
+# why the capability belongs to the MODEL and not to the provider.
+# || Modelos que se sabe que NO aceptan `temperature`. Es solo la SEMILLA de la
+# capacidad de la fila: una vez que la fila existe, la base es la autoridad.
+MODELS_WITHOUT_TEMPERATURE = frozenset(
     {
         "claude-opus-5",
         "claude-sonnet-5",
@@ -131,154 +137,133 @@ _MODELS_WITHOUT_TEMPERATURE = frozenset(
     }
 )
 
+def seed_provider(provider_id: str) -> SeedProvider | None:
+    """The built-in seed for ``provider_id``, or ``None``.
 
-@dataclass(frozen=True)
-class CatalogEntry:
-    """One selectable model, with the provider that serves it.
-
-    || Un modelo elegible, con el proveedor que lo sirve.
+    || La semilla incorporada para ``provider_id``, o ``None``.
     """
-
-    provider: str
-    model: str
-
-    @property
-    def supports_temperature(self) -> bool:
-        """Whether this model accepts a ``temperature``.
-
-        || Si este modelo acepta ``temperature``.
-        """
-        return self.model not in _MODELS_WITHOUT_TEMPERATURE
-
-
-def provider_spec(provider: str) -> ProviderSpec | None:
-    """The spec for ``provider``, or ``None``. || El spec del proveedor, o ``None``."""
-    return _PROVIDERS_BY_ID.get(provider)
-
-
-def api_key_for(provider: str, settings: Settings) -> str:
-    """The configured key for ``provider``, or an empty string.
-
-    || La clave configurada del proveedor, o cadena vacía.
-    """
-    spec = provider_spec(provider)
-    if spec is None:
-        return ""
-    return str(getattr(settings, spec.api_key_setting, "") or "")
-
-
-def is_available(provider: str, settings: Settings) -> bool:
-    """Whether ``provider`` has a key configured. || Si el proveedor tiene clave."""
-    return bool(api_key_for(provider, settings))
-
-
-def parse_catalog(settings: Settings) -> list[CatalogEntry]:
-    """Parse ``ANSWER_MODEL_CATALOG`` entries of the form ``provider:model``.
-
-    An entry naming an unknown provider is dropped with a warning rather than
-    crashing the service: a typo in an env var should not take the whole
-    thing down, and the console showing one model fewer is a visible symptom.
-
-    || Parsea las entradas ``proveedor:modelo`` de ``ANSWER_MODEL_CATALOG``.
-    Una entrada con un proveedor desconocido se descarta con un warning en vez
-    de tirar el servicio: un typo en una env var no debería voltearlo todo, y
-    que la consola muestre un modelo menos es un síntoma visible.
-    """
-    entries: list[CatalogEntry] = []
-    for raw in settings.ANSWER_MODEL_CATALOG:
-        provider, separator, model = str(raw).partition(":")
-        if not separator or not model:
-            log.warning("model_catalog_entry_malformed", entry=raw)
-            continue
-        if provider not in _PROVIDERS_BY_ID:
-            log.warning("model_catalog_unknown_provider", entry=raw, provider=provider)
-            continue
-        entries.append(CatalogEntry(provider=provider, model=model))
-    return entries
-
-
-def catalog_entry(provider: str, model: str, settings: Settings) -> CatalogEntry | None:
-    """The catalog entry for this pair, or ``None`` if it is not offered.
-
-    || La entrada del catálogo para este par, o ``None`` si no se ofrece.
-    """
-    for entry in parse_catalog(settings):
-        if entry.provider == provider and entry.model == model:
-            return entry
+    for spec in SEED_PROVIDERS:
+        if spec.id == provider_id:
+            return spec
     return None
 
 
-def supports_temperature(model: str) -> bool:
-    """Whether ``model`` accepts a ``temperature`` parameter.
+def supports_temperature_default(model: str) -> bool:
+    """The seed capability for a model the database has not recorded yet.
 
-    || Si ``model`` acepta un parámetro ``temperature``.
+    || La capacidad semilla de un modelo que la base todavía no registró.
     """
-    return model not in _MODELS_WITHOUT_TEMPERATURE
+    return model not in MODELS_WITHOUT_TEMPERATURE
+
+
+def assert_known_wire(wire: str) -> None:
+    """Reject a wire no adapter implements. || Rechaza un wire sin adaptador."""
+    if wire not in WIRES:
+        raise LLMProviderError(
+            f"unknown wire {wire!r}; this service implements {sorted(WIRES)} "
+            f"|| wire desconocido {wire!r}"
+        )
 
 
 @lru_cache
-def _client_for(provider: str) -> Any:
-    """The provider's SDK client, built once per provider.
+def _client(wire: str, base_url: str | None, api_key: str) -> Any:
+    """The SDK client for one (wire, base_url, key), built once.
 
-    || El cliente del SDK del proveedor, armado una vez por proveedor.
+    Cached so a request does not construct an SDK client per call. The key is
+    part of the cache key by necessity — it is already in memory as the
+    client's own attribute — and never leaves this process.
+
+    || El cliente del SDK para un (wire, base_url, clave), armado una vez. La
+    clave es parte de la clave de cache por necesidad: ya está en memoria como
+    atributo del propio cliente, y nunca sale de este proceso.
     """
-    settings = get_settings()
-    spec = provider_spec(provider)
-    if spec is None:
-        raise LLMProviderError(f"unknown provider {provider!r} || proveedor desconocido")
+    assert_known_wire(wire)
 
-    key = api_key_for(provider, settings)
-    if not key:
-        raise LLMProviderError(
-            f"{spec.label} has no API key configured ({spec.api_key_setting}). "
-            f"|| {spec.label} no tiene clave configurada ({spec.api_key_setting})."
-        )
-
-    if spec.wire == _ANTHROPIC_MESSAGES:
+    if wire == ANTHROPIC_MESSAGES:
         import anthropic
 
-        return anthropic.Anthropic(api_key=key)
+        return anthropic.Anthropic(api_key=api_key, base_url=base_url or None)
 
     from openai import OpenAI
 
-    base_url = None
-    if spec.base_url_setting:
-        base_url = str(getattr(settings, spec.base_url_setting, "") or "") or None
-    return OpenAI(api_key=key, base_url=base_url)
+    return OpenAI(api_key=api_key, base_url=base_url or None)
 
 
-def build_llm(
-    provider: str,
+def build_llm_for(
+    provider: Any,
     model: str,
     *,
     max_tokens: int,
     temperature: float | None,
+    supports_temperature: bool = True,
 ) -> LLM:
-    """An ``LLM`` for one explicit provider and model.
+    """An ``LLM`` for a resolved provider and one of its models.
 
-    ``temperature`` is dropped when the model does not accept it, rather than
-    sent and rejected with a 400. The drop is logged: a knob that silently
+    ``provider`` is a ``ResolvedProvider`` (see
+    ``app/domain/providers_store.py``) — taken as ``Any`` so this foundation
+    module does not import the domain layer that stores it.
+
+    ``temperature`` is dropped when the model does not accept one, rather than
+    sent and answered with a 400. The drop is logged: a knob that silently
     stops applying is worse than one that says so.
 
-    || Un ``LLM`` para un proveedor y un modelo explícitos. La ``temperature``
-    se descarta cuando el modelo no la acepta, en vez de mandarla y comerse un
-    400. El descarte se loguea: un knob que deja de aplicar en silencio es
-    peor que uno que lo dice.
+    || Un ``LLM`` para un proveedor ya resuelto y uno de sus modelos. La
+    ``temperature`` se descarta cuando el modelo no la acepta, en vez de
+    mandarla y comerse un 400. El descarte se loguea.
     """
-    spec = provider_spec(provider)
-    if spec is None:
-        raise LLMProviderError(f"unknown provider {provider!r} || proveedor desconocido")
+    if not provider.enabled:
+        raise LLMProviderError(
+            f"provider {provider.id!r} is disabled || el proveedor está deshabilitado"
+        )
+    if not provider.api_key:
+        setting = provider.api_key_setting or "its API key"
+        raise LLMProviderError(
+            f"provider {provider.id!r} has no credential: set {setting} in the environment "
+            f"or store one from the console || el proveedor no tiene credencial"
+        )
 
     effective_temperature = temperature
-    if temperature is not None and not supports_temperature(model):
-        log.info("llm_temperature_dropped", provider=provider, model=model)
+    if temperature is not None and not supports_temperature:
+        log.info("llm_temperature_dropped", provider=provider.id, model=model)
         effective_temperature = None
 
-    client = _client_for(provider)
-    if spec.wire == _ANTHROPIC_MESSAGES:
+    client = _client(provider.wire, provider.base_url, provider.api_key)
+    if provider.wire == ANTHROPIC_MESSAGES:
         return AnthropicChatLLM(
             client, model=model, max_tokens=max_tokens, temperature=effective_temperature
         )
     return OpenAICompatibleChatLLM(
         client, model=model, max_tokens=max_tokens, temperature=effective_temperature
     )
+
+
+def list_provider_models(provider: Any) -> list[str]:
+    """Ask the provider which models it serves.
+
+    This is the "dynamic catalog" path: both wires expose a models listing, so
+    one code path covers all of them. Returns ids as the provider reports
+    them; filtering and curation happen where the rows are written, because
+    what counts as a *chat* model is a judgement the provider does not make
+    for us (OpenAI's list includes embeddings, audio and old snapshots).
+
+    || Le pregunta al proveedor qué modelos sirve. Los dos wires exponen un
+    listado, así que un solo camino los cubre. Devuelve los ids como los
+    reporta el proveedor; el filtrado y la curaduría van donde se escriben las
+    filas, porque qué es un modelo de CHAT es un juicio que el proveedor no
+    hace por nosotros.
+    """
+    client = _client(provider.wire, provider.base_url, provider.api_key)
+    try:
+        page = client.models.list()
+    except Exception as exc:
+        raise LLMProviderError(
+            f"could not list models for {provider.id!r}: {type(exc).__name__} "
+            f"|| no se pudieron listar los modelos de {provider.id!r}"
+        ) from exc
+
+    ids: list[str] = []
+    for item in getattr(page, "data", None) or page:
+        model_id = getattr(item, "id", None)
+        if model_id:
+            ids.append(str(model_id))
+    return sorted(set(ids))

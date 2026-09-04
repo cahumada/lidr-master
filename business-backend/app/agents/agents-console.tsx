@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ProvidersPanel } from "./providers-panel";
 import type {
   AgentConfig,
   ModelConfig,
@@ -402,6 +403,29 @@ export function AgentsConsole({ initialConfig }: { initialConfig: ServiceConfig 
     }));
   }
 
+  /**
+   * Re-read everything after a provider or model changed. A whole re-read and
+   * not a local patch: adding a credential changes which MODELS are usable,
+   * and a refresh can add dozens of rows — reconciling that by hand in the
+   * client would be a second copy of the service's own resolution rules.
+   * || Vuelve a leer todo después de un cambio de proveedor o modelo. Lectura
+   * completa y no un parche local: agregar una credencial cambia qué MODELOS
+   * quedan usables, y un refresh puede agregar decenas de filas.
+   */
+  async function reload() {
+    try {
+      const response = await fetch("/api/config", {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) return;
+      setConfig((await response.json()) as ServiceConfig);
+    } catch {
+      // A failed re-read leaves the last good view on screen, which is more
+      // useful than blanking it. || Una relectura fallida deja a la vista lo
+      // último bueno, que es más útil que vaciar la pantalla.
+    }
+  }
+
   if (config.agents.length === 0) {
     return (
       <Alert variant="destructive">
@@ -418,49 +442,7 @@ export function AgentsConsole({ initialConfig }: { initialConfig: ServiceConfig 
 
   return (
     <div className="flex flex-col gap-8">
-      <Card>
-        <CardContent className="flex flex-col gap-3">
-          <div>
-            <h2 className="text-sm font-semibold tracking-tight">Proveedores</h2>
-            <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-              Un proveedor sin clave en el servicio no se puede elegir: la consola lo
-              deshabilita en vez de dejar guardar un modelo que iba a fallar al
-              responder. Los <strong>embeddings del corpus no son multi-proveedor</strong>{" "}
-              — las 57.101 filas están en el espacio de <code>text-embedding-3-small</code>
-              , así que cambiarlos es reconstruir el corpus, no un setting.
-            </p>
-          </div>
-          <ul className="flex flex-col gap-2">
-            {config.providers.map((provider) => (
-              <li
-                key={provider.id}
-                className="flex flex-wrap items-center gap-2 rounded-lg border p-2.5 text-xs"
-              >
-                <span
-                  className={`h-2 w-2 shrink-0 rounded-full ${
-                    provider.available ? "bg-emerald-500" : "bg-muted-foreground/30"
-                  }`}
-                />
-                <span className="text-sm font-medium">{provider.label}</span>
-                <Badge variant="secondary" className="text-[10px]">
-                  {config.models.filter((m) => m.provider === provider.id).length} modelos
-                </Badge>
-                {!provider.available && (
-                  <span className="text-muted-foreground">
-                    sin clave: definí <code>{provider.api_key_setting}</code> en el
-                    servicio
-                  </span>
-                )}
-                {provider.note && (
-                  <span className="text-muted-foreground min-w-0 flex-1 italic">
-                    {provider.note}
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
+      <ProvidersPanel config={config} onChanged={reload} />
 
       <section className="flex flex-col gap-3">
         <div>

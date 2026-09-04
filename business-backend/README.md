@@ -90,10 +90,23 @@ herramientas permitidas y su modelo vigente salen del servicio que corre el
 grafo, no de una copia declarada acá — la consola no puede describir un grafo
 que ya no existe.
 
-Arriba, una tira de **proveedores** (OpenAI, Anthropic, Moonshot/Kimi) con su
-estado: el que no tiene clave en el servicio aparece apagado, con el nombre del
-setting que lo habilitaría, y sus modelos van `disabled` en el selector — la
-consola no deja elegir algo que iba a fallar al responder.
+Arriba, un panel de **proveedores** (`app/agents/providers-panel.tsx`)
+editable: habilitar o deshabilitar cada uno, su base URL cuando habla el
+formato de OpenAI, la curaduría de sus modelos (mostrar, ocultar, quitar,
+agregar a mano) y un botón **"Traer del proveedor"** que le pregunta al
+proveedor qué modelos sirve. Los nuevos llegan ocultos: medido acá, OpenAI
+reporta 124 y valen la pena 2.
+
+La **credencial es write-only** y eso no es una convención de UI, es lo que
+permite la API: no hay nada acá que pueda mostrar una clave guardada porque
+ningún endpoint la devuelve. Lo que se ve es de dónde viene la que está vigente
+(`env` o `stored`) y cuatro caracteres de ella, lo justo para distinguirla de
+otra. Si el servicio no tiene `SECRETS_KEY`, el formulario no se ofrece y la
+pantalla dice por qué en vez de dejar intentar algo que iba a fallar.
+
+Un proveedor sin credencial usable aparece apagado y sus modelos van `disabled`
+en el selector del agente — la consola no deja elegir algo que iba a fallar al
+responder.
 
 Dos secciones, porque los agentes no son iguales: el que **llama a un modelo**
 (`answer_synthesizer`) tiene formulario de persona, modelo, temperatura y tope

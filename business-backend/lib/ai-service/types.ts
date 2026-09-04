@@ -278,10 +278,25 @@ export interface ConfigSources {
 export interface ProviderConfig {
   id: string;
   label: string;
-  /** False when no API key is configured for it. || False si no tiene clave. */
+  /** Which adapter talks to it. || Qué adaptador le habla. */
+  wire: string;
+  wire_label: string;
+  base_url: string | null;
+  enabled: boolean;
+  /** Enabled AND holding a credential. || Habilitado Y con credencial. */
   available: boolean;
-  api_key_setting: string;
-  note: string;
+  /** The env var that overrides a stored key. || La env var que le gana a la guardada. */
+  api_key_setting: string | null;
+  /** 'env' | 'stored' | 'none'. */
+  key_source: string;
+  /**
+   * Last four characters of a STORED key, so two keys can be told apart.
+   * NEVER the key itself — no endpoint returns one.
+   * || Últimos cuatro caracteres de una clave GUARDADA. NUNCA la clave.
+   */
+  api_key_hint: string | null;
+  model_count: number;
+  note: string | null;
 }
 
 /** One selectable model, with what it accepts. || Un modelo elegible, con lo que acepta. */
@@ -291,6 +306,37 @@ export interface ModelConfig {
   available: boolean;
   /** False for models that reject sampling params (Claude actuales devuelven 400). */
   supports_temperature: boolean;
+  /** Hidden models stay stored so a refresh does not re-offer them. */
+  visible: boolean;
+}
+
+/** Body of `PUT /config/providers/{id}` — everything EXCEPT the credential. */
+export interface ProviderUpdate {
+  label?: string | null;
+  base_url?: string | null;
+  enabled?: boolean | null;
+  note?: string | null;
+}
+
+/** Body of `PUT /config/providers/{id}/models/{model}`. */
+export interface ModelUpdate {
+  supports_temperature?: boolean | null;
+  visible?: boolean | null;
+}
+
+/** Body of `POST /config/providers/{id}/models`. */
+export interface ModelCreate {
+  model: string;
+  supports_temperature?: boolean | null;
+}
+
+/** Result of asking a provider what it serves. || Resultado de preguntarle al proveedor. */
+export interface ModelRefreshResult {
+  provider: string;
+  reported: number;
+  /** Newly stored, hidden by default. || Nuevos, ocultos por default. */
+  added: string[];
+  already_known: number;
 }
 
 /** What an LLM-driven agent runs with right now. || Con qué corre ahora un agente con modelo. */
@@ -331,6 +377,14 @@ export interface ServiceConfig {
   models: ModelConfig[];
   persona_max_chars: number;
   agents: AgentConfig[];
+  /**
+   * False when the service has no SECRETS_KEY: credentials cannot be stored,
+   * so the console says so instead of offering a form that would fail.
+   * || False cuando el servicio no tiene SECRETS_KEY.
+   */
+  credential_storage_enabled: boolean;
+  /** The wire formats the service implements. || Los formatos de wire implementados. */
+  wires: Record<string, string>;
 }
 
 /**

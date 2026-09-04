@@ -115,45 +115,60 @@ def get_reranker():
 
 @lru_cache
 def get_answer_llm():
-    """Generation-LLM singleton on the service defaults.
+    """Generation LLM from the SETTINGS ONLY — no database.
 
-    No key, no generation: unlike the reranker there is no measured fallback,
-    so this raises the way ``get_embedder`` does. The provider comes from
-    ``ANSWER_PROVIDER``, so the default is not hard-wired to OpenAI either.
+    This is the offline path: `scripts/eval_generation.py` measures the same
+    generation function the endpoint calls, and it must not need Postgres or a
+    provider row to do it. Credentials come from the environment and the
+    provider from ``ANSWER_PROVIDER``, resolved against the built-in seed
+    registry.
 
-    || Singleton del LLM de generación con los defaults del servicio. Sin
-    clave no hay generación: a diferencia del reranker no hay un fallback
-    medido, así que esto falla como ``get_embedder``. El proveedor sale de
-    ``ANSWER_PROVIDER``, así que el default tampoco está clavado a OpenAI.
+    The endpoints do NOT use this: they go through
+    ``app.domain.profiles.synthesizer_runtime``, which reads the provider and
+    its credential from the database so a change in the console applies
+    without a restart.
+
+    || LLM de generación desde los SETTINGS SOLAMENTE, sin base. Es el camino
+    offline: el script de eval mide la misma función que llama el endpoint y no
+    puede necesitar Postgres para hacerlo. Los endpoints NO usan esto: pasan
+    por ``synthesizer_runtime``, que lee proveedor y credencial de la base.
     """
-    from app.foundation.llm.providers import build_llm
+    from app.domain.providers_store import ResolvedProvider
+    from app.foundation.llm.providers import build_llm_for, seed_provider
 
     settings = get_settings()
-    return build_llm(
-        settings.ANSWER_PROVIDER,
+    spec = seed_provider(settings.ANSWER_PROVIDER)
+    if spec is None:
+        raise RuntimeError(
+            f"ANSWER_PROVIDER={settings.ANSWER_PROVIDER!r} is not a built-in provider; the "
+            "settings-only path cannot resolve one added from the console. "
+            "|| ANSWER_PROVIDER no es un proveedor incorporado; el camino "
+            "solo-settings no puede resolver uno agregado desde la consola."
+        )
+
+    base_url = spec.base_url
+    if spec.id == "moonshot":
+        base_url = settings.MOONSHOT_BASE_URL or base_url
+
+    resolved = ResolvedProvider(
+        id=spec.id,
+        label=spec.label,
+        wire=spec.wire,
+        base_url=base_url,
+        enabled=True,
+        note=spec.note,
+        api_key_setting=spec.api_key_setting,
+        api_key=str(getattr(settings, spec.api_key_setting, "") or ""),
+        api_key_hint=None,
+        key_source="env",
+    )
+    return build_llm_for(
+        resolved,
         settings.ANSWER_MODEL,
         max_tokens=settings.ANSWER_MAX_TOKENS,
         temperature=settings.ANSWER_TEMPERATURE,
+        supports_temperature=True,
     )
-
-
-@lru_cache
-def build_answer_llm(provider: str, model: str, max_tokens: int, temperature: float | None):
-    """A generation LLM for one explicit provider and configuration.
-
-    ``get_answer_llm()`` is the default-settings case; this is the one an
-    agent profile asks for when it overrides the provider, the model or the
-    sampling. Cached per tuple so a request does not build a client per call —
-    the provider clients underneath are themselves single per provider.
-
-    || Un LLM de generación para un proveedor y una configuración explícitos.
-    ``get_answer_llm()`` es el caso de los defaults; este es el que pide un
-    perfil de agente. Cacheado por tupla, y los clientes de cada proveedor son
-    uno solo por proveedor.
-    """
-    from app.foundation.llm.providers import build_llm
-
-    return build_llm(provider, model, max_tokens=max_tokens, temperature=temperature)
 
 
 @lru_cache

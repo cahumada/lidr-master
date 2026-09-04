@@ -12,6 +12,8 @@ const UNREACHABLE: ServiceConfig = {
   models: [],
   persona_max_chars: 0,
   agents: [],
+  credential_storage_enabled: false,
+  wires: {},
 };
 
 export default async function AgentsPage() {

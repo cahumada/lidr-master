@@ -29,6 +29,7 @@ from app.foundation.persistence.database import Base, to_sync_url
 # || Se importa por el efecto de registrar las tablas en Base.metadata, que es
 # contra lo que compara autogenerate.
 from app.domain import profiles  # noqa: F401
+from app.domain import providers_store  # noqa: F401
 from app.generation.rag.store import models  # noqa: F401
 from app.ingestion import jobs  # noqa: F401
 

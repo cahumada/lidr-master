@@ -55,11 +55,19 @@ la pantalla dice por qué no tienen nada que configurar.
 
 El modelo de respuesta es **multi-proveedor**: OpenAI, Anthropic o Moonshot
 (Kimi), elegible por agente. Tres proveedores con dos adaptadores, porque
-Moonshot habla el formato de OpenAI; un proveedor sin clave se reporta no
-disponible en vez de fallar al responder; y `temperature` se trata como
-capacidad **del modelo** —los Claude de esta generación la rechazan con 400— así
-que se descarta para el que no la acepta en vez de romper la llamada. Los
-**embeddings no son multi-proveedor**: el corpus vive en el espacio de
+Moonshot habla el formato de OpenAI; y `temperature` se trata como capacidad
+**del modelo** —los Claude de esta generación la rechazan con 400— así que se
+descarta para el que no la acepta en vez de romper la llamada.
+
+Los proveedores y sus modelos **viven en la base**, editables desde la consola:
+agregar un modelo es una escritura y no un deploy, y hay un "traer del
+proveedor" que le pregunta el catálogo al proveedor mismo. Las credenciales se
+pueden guardar ahí **cifradas** con una master key que vive en el entorno, son
+**write-only** (ningún endpoint las devuelve) y una variable de entorno siempre
+les gana. Sin master key, guardar queda deshabilitado a propósito: no hay un
+modo "por ahora en texto plano".
+
+Los **embeddings no son multi-proveedor**: el corpus vive en el espacio de
 `text-embedding-3-small` y cambiarlo sería reconstruirlo.
 
 El detalle de cada agente y por qué el curso trae piezas que acá no se

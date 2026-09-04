@@ -184,6 +184,21 @@ export async function deleteJson<T>(
   return (await response.json()) as T;
 }
 
+/**
+ * DELETE that returns 204 with no body. Separate from `deleteJson` because
+ * calling `.json()` on an empty body throws, and "the delete worked" should
+ * not surface as a parse error.
+ * || DELETE que devuelve 204 sin body. Separada de `deleteJson` porque llamar
+ * `.json()` sobre un body vacío lanza, y "el borrado funcionó" no debería
+ * aparecer como un error de parseo.
+ */
+export async function deleteNoContent(
+  path: string,
+  timeoutMs?: number,
+): Promise<void> {
+  await call(path, { method: "DELETE", timeoutMs });
+}
+
 export async function postFormData<T>(
   path: string,
   form: FormData,
