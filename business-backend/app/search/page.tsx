@@ -1,3 +1,4 @@
+import { PageFrame, PageIntro } from "@/components/page-frame";
 import { facets } from "@/lib/ai-service/search";
 
 import { SearchConsole } from "./search-console";
@@ -17,17 +18,14 @@ export default async function SearchPage() {
   const initialFacets = await facets().catch(() => ({ modules: [], window_types: [] }));
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="max-w-2xl">
-        <h1 className="text-xl font-semibold tracking-tight">Búsqueda</h1>
-        <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-          Recuperación híbrida sobre el corpus indexado. Cada resultado llega
-          con su procedencia —documento, sección y qué rama lo encontró— porque
-          estas son reglas de negocio de seguros: una respuesta que no se puede
-          verificar contra su documento no sirve.
-        </p>
-      </div>
+    <PageFrame>
+      <PageIntro title="Búsqueda">
+        Recuperación híbrida sobre el corpus indexado. Cada resultado llega
+        con su procedencia —documento, sección y qué rama lo encontró— porque
+        estas son reglas de negocio de seguros: una respuesta que no se puede
+        verificar contra su documento no sirve.
+      </PageIntro>
       <SearchConsole initialFacets={initialFacets} />
-    </div>
+    </PageFrame>
   );
 }

@@ -1,23 +1,16 @@
-import type { Metadata } from "next";
-import Link from "next/link";
+import type { Metadata } from "next"
 
-import { ThemeToggle } from "@/components/theme-toggle";
-import { THEME_INIT_SCRIPT } from "@/lib/theme";
-import "./globals.css";
+import { AppHeader } from "@/components/app-header"
+import { AppSidebar } from "@/components/app-sidebar"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
+import { THEME_INIT_SCRIPT } from "@/lib/theme"
+import "./globals.css"
 
 export const metadata: Metadata = {
   title: "Visual Time RAG",
   description:
     "Consola del RAG sobre la documentación funcional de Visual Time.",
-};
-
-const NAV = [
-  { href: "/search", label: "Búsqueda" },
-  { href: "/answer", label: "Respuesta" },
-  { href: "/agents", label: "Agentes" },
-  { href: "/documents", label: "Ingesta" },
-  { href: "/corpus", label: "Corpus" },
-];
+}
 
 /**
  * No `next/font` here: the "Woken" theme brings its own font stacks
@@ -48,32 +41,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="bg-background text-foreground flex min-h-full flex-col">
-        <header className="border-b">
-          <nav className="mx-auto flex w-full max-w-6xl items-center gap-6 px-6 py-3">
-            <Link href="/" className="text-sm font-semibold tracking-tight">
-              Visual Time <span className="text-muted-foreground">RAG</span>
-            </Link>
-            <div className="flex items-center gap-1">
-              {NAV.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="text-muted-foreground hover:text-foreground rounded-md px-3 py-1.5 text-sm transition-colors"
-                >
-                  {item.label}
-                </Link>
-              ))}
+      <body className="bg-background text-foreground min-h-full">
+        <SidebarProvider>
+          <AppSidebar />
+          <SidebarInset className="overflow-hidden">
+            <AppHeader />
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {children}
             </div>
-            <div className="ml-auto">
-              <ThemeToggle />
-            </div>
-          </nav>
-        </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">
-          {children}
-        </main>
+          </SidebarInset>
+        </SidebarProvider>
       </body>
     </html>
-  );
+  )
 }

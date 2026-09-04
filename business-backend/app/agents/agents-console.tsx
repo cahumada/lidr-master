@@ -9,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ProvidersPanel } from "./providers-panel";
 import type {
   AgentConfig,
   ModelConfig,
@@ -403,29 +402,6 @@ export function AgentsConsole({ initialConfig }: { initialConfig: ServiceConfig 
     }));
   }
 
-  /**
-   * Re-read everything after a provider or model changed. A whole re-read and
-   * not a local patch: adding a credential changes which MODELS are usable,
-   * and a refresh can add dozens of rows — reconciling that by hand in the
-   * client would be a second copy of the service's own resolution rules.
-   * || Vuelve a leer todo después de un cambio de proveedor o modelo. Lectura
-   * completa y no un parche local: agregar una credencial cambia qué MODELOS
-   * quedan usables, y un refresh puede agregar decenas de filas.
-   */
-  async function reload() {
-    try {
-      const response = await fetch("/api/config", {
-        headers: { Accept: "application/json" },
-      });
-      if (!response.ok) return;
-      setConfig((await response.json()) as ServiceConfig);
-    } catch {
-      // A failed re-read leaves the last good view on screen, which is more
-      // useful than blanking it. || Una relectura fallida deja a la vista lo
-      // último bueno, que es más útil que vaciar la pantalla.
-    }
-  }
-
   if (config.agents.length === 0) {
     return (
       <Alert variant="destructive">
@@ -442,8 +418,6 @@ export function AgentsConsole({ initialConfig }: { initialConfig: ServiceConfig 
 
   return (
     <div className="flex flex-col gap-8">
-      <ProvidersPanel config={config} onChanged={reload} />
-
       <section className="flex flex-col gap-3">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">Configurables</h2>

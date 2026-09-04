@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import type { ModelConfig, ProviderConfig, ServiceConfig } from "@/lib/ai-service/types";
+import { pricingFor } from "@/lib/provider-docs";
+
+type VisibilityFilter = "all" | "offered" | "hidden";
 
 /**
  * Provider management: credentials, availability and the model catalog.
@@ -96,6 +100,18 @@ function ModelRow({
   );
 }
 
+function modelMatches(
+  model: ModelConfig,
+  query: string,
+  visibility: VisibilityFilter,
+): boolean {
+  if (visibility === "offered" && !model.visible) return false;
+  if (visibility === "hidden" && model.visible) return false;
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return model.model.toLowerCase().includes(needle);
+}
+
 function ProviderCard({
   provider,
   models,
@@ -113,7 +129,10 @@ function ProviderCard({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const [showModels, setShowModels] = useState(false);
+  const [modelQuery, setModelQuery] = useState("");
+  const [visibility, setVisibility] = useState<VisibilityFilter>("all");
 
   async function send(
     path: string,
@@ -151,24 +170,58 @@ function ProviderCard({
 
   const base = `/api/config/providers/${encodeURIComponent(provider.id)}`;
   const visibleCount = models.filter((model) => model.visible).length;
+  const pricing = pricingFor(provider.id);
+  const filtered = useMemo(
+    () => models.filter((model) => modelMatches(model, modelQuery, visibility)),
+    [models, modelQuery, visibility],
+  );
 
   return (
     <Card>
       <CardContent className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`h-2 w-2 shrink-0 rounded-full ${
-              provider.available ? "bg-emerald-500" : "bg-muted-foreground/30"
-            }`}
-          />
-          <h3 className="text-sm font-semibold">{provider.label}</h3>
-          <code className="text-muted-foreground text-[10px]">{provider.id}</code>
-          <Badge variant="outline" className="text-[10px]">
-            {provider.wire_label}
-          </Badge>
-          <Badge variant="secondary" className="text-[10px]">
-            {visibleCount} de {models.length} ofrecidos
-          </Badge>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-expanded={open}
+            aria-controls={`provider-body-${provider.id}`}
+            aria-label={open ? `Colapsar ${provider.label}` : `Expandir ${provider.label}`}
+            onClick={() => setOpen((current) => !current)}
+          >
+            <ChevronDown className={`transition-transform ${open ? "rotate-180" : ""}`} />
+          </Button>
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-left"
+            aria-expanded={open}
+            onClick={() => setOpen((current) => !current)}
+          >
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${
+                provider.available ? "bg-emerald-500" : "bg-muted-foreground/30"
+              }`}
+            />
+            <h3 className="text-sm font-semibold">{provider.label}</h3>
+            <code className="text-muted-foreground text-[10px]">{provider.id}</code>
+            <Badge variant="outline" className="text-[10px]">
+              {provider.wire_label}
+            </Badge>
+            <Badge variant="secondary" className="text-[10px]">
+              {visibleCount} de {models.length} ofrecidos
+            </Badge>
+          </button>
+          {pricing && (
+            <a
+              href={pricing.href}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary inline-flex items-center gap-1 text-xs underline-offset-4 hover:underline"
+            >
+              {pricing.label}
+              <ExternalLink className="size-3" />
+            </a>
+          )}
           <span className="ml-auto flex items-center gap-2">
             <Label htmlFor={`enabled-${provider.id}`} className="text-xs">
               Habilitado
@@ -182,6 +235,8 @@ function ProviderCard({
           </span>
         </div>
 
+        {open && (
+        <div id={`provider-body-${provider.id}`} className="flex flex-col gap-3">
         {provider.note && (
           <p className="text-muted-foreground text-xs leading-relaxed">{provider.note}</p>
         )}
@@ -317,6 +372,42 @@ function ProviderCard({
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-end gap-2">
               <div className="flex min-w-56 flex-1 flex-col gap-1">
+                <Label htmlFor={`filter-${provider.id}`} className="text-[10px]">
+                  Filtrar por nombre
+                </Label>
+                <Input
+                  id={`filter-${provider.id}`}
+                  value={modelQuery}
+                  placeholder="p. ej. gpt-5.6 · claude · kimi"
+                  onChange={(event) => setModelQuery(event.target.value)}
+                />
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {(
+                  [
+                    ["all", "Todos"],
+                    ["offered", "Ofrecidos"],
+                    ["hidden", "Ocultos"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    size="sm"
+                    variant={visibility === value ? "default" : "outline"}
+                    onClick={() => setVisibility(value)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <p className="text-muted-foreground text-[10px]">
+              {filtered.length} de {models.length} coinciden
+              {modelQuery.trim() ? ` con “${modelQuery.trim()}”` : ""}.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex min-w-56 flex-1 flex-col gap-1">
                 <Label htmlFor={`new-model-${provider.id}`} className="text-[10px]">
                   Agregar un modelo a mano
                 </Label>
@@ -340,33 +431,41 @@ function ProviderCard({
                 Agregar
               </Button>
             </div>
-            <ul className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">
-              {models.map((model) => (
-                <ModelRow
-                  key={model.model}
-                  model={model}
-                  pending={pending}
-                  onToggleVisible={() =>
-                    send(
-                      `${base}/models/${encodeURIComponent(model.model)}`,
-                      "PUT",
-                      { visible: !model.visible },
-                    )
-                  }
-                  onToggleTemperature={() =>
-                    send(
-                      `${base}/models/${encodeURIComponent(model.model)}`,
-                      "PUT",
-                      { supports_temperature: !model.supports_temperature },
-                    )
-                  }
-                  onDelete={() =>
-                    send(`${base}/models/${encodeURIComponent(model.model)}`, "DELETE")
-                  }
-                />
-              ))}
-            </ul>
+            {filtered.length === 0 ? (
+              <p className="text-muted-foreground rounded-md border px-2.5 py-3 text-xs">
+                Ningún modelo de {provider.label} coincide con este filtro.
+              </p>
+            ) : (
+              <ul className="flex max-h-72 flex-col gap-1.5 overflow-y-auto">
+                {filtered.map((model) => (
+                  <ModelRow
+                    key={model.model}
+                    model={model}
+                    pending={pending}
+                    onToggleVisible={() =>
+                      send(
+                        `${base}/models/${encodeURIComponent(model.model)}`,
+                        "PUT",
+                        { visible: !model.visible },
+                      )
+                    }
+                    onToggleTemperature={() =>
+                      send(
+                        `${base}/models/${encodeURIComponent(model.model)}`,
+                        "PUT",
+                        { supports_temperature: !model.supports_temperature },
+                      )
+                    }
+                    onDelete={() =>
+                      send(`${base}/models/${encodeURIComponent(model.model)}`, "DELETE")
+                    }
+                  />
+                ))}
+              </ul>
+            )}
           </div>
+        )}
+        </div>
         )}
       </CardContent>
     </Card>

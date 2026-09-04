@@ -1,3 +1,4 @@
+import { PageFrame, PageIntro } from "@/components/page-frame";
 import { toErrorPayload } from "@/lib/ai-service/base-client";
 import { corpusIdentity, jobs as recentJobs } from "@/lib/ai-service/corpus";
 import type { CorpusIdentity, IngestionJob } from "@/lib/ai-service/types";
@@ -32,20 +33,17 @@ export default async function CorpusPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="max-w-2xl">
-        <h1 className="text-xl font-semibold tracking-tight">Corpus</h1>
-        <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-          Trocear, embeber y cargar, sin una terminal. El trabajo corre en
-          segundo plano —trocear son segundos, embeber puede ser horas si cambió
-          el texto— así que lo que se ve acá es su estado, no su espera.
-        </p>
-      </div>
+    <PageFrame>
+      <PageIntro title="Corpus">
+        Trocear, embeber y cargar, sin una terminal. El trabajo corre en
+        segundo plano —trocear son segundos, embeber puede ser horas si cambió
+        el texto— así que lo que se ve acá es su estado, no su espera.
+      </PageIntro>
       <CorpusConsole
         identity={identity}
         initialJobs={initialJobs}
         identityError={identityError}
       />
-    </div>
+    </PageFrame>
   );
 }

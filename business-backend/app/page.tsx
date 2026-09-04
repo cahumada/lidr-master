@@ -1,15 +1,18 @@
-import Link from "next/link";
+import Link from "next/link"
 
+import { PageFrame } from "@/components/page-frame"
 import {
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@/components/ui/card"
+import { CONSOLE_MODULES } from "@/lib/console-nav"
 
 /**
- * Landing. One card per screen, and nothing else.
- * || Portada. Una tarjeta por pantalla, y nada más.
+ * Landing grouped by the three operator modules, not one card per screen.
+ * || Portada agrupada por los tres módulos del operador, no una tarjeta por
+ * pantalla.
  *
  * No live metrics on purpose: `p@10` and the corpus counts come from scripts
  * (`eval_retrieval.py`, `build_process_map.py`), not from an endpoint. A number
@@ -20,42 +23,9 @@ import {
  * siguiente corrida y no habría forma de notarlo.
  */
 
-const SCREENS = [
-  {
-    href: "/search",
-    title: "Búsqueda",
-    description:
-      "Preguntar en lenguaje natural o por código de transacción. Cada resultado llega con su procedencia: documento, sección y qué rama de recuperación lo encontró.",
-  },
-  {
-    href: "/answer",
-    title: "Respuesta agentica",
-    description:
-      "Grafo orquestador con revisión humana opcional: planifica, recupera, sintetiza y valida citas sobre el corpus indexado.",
-  },
-  {
-    href: "/agents",
-    title: "Agentes",
-    description:
-      "Qué hace cada agente del grafo, qué herramientas tiene permitidas, y con qué modelo y persona corre el que llama a un modelo.",
-  },
-  {
-    href: "/documents",
-    title: "Ingesta",
-    description:
-      "Subir un documento funcional y ver cómo queda troceado, con sus estadísticas. No persiste nada: es una vista previa del chunking.",
-  },
-  {
-    href: "/corpus",
-    title: "Corpus",
-    description:
-      "Reconstruir el corpus —trocear, embeber, cargar— y seguir el trabajo paso a paso, sin una terminal.",
-  },
-];
-
 export default function Home() {
   return (
-    <div className="flex flex-col gap-8">
+    <PageFrame>
       <div className="max-w-2xl">
         <h1 className="text-2xl font-semibold tracking-tight">
           Consola del RAG de Visual Time
@@ -63,26 +33,45 @@ export default function Home() {
         <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
           La documentación funcional de Visual Time —una especificación por
           transacción, treinta módulos de negocio— troceada, embebida e indexada
-          en pgvector. Esta consola es la cara visible del servicio: lo que
-          antes se probaba con <code className="text-xs">curl</code> o desde
-          Swagger.
+          en pgvector. Tres módulos: preguntar, operar el corpus, configurar
+          quién responde.
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {SCREENS.map((screen) => (
-          <Link key={screen.href} href={screen.href} className="group">
-            <Card className="hover:border-foreground/20 h-full transition-colors">
-              <CardHeader>
-                <CardTitle className="text-base">{screen.title}</CardTitle>
-                <CardDescription className="leading-relaxed">
-                  {screen.description}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
+      <div className="grid gap-6 lg:grid-cols-3">
+        {CONSOLE_MODULES.map((module) => (
+          <section key={module.id} className="flex flex-col gap-3">
+            <div>
+              <h2 className="text-sm font-semibold tracking-tight">
+                {module.title}
+              </h2>
+              <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+                {module.description}
+              </p>
+            </div>
+            <div className="flex flex-col gap-3">
+              {module.items.map((item) => {
+                const Icon = item.icon
+                return (
+                  <Link key={item.href} href={item.href} className="group">
+                    <Card className="hover:border-foreground/20 h-full transition-colors">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                          <Icon className="text-muted-foreground size-4" />
+                          {item.title}
+                        </CardTitle>
+                        <CardDescription className="leading-relaxed">
+                          {item.description}
+                        </CardDescription>
+                      </CardHeader>
+                    </Card>
+                  </Link>
+                )
+              })}
+            </div>
+          </section>
         ))}
       </div>
-    </div>
-  );
+    </PageFrame>
+  )
 }
