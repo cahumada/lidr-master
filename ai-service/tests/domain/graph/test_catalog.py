@@ -5,14 +5,16 @@
 
 from __future__ import annotations
 
-from app.domain.graph.build import AGENT_NODES
+from app.domain.graph.build import AGENT_NODES, build_answer_graph
 from app.domain.graph.catalog import (
     AGENT_KEYS,
     AGENT_SPECS,
     SYNTHESIZER_AGENT,
     agent_spec,
     configurable_agent_keys,
+    graph_flow,
 )
+from app.domain.graph.orchestrator import FALLBACK_LADDER
 from app.domain.graph.privilege import AGENT_PRIVILEGES, SEARCH_CORPUS_TOOL
 
 
@@ -63,3 +65,22 @@ class TestConfigurability:
 
     def test_an_unknown_key_has_no_spec(self):
         assert agent_spec("no_such_agent") is None
+
+
+class TestGraphFlowMatchesTheCompiledGraph:
+    def test_ladder_is_the_orchestrators_order(self):
+        assert graph_flow()["ladder"] == list(FALLBACK_LADDER)
+
+    def test_nodes_cover_exactly_the_catalog(self):
+        assert {node["key"] for node in graph_flow()["nodes"]} == set(AGENT_KEYS)
+
+    def test_edges_match_the_compiled_graph(self):
+        compiled = build_answer_graph()
+        served = {(edge["source"], edge["target"]) for edge in graph_flow()["edges"]}
+        compiled_edges = set()
+        for edge in compiled.get_graph().edges:
+            source = "START" if edge.source in {"__start__", "START"} else edge.source
+            target = "END" if edge.target in {"__end__", "END"} else edge.target
+            compiled_edges.add((source, target))
+
+        assert served == compiled_edges

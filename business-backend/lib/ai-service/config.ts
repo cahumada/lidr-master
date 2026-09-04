@@ -4,6 +4,7 @@ import { deleteJson, deleteNoContent, getJson, postJson, putJson } from "./base-
 import type {
   AgentConfig,
   AgentProfileUpdate,
+  NamedProfileWrite,
   ModelConfig,
   ModelCreate,
   ModelRefreshResult,
@@ -49,6 +50,36 @@ export function updateAgentProfile(
 export function deleteAgentProfile(agentKey: string): Promise<AgentConfig> {
   return deleteJson<AgentConfig>(
     `/config/agents/${encodeURIComponent(agentKey)}`,
+  );
+}
+
+export function createNamedProfile(
+  agentKey: string,
+  body: NamedProfileWrite,
+): Promise<AgentConfig> {
+  return postJson<AgentConfig>(
+    `/config/agents/${encodeURIComponent(agentKey)}/profiles`,
+    body,
+  );
+}
+
+export function updateNamedProfile(
+  agentKey: string,
+  profileId: string,
+  body: NamedProfileWrite,
+): Promise<AgentConfig> {
+  return putJson<AgentConfig>(
+    `/config/agents/${encodeURIComponent(agentKey)}/profiles/${encodeURIComponent(profileId)}`,
+    body,
+  );
+}
+
+export function deleteNamedProfile(
+  agentKey: string,
+  profileId: string,
+): Promise<AgentConfig> {
+  return deleteJson<AgentConfig>(
+    `/config/agents/${encodeURIComponent(agentKey)}/profiles/${encodeURIComponent(profileId)}`,
   );
 }
 

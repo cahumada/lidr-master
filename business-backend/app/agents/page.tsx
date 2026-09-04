@@ -17,6 +17,7 @@ const UNREACHABLE: ServiceConfig = {
   agents: [],
   credential_storage_enabled: false,
   wires: {},
+  flow: { nodes: [], edges: [], ladder: [] },
 }
 
 export default async function AgentsPage() {
@@ -32,9 +33,12 @@ export default async function AgentsPage() {
     <PageFrame>
       <PageIntro title="Tipos de agentes">
         El catálogo lo sirve el propio servicio IA (<code>GET /config</code>), no
-        una copia escrita acá: el rol, las herramientas permitidas y el modelo
-        vigente de cada agente salen del grafo que los corre. Los proveedores y
-        el catálogo de modelos viven en{" "}
+        una copia escrita acá. Acá se crean los perfiles nombrados del
+        sintetizador; el flujo del grafo se mira en{" "}
+        <Link href="/agents/flow" className="text-foreground underline-offset-4 hover:underline">
+          Configuración → Flujo
+        </Link>
+        . Los proveedores viven en{" "}
         <Link href="/models" className="text-foreground underline-offset-4 hover:underline">
           Configuración → Modelos
         </Link>

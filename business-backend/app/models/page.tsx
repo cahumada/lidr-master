@@ -15,6 +15,7 @@ const UNREACHABLE: ServiceConfig = {
   agents: [],
   credential_storage_enabled: false,
   wires: {},
+  flow: { nodes: [], edges: [], ladder: [] },
 }
 
 export default async function ModelsPage() {

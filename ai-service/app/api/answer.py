@@ -18,12 +18,12 @@ Acá no vive ni el prompt, ni la llamada al LLM, ni el chequeo de grounding.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.dependencies import get_embedder, get_reranker
-from app.domain.profiles import synthesizer_runtime
+from app.domain.profiles import ProfileResolutionError, synthesizer_runtime
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.answer import generate_answer
 from app.generation.rag.retrieval.hybrid import ALL_BRANCHES, DEFAULT_BRANCHES, HybridRetriever
@@ -56,7 +56,12 @@ async def answer(
     # || El perfil del sintetizador, si alguien configuró uno en la consola. Se
     # resuelve acá y no dentro de `generate_answer` para que el script de eval
     # siga llamando a la misma función con un LLM explícito y sin base.
-    llm, persona = await synthesizer_runtime(session, settings)
+    try:
+        llm, persona = await synthesizer_runtime(session, settings, profile_id=body.profile_id)
+    except ProfileResolutionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.detail
+        ) from exc
     return await generate_answer(
         body.question,
         filters=filters,

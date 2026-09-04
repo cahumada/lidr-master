@@ -144,7 +144,9 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
         async with session_factory() as session:
             retriever = HybridRetriever(ChunkRepository(session), get_embedder())
             reranker = get_reranker() if body.rerank else None
-            llm, persona = await synthesizer_runtime(session, get_settings())
+            llm, persona = await synthesizer_runtime(
+                session, get_settings(), profile_id=body.profile_id
+            )
             snapshot = await _stream_and_log(
                 thread_id,
                 body,

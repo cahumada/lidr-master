@@ -762,6 +762,11 @@ class AnswerRequest(BaseModel):
         description="Reorder the candidate set before building the prompt. "
         "|| Reordenar el candidato antes de armar el prompt.",
     )
+    profile_id: str | None = Field(
+        default=None,
+        description="Named synthesizer profile for this run. Absent = the default. "
+        "|| Perfil nombrado del sintetizador para esta corrida. Ausente = el default.",
+    )
 
 
 class AnswerResponse(BaseModel):

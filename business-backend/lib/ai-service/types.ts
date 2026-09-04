@@ -219,6 +219,8 @@ export interface AnswerRequest {
   lexical?: boolean;
   split?: boolean;
   rerank?: boolean;
+  /** Named synthesizer profile for this run. Absent = default. */
+  profile_id?: string | null;
 }
 
 export interface RoutingRecord {
@@ -368,8 +370,45 @@ export interface AgentConfig {
   /** Whether a profile changes what this agent does. || Si un perfil cambia lo que hace. */
   configurable: boolean;
   config_source: string | null;
-  /** Present only for LLM-driven agents. || Presente solo para agentes con modelo. */
+  /** The default profile in force, or settings if none. || El default vigente, o settings. */
   effective: EffectiveAgentConfig | null;
+  /** Named presets. Empty for deterministic agents. || Presets nombrados. */
+  profiles: NamedAgentProfile[];
+}
+
+/** One named preset of a configurable agent. || Un preset nombrado. */
+export interface NamedAgentProfile {
+  id: string;
+  name: string;
+  is_default: boolean;
+  persona: string | null;
+  provider: string | null;
+  model: string | null;
+  temperature: number | null;
+  max_tokens: number | null;
+  effective: EffectiveAgentConfig;
+}
+
+/** Topology of the compiled answer graph. || Topología del grafo compilado. */
+export interface GraphFlow {
+  nodes: GraphFlowNode[];
+  edges: GraphFlowEdge[];
+  ladder: string[];
+}
+
+export interface GraphFlowNode {
+  key: string;
+  label: string;
+  kind: string;
+  role: string;
+  explanation: string;
+  llm_driven: boolean;
+  tools: string[];
+}
+
+export interface GraphFlowEdge {
+  source: string;
+  target: string;
 }
 
 export interface ServiceConfig {
@@ -377,6 +416,7 @@ export interface ServiceConfig {
   models: ModelConfig[];
   persona_max_chars: number;
   agents: AgentConfig[];
+  flow: GraphFlow;
   /**
    * False when the service has no SECRETS_KEY: credentials cannot be stored,
    * so the console says so instead of offering a form that would fail.
@@ -396,6 +436,17 @@ export interface ServiceConfig {
 export interface AgentProfileUpdate {
   persona?: string | null;
   /** Travels together with `model` — the service validates the pair. */
+  provider?: string | null;
+  model?: string | null;
+  temperature?: number | null;
+  max_tokens?: number | null;
+}
+
+/** Body of create/update for a named profile. || Body de alta/edición de un perfil nombrado. */
+export interface NamedProfileWrite {
+  name: string;
+  is_default?: boolean;
+  persona?: string | null;
   provider?: string | null;
   model?: string | null;
   temperature?: number | null;

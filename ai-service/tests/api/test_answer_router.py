@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.dependencies import get_embedder, get_reranker
+from app.domain.profiles import ProfileResolutionError
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.answer import INSUFFICIENT_CONTEXT_MESSAGE
 from app.generation.rag.retrieval.hybrid import RetrievalResult, RetrievedChunk
@@ -88,7 +89,7 @@ def _use_llm(monkeypatch, llm: FakeLLM, persona: str | None = None) -> None:
     dos, y el contrato del endpoint no depende de eso.
     """
 
-    async def _runtime(session, settings):
+    async def _runtime(session, settings, *, profile_id=None):
         return llm, persona
 
     monkeypatch.setattr("app.api.answer.synthesizer_runtime", _runtime)
@@ -206,3 +207,40 @@ def test_the_prompt_the_llm_sees_carries_provenance(client, monkeypatch, llm):
 
     assert "[CA014 · Validaciones]" in llm.calls[0]["user"]
     assert "[document_id · section]" in llm.calls[0]["system"]
+
+
+def test_an_unknown_profile_id_is_refused(client, monkeypatch, llm):
+    async def _runtime(session, settings, *, profile_id=None):
+        if profile_id:
+            raise ProfileResolutionError(
+                f"No profile {profile_id!r}. || No existe el perfil {profile_id!r}."
+            )
+        return llm, None
+
+    monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
+    monkeypatch.setattr("app.api.answer.synthesizer_runtime", _runtime)
+
+    response = client.post(
+        "/answer", json={"question": "tope de capital", "profile_id": "missing"}
+    )
+
+    assert response.status_code == 422
+    assert "perfil" in response.json()["detail"]
+
+
+def test_a_profile_id_is_forwarded_to_the_runtime(client, monkeypatch, llm):
+    seen: list[str | None] = []
+
+    async def _runtime(session, settings, *, profile_id=None):
+        seen.append(profile_id)
+        return llm, "Sé breve."
+
+    monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
+    monkeypatch.setattr("app.api.answer.synthesizer_runtime", _runtime)
+
+    response = client.post(
+        "/answer", json={"question": "tope de capital", "profile_id": "abc-1"}
+    )
+
+    assert response.status_code == 200
+    assert seen == ["abc-1"]

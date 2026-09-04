@@ -49,7 +49,7 @@ def stub_synthesizer_runtime(monkeypatch):
         def complete(self, *, system: str, user: str) -> str:
             return "respuesta"
 
-    async def _runtime(session, settings):
+    async def _runtime(session, settings, *, profile_id=None):
         return _StubLLM(), None
 
     for target in (

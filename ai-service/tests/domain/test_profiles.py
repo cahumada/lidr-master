@@ -5,8 +5,22 @@
 
 from __future__ import annotations
 
+import asyncio
+from datetime import UTC, datetime
+
+import pytest
+
 from app.config import Settings
-from app.domain.profiles import AgentProfileRow, resolve_agent_config
+from app.domain.profiles import (
+    AgentProfileRow,
+    ProfileResolutionError,
+    ProfileValidationError,
+    assert_name_available,
+    load_synthesizer_profile,
+    normalize_profile_name,
+    pick_promoted_default,
+    resolve_agent_config,
+)
 
 
 def _settings() -> Settings:
@@ -115,3 +129,85 @@ class TestResolveAgentConfig:
 
         assert effective.persona is None
         assert effective.sources["persona"] == "unset"
+
+
+class TestNamedProfileHelpers:
+    def test_a_blank_name_is_rejected(self):
+        with pytest.raises(ProfileValidationError):
+            normalize_profile_name("   ")
+
+    def test_a_duplicate_name_is_rejected_case_insensitively(self):
+        existing = [AgentProfileRow(id="1", agent_key="answer_synthesizer", name="Conservador")]
+
+        with pytest.raises(ProfileValidationError):
+            assert_name_available(existing, "conservador")
+
+    def test_renaming_a_profile_to_its_own_name_is_allowed(self):
+        existing = [AgentProfileRow(id="1", agent_key="answer_synthesizer", name="Conservador")]
+
+        assert_name_available(existing, "Conservador", exclude_id="1")
+
+    def test_deleting_the_default_promotes_the_most_recent_sibling(self):
+        older = AgentProfileRow(
+            id="old",
+            agent_key="answer_synthesizer",
+            name="A",
+            updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        newer = AgentProfileRow(
+            id="new",
+            agent_key="answer_synthesizer",
+            name="B",
+            updated_at=datetime(2026, 6, 1, tzinfo=UTC),
+        )
+
+        assert pick_promoted_default([older, newer]) is newer
+
+    def test_an_empty_list_promotes_nothing(self):
+        assert pick_promoted_default([]) is None
+
+
+class TestLoadSynthesizerProfile:
+    def test_an_unknown_id_is_an_error_not_a_fallback(self, monkeypatch):
+        class _Repo:
+            def __init__(self, session) -> None:
+                pass
+
+            async def get_by_id(self, profile_id):
+                return None
+
+        monkeypatch.setattr("app.domain.profiles.AgentProfileRepository", _Repo)
+
+        with pytest.raises(ProfileResolutionError):
+            asyncio.run(load_synthesizer_profile(None, profile_id="missing"))
+
+    def test_a_profile_of_another_agent_is_refused(self, monkeypatch):
+        foreign = AgentProfileRow(id="x", agent_key="query_planner", name="Nope")
+
+        class _Repo:
+            def __init__(self, session) -> None:
+                pass
+
+            async def get_by_id(self, profile_id):
+                return foreign
+
+        monkeypatch.setattr("app.domain.profiles.AgentProfileRepository", _Repo)
+
+        with pytest.raises(ProfileResolutionError):
+            asyncio.run(load_synthesizer_profile(None, profile_id="x"))
+
+    def test_absent_id_uses_the_default(self, monkeypatch):
+        default = AgentProfileRow(
+            id="d", agent_key="answer_synthesizer", name="Default", is_default=True
+        )
+
+        class _Repo:
+            def __init__(self, session) -> None:
+                pass
+
+            async def default_for(self, agent_key):
+                return default
+
+        monkeypatch.setattr("app.domain.profiles.AgentProfileRepository", _Repo)
+
+        assert asyncio.run(load_synthesizer_profile(None)) is default

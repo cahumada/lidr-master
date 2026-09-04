@@ -3,6 +3,7 @@ import {
   Cpu,
   Database,
   FileUp,
+  GitBranch,
   MessageSquare,
   Search,
   type LucideIcon,
@@ -83,8 +84,15 @@ export const CONSOLE_MODULES: ConsoleModule[] = [
         href: "/agents",
         title: "Agentes",
         description:
-          "Tipos del grafo: rol, herramientas y persona del que sintetiza.",
+          "Tipos del grafo y perfiles nombrados del que sintetiza.",
         icon: Bot,
+      },
+      {
+        href: "/agents/flow",
+        title: "Flujo",
+        description:
+          "Diagrama del grafo: nodos, aristas y la escalera de fallback.",
+        icon: GitBranch,
       },
       {
         href: "/models",

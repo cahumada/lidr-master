@@ -35,11 +35,18 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
-from app.domain.graph.catalog import AGENT_SPECS, AgentSpec, agent_spec, configurable_agent_keys
+from app.domain.graph.catalog import (
+    AGENT_SPECS,
+    AgentSpec,
+    agent_spec,
+    configurable_agent_keys,
+    graph_flow,
+)
 from app.domain.profiles import (
     AgentProfileRepository,
     AgentProfileRow,
     EffectiveAgentConfig,
+    ProfileValidationError,
     resolve_agent_config,
 )
 from app.domain.providers_store import (
@@ -157,6 +164,20 @@ class EffectiveConfigView(BaseModel):
     sources: ConfigSources
 
 
+class NamedProfileView(BaseModel):
+    """One named preset of a configurable agent. || Un preset nombrado de un agente configurable."""
+
+    id: str
+    name: str
+    is_default: bool
+    persona: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    temperature: float | None = None
+    max_tokens: int | None = None
+    effective: EffectiveConfigView
+
+
 class AgentConfigView(BaseModel):
     """One agent as the console shows it. || Un agente como lo muestra la consola."""
 
@@ -184,7 +205,45 @@ class AgentConfigView(BaseModel):
     )
     effective: EffectiveConfigView | None = Field(
         default=None,
-        description="Present only for LLM-driven agents. || Presente solo para agentes con modelo.",
+        description="The default profile in force, or settings if none. "
+        "Present only for LLM-driven agents. || El perfil default vigente, o settings.",
+    )
+    profiles: list[NamedProfileView] = Field(
+        default_factory=list,
+        description="Named presets. Empty for deterministic agents. "
+        "|| Presets nombrados. Vacío en los deterministas.",
+    )
+
+
+class FlowNodeView(BaseModel):
+    """One node of the answer graph, as the flow screen draws it."""
+
+    key: str
+    label: str
+    kind: str
+    role: str
+    explanation: str
+    llm_driven: bool
+    tools: list[str] = Field(default_factory=list)
+
+
+class FlowEdgeView(BaseModel):
+    """One connector the compiled graph actually has. || Un conector que el grafo compilado tiene."""
+
+    source: str
+    target: str
+
+
+class GraphFlowView(BaseModel):
+    """Topology served so the console does not declare the graph again.
+
+    || Topología servida para que la consola no declare el grafo otra vez.
+    """
+
+    nodes: list[FlowNodeView]
+    edges: list[FlowEdgeView]
+    ladder: list[str] = Field(
+        description="The orchestrator's fallback order. || La escalera de fallback del orquestador."
     )
 
 
@@ -210,6 +269,10 @@ class ServiceConfigResponse(BaseModel):
         default_factory=dict,
         description="The wire formats this service implements, for adding a provider. "
         "|| Los formatos de wire que este servicio implementa.",
+    )
+    flow: GraphFlowView = Field(
+        description="Compiled-graph topology for the flow screen. "
+        "|| Topología del grafo compilado, para la pantalla de flujo.",
     )
 
 
@@ -241,33 +304,80 @@ class AgentProfileUpdate(BaseModel):
     max_tokens: int | None = Field(default=None, ge=1, le=8192)
 
 
+class NamedProfileWrite(BaseModel):
+    """Body of create/update for a named profile. || Body de alta/edición de un perfil nombrado."""
+
+    name: str = Field(
+        min_length=1,
+        max_length=64,
+        description="Unique among this agent's profiles. || Único entre los perfiles de este agente.",
+    )
+    is_default: bool = False
+    persona: str | None = Field(default=None)
+    provider: str | None = None
+    model: str | None = None
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    max_tokens: int | None = Field(default=None, ge=1, le=8192)
+
+
+def _effective_view(
+    profile: AgentProfileRow | None,
+    settings: Settings,
+    resolved: dict[str, ResolvedProvider],
+    capabilities: dict[tuple[str, str], bool],
+) -> EffectiveConfigView:
+    provisional: EffectiveAgentConfig = resolve_agent_config(profile, settings)
+    merged = resolve_agent_config(
+        profile,
+        settings,
+        supports_temperature=capabilities.get((provisional.provider, provisional.model)),
+    )
+    provider = resolved.get(merged.provider)
+    return EffectiveConfigView(
+        provider=merged.provider,
+        model=merged.model,
+        temperature=merged.temperature,
+        max_tokens=merged.max_tokens,
+        persona=merged.persona,
+        supports_temperature=merged.supports_temperature,
+        provider_available=bool(provider and provider.available),
+        sources=ConfigSources(**merged.sources),
+    )
+
+
+def _named_profile_view(
+    row: AgentProfileRow,
+    settings: Settings,
+    resolved: dict[str, ResolvedProvider],
+    capabilities: dict[tuple[str, str], bool],
+) -> NamedProfileView:
+    return NamedProfileView(
+        id=row.id,
+        name=row.name,
+        is_default=row.is_default,
+        persona=row.persona,
+        provider=row.provider,
+        model=row.model,
+        temperature=row.temperature,
+        max_tokens=row.max_tokens,
+        effective=_effective_view(row, settings, resolved, capabilities),
+    )
+
+
 def _agent_view(
     spec: AgentSpec,
-    profile: AgentProfileRow | None,
+    profiles: list[AgentProfileRow],
     settings: Settings,
     resolved: dict[str, ResolvedProvider],
     capabilities: dict[tuple[str, str], bool],
 ) -> AgentConfigView:
     configurable = spec.key in configurable_agent_keys()
+    default = next((row for row in profiles if row.is_default), None)
     effective: EffectiveConfigView | None = None
+    named: list[NamedProfileView] = []
     if spec.llm_driven:
-        provisional: EffectiveAgentConfig = resolve_agent_config(profile, settings)
-        merged = resolve_agent_config(
-            profile,
-            settings,
-            supports_temperature=capabilities.get((provisional.provider, provisional.model)),
-        )
-        provider = resolved.get(merged.provider)
-        effective = EffectiveConfigView(
-            provider=merged.provider,
-            model=merged.model,
-            temperature=merged.temperature,
-            max_tokens=merged.max_tokens,
-            persona=merged.persona,
-            supports_temperature=merged.supports_temperature,
-            provider_available=bool(provider and provider.available),
-            sources=ConfigSources(**merged.sources),
-        )
+        effective = _effective_view(default, settings, resolved, capabilities)
+        named = [_named_profile_view(row, settings, resolved, capabilities) for row in profiles]
     return AgentConfigView(
         key=spec.key,
         label=spec.label,
@@ -279,7 +389,31 @@ def _agent_view(
         configurable=configurable,
         config_source=spec.config_source,
         effective=effective,
+        profiles=named,
     )
+
+
+async def _agent_response(
+    spec: AgentSpec,
+    session: AsyncSession,
+    settings: Settings,
+) -> AgentConfigView:
+    _, resolved, _, capabilities = await _load(session, settings)
+    rows = await AgentProfileRepository(session).list_for(spec.key)
+    return _agent_view(spec, rows, settings, resolved, capabilities)
+
+
+def _validated_persona(persona: str | None, settings: Settings) -> str | None:
+    cleaned = (persona or "").strip() or None
+    if cleaned and len(cleaned) > settings.AGENT_PERSONA_MAX_CHARS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"persona is {len(cleaned)} chars, over the "
+                f"{settings.AGENT_PERSONA_MAX_CHARS} cap. || La persona excede el tope."
+            ),
+        )
+    return cleaned
 
 
 def _provider_view(provider: ResolvedProvider, model_count: int) -> ProviderView:
@@ -420,6 +554,7 @@ async def read_config(
     for row in models:
         per_provider[row.provider_id] = per_provider.get(row.provider_id, 0) + 1
 
+    served_flow = graph_flow()
     return ServiceConfigResponse(
         providers=[
             _provider_view(provider, per_provider.get(provider.id, 0))
@@ -428,11 +563,12 @@ async def read_config(
         models=[_model_view(row, resolved) for row in models],
         persona_max_chars=settings.AGENT_PERSONA_MAX_CHARS,
         agents=[
-            _agent_view(spec, profiles.get(spec.key), settings, resolved, capabilities)
+            _agent_view(spec, profiles.get(spec.key, []), settings, resolved, capabilities)
             for spec in AGENT_SPECS
         ],
         credential_storage_enabled=secrets_enabled(),
         wires=dict(WIRE_LABELS),
+        flow=GraphFlowView.model_validate(served_flow),
     )
 
 
@@ -442,23 +578,19 @@ async def update_agent_profile(
     body: AgentProfileUpdate,
     session: AsyncSession = Depends(get_async_session),  # noqa: B008
 ) -> AgentConfigView:
-    """Replace ``agent_key``'s profile. Null fields fall back to the defaults.
+    """Update the default named profile (creates ``Default`` if none exists).
 
-    || Reemplaza el perfil de ``agent_key``. Los campos nulos caen a los defaults.
+    Alias kept so the previous console form and its tests keep working. New
+    callers should use ``POST/PUT /config/agents/{key}/profiles``.
+
+    || Actualiza el perfil default nombrado (crea ``Default`` si no hay). Alias
+    para que el formulario anterior y sus tests sigan funcionando.
     """
     settings = get_settings()
     spec = _require_configurable(agent_key)
-    _, resolved, models, capabilities = await _load(session, settings)
+    _, resolved, models, _ = await _load(session, settings)
 
-    persona = (body.persona or "").strip() or None
-    if persona and len(persona) > settings.AGENT_PERSONA_MAX_CHARS:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=(
-                f"persona is {len(persona)} chars, over the "
-                f"{settings.AGENT_PERSONA_MAX_CHARS} cap. || La persona excede el tope."
-            ),
-        )
+    persona = _validated_persona(body.persona, settings)
     provider, model = await _validated_pair(body.provider, body.model, settings, resolved, models)
 
     profile = await AgentProfileRepository(session).upsert(
@@ -472,13 +604,14 @@ async def update_agent_profile(
     log.info(
         "agent_profile_updated",
         agent=agent_key,
+        profile_id=profile.id,
         provider=provider,
         model=model,
         temperature=body.temperature,
         max_tokens=body.max_tokens,
         persona_chars=len(persona or ""),
     )
-    return _agent_view(spec, profile, settings, resolved, capabilities)
+    return await _agent_response(spec, session, settings)
 
 
 @router.delete("/agents/{agent_key}", response_model=AgentConfigView)
@@ -486,16 +619,126 @@ async def delete_agent_profile(
     agent_key: str,
     session: AsyncSession = Depends(get_async_session),  # noqa: B008
 ) -> AgentConfigView:
-    """Drop ``agent_key``'s profile so it runs on the service defaults again.
+    """Drop every named profile of ``agent_key`` so it runs on Settings again.
 
-    || Borra el perfil de ``agent_key`` para que vuelva a correr con los defaults.
+    || Borra todos los perfiles nombrados de ``agent_key`` para volver a Settings.
     """
     settings = get_settings()
     spec = _require_configurable(agent_key)
-    _, resolved, _, capabilities = await _load(session, settings)
     deleted = await AgentProfileRepository(session).delete(agent_key)
     log.info("agent_profile_deleted", agent=agent_key, existed=deleted)
-    return _agent_view(spec, None, settings, resolved, capabilities)
+    return await _agent_response(spec, session, settings)
+
+
+async def _write_named_profile_knobs(
+    body: NamedProfileWrite,
+    settings: Settings,
+    session: AsyncSession,
+) -> tuple[str, str | None, str | None, str | None, float | None, int | None]:
+    _, resolved, models, _ = await _load(session, settings)
+    persona = _validated_persona(body.persona, settings)
+    provider, model = await _validated_pair(body.provider, body.model, settings, resolved, models)
+    return body.name, persona, provider, model, body.temperature, body.max_tokens
+
+
+@router.post("/agents/{agent_key}/profiles", response_model=AgentConfigView)
+async def create_named_profile(
+    agent_key: str,
+    body: NamedProfileWrite,
+    session: AsyncSession = Depends(get_async_session),  # noqa: B008
+) -> AgentConfigView:
+    """Create a named profile for a configurable agent.
+
+    || Crea un perfil nombrado de un agente configurable.
+    """
+    settings = get_settings()
+    spec = _require_configurable(agent_key)
+    name, persona, provider, model, temperature, max_tokens = await _write_named_profile_knobs(
+        body, settings, session
+    )
+    try:
+        created = await AgentProfileRepository(session).create(
+            agent_key,
+            name=name,
+            is_default=body.is_default,
+            persona=persona,
+            provider=provider,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except ProfileValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.detail
+        ) from exc
+    log.info("named_profile_created", agent=agent_key, profile_id=created.id, name=created.name)
+    return await _agent_response(spec, session, settings)
+
+
+@router.put("/agents/{agent_key}/profiles/{profile_id}", response_model=AgentConfigView)
+async def update_named_profile(
+    agent_key: str,
+    profile_id: str,
+    body: NamedProfileWrite,
+    session: AsyncSession = Depends(get_async_session),  # noqa: B008
+) -> AgentConfigView:
+    """Replace a named profile. 404 if it is missing or belongs to another agent.
+
+    || Reemplaza un perfil nombrado. 404 si falta o es de otro agente.
+    """
+    settings = get_settings()
+    spec = _require_configurable(agent_key)
+    repo = AgentProfileRepository(session)
+    existing = await repo.get_by_id(profile_id)
+    if existing is None or existing.agent_key != agent_key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No profile {profile_id!r} for {agent_key!r}. || No existe ese perfil.",
+        )
+    name, persona, provider, model, temperature, max_tokens = await _write_named_profile_knobs(
+        body, settings, session
+    )
+    try:
+        await repo.update(
+            profile_id,
+            name=name,
+            is_default=body.is_default,
+            persona=persona,
+            provider=provider,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except ProfileValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.detail
+        ) from exc
+    log.info("named_profile_updated", agent=agent_key, profile_id=profile_id, name=name)
+    return await _agent_response(spec, session, settings)
+
+
+@router.delete("/agents/{agent_key}/profiles/{profile_id}", response_model=AgentConfigView)
+async def delete_named_profile(
+    agent_key: str,
+    profile_id: str,
+    session: AsyncSession = Depends(get_async_session),  # noqa: B008
+) -> AgentConfigView:
+    """Delete one named profile. Promotes a sibling if it was the default.
+
+    || Borra un perfil nombrado. Promociona a un hermano si era el default.
+    """
+    settings = get_settings()
+    spec = _require_configurable(agent_key)
+    repo = AgentProfileRepository(session)
+    existing = await repo.get_by_id(profile_id)
+    if existing is None or existing.agent_key != agent_key:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No profile {profile_id!r} for {agent_key!r}. || No existe ese perfil.",
+        )
+    await repo.delete_one(profile_id)
+    log.info("named_profile_deleted", agent=agent_key, profile_id=profile_id)
+    return await _agent_response(spec, session, settings)
 
 
 # --- Proveedores || Providers -------------------------------------------------

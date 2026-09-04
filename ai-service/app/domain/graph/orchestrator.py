@@ -19,12 +19,15 @@ from app.domain.schemas import AnswerAgentState
 
 log = structlog.get_logger()
 
-_ORDER = [
+# Exported so the catalog can serve the same ladder the orchestrator uses.
+# || Exportado para que el catálogo sirva la misma escalera que el orquestador.
+FALLBACK_LADDER = (
     "query_planner",
     "evidence_retriever",
     "answer_synthesizer",
     "citation_validator",
-]
+)
+_ORDER = list(FALLBACK_LADDER)
 
 
 def _already_ran(agent: str, state: AnswerAgentState) -> bool:

@@ -44,7 +44,11 @@ from app.domain.graph.runner import (
     run_agentic_background,
     thread_config,
 )
-from app.domain.profiles import synthesizer_runtime
+from app.domain.profiles import (
+    ProfileResolutionError,
+    load_synthesizer_profile,
+    synthesizer_runtime,
+)
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.retrieval.hybrid import HybridRetriever
 from app.generation.rag.schemas import AnswerRequest, SearchHit
@@ -202,7 +206,14 @@ async def answer_agentic(
     thread_id = str(uuid4())
     retriever = HybridRetriever(ChunkRepository(session), get_embedder())
     reranker = get_reranker() if body.rerank else None
-    llm, persona = await synthesizer_runtime(session, get_settings())
+    try:
+        llm, persona = await synthesizer_runtime(
+            session, get_settings(), profile_id=body.profile_id
+        )
+    except ProfileResolutionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.detail
+        ) from exc
     config = thread_config(
         thread_id,
         retriever=retriever,
@@ -311,17 +322,30 @@ async def answer_agentic_resume(
     response_model=AnswerAgenticStartResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def answer_agentic_start(body: AnswerRequest, request: Request):
+async def answer_agentic_start(
+    body: AnswerRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),  # noqa: B008
+):
     """Schedule the agentic answer graph in the background and return at once.
 
     Poll ``GET /{thread_id}/progress`` to watch the four agents work and to
     read the final answer (or the human-review pause) once it lands.
 
-    || Agenda el grafo agentico en background y vuelve al instante. Consultar
-    ``GET /{thread_id}/progress`` para ver a los cuatro agentes trabajar y
-    leer la respuesta final (o la pausa de revisión humana) cuando llegue.
+    A bad ``profile_id`` is rejected here, before the graph is scheduled,
+    so the client gets 422 instead of a run that fails on first poll.
+
+    || Agenda el grafo agentico en background y vuelve al instante. Un
+    ``profile_id`` inválido se rechaza acá, antes de agendar el grafo.
     """
     graph = _require_graph(request)
+    if body.profile_id:
+        try:
+            await load_synthesizer_profile(session, profile_id=body.profile_id)
+        except ProfileResolutionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.detail
+            ) from exc
     thread_id = str(uuid4())
 
     task = asyncio.create_task(run_agentic_background(thread_id, body, graph))

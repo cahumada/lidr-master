@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from typing import ClassVar
+from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
@@ -23,7 +24,13 @@ from fastapi.testclient import TestClient
 
 from app.api.config import router as config_router
 from app.config import Settings
-from app.domain.profiles import AgentProfileRow
+from app.domain.profiles import (
+    DEFAULT_PROFILE_NAME,
+    AgentProfileRow,
+    assert_name_available,
+    normalize_profile_name,
+    pick_promoted_default,
+)
 from app.domain.providers_store import ProviderModelRow, ProviderRow
 from app.foundation.persistence.database import get_async_session
 
@@ -114,26 +121,132 @@ class FakeProfileRepository:
     def __init__(self, session) -> None:
         self._session = session
 
+    def _of(self, agent_key: str) -> list[AgentProfileRow]:
+        return [row for row in self.rows.values() if row.agent_key == agent_key]
+
     async def all(self):
-        return dict(self.rows)
+        grouped: dict[str, list[AgentProfileRow]] = {}
+        for row in self.rows.values():
+            grouped.setdefault(row.agent_key, []).append(row)
+        return grouped
 
-    async def get(self, agent_key):
-        return self.rows.get(agent_key)
+    async def list_for(self, agent_key):
+        return self._of(agent_key)
 
-    async def upsert(self, agent_key, *, persona, provider, model, temperature, max_tokens):
+    async def get_by_id(self, profile_id):
+        return self.rows.get(profile_id)
+
+    async def default_for(self, agent_key):
+        return next((row for row in self._of(agent_key) if row.is_default), None)
+
+    async def create(
+        self,
+        agent_key,
+        *,
+        name,
+        is_default,
+        persona,
+        provider,
+        model,
+        temperature,
+        max_tokens,
+    ):
+        cleaned = normalize_profile_name(name)
+        existing = self._of(agent_key)
+        assert_name_available(existing, cleaned)
+        if not existing:
+            is_default = True
+        if is_default:
+            for row in existing:
+                row.is_default = False
         row = AgentProfileRow(
+            id=str(uuid4()),
             agent_key=agent_key,
+            name=cleaned,
+            is_default=is_default,
             persona=persona,
             provider=provider,
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        self.rows[agent_key] = row
+        self.rows[row.id] = row
         return row
 
+    async def update(
+        self,
+        profile_id,
+        *,
+        name,
+        is_default,
+        persona,
+        provider,
+        model,
+        temperature,
+        max_tokens,
+    ):
+        row = self.rows.get(profile_id)
+        if row is None:
+            return None
+        cleaned = normalize_profile_name(name)
+        assert_name_available(self._of(row.agent_key), cleaned, exclude_id=row.id)
+        was_default = row.is_default
+        row.name = cleaned
+        row.persona = persona
+        row.provider = provider
+        row.model = model
+        row.temperature = temperature
+        row.max_tokens = max_tokens
+        if is_default:
+            for sibling in self._of(row.agent_key):
+                sibling.is_default = sibling.id == row.id
+        else:
+            row.is_default = False
+            if was_default:
+                promoted = pick_promoted_default(
+                    [item for item in self._of(row.agent_key) if item.id != row.id]
+                )
+                if promoted is not None:
+                    promoted.is_default = True
+        return row
+
+    async def delete_one(self, profile_id):
+        row = self.rows.pop(profile_id, None)
+        if row is None:
+            return None
+        if row.is_default:
+            promoted = pick_promoted_default(self._of(row.agent_key))
+            if promoted is not None:
+                promoted.is_default = True
+        return row
+
+    async def upsert(self, agent_key, *, persona, provider, model, temperature, max_tokens):
+        current = await self.default_for(agent_key)
+        if current is None:
+            return await self.create(
+                agent_key,
+                name=DEFAULT_PROFILE_NAME,
+                is_default=True,
+                persona=persona,
+                provider=provider,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        current.persona = persona
+        current.provider = provider
+        current.model = model
+        current.temperature = temperature
+        current.max_tokens = max_tokens
+        return current
+
     async def delete(self, agent_key):
-        return self.rows.pop(agent_key, None) is not None
+        victims = [key for key, row in self.rows.items() if row.agent_key == agent_key]
+        if not victims:
+            return False
+        for key in victims:
+            del self.rows[key]
+        return True
 
 
 class FakeProviderRepository:
@@ -243,10 +356,14 @@ def client(monkeypatch):
     FakeProviderRepository.provider_rows = _provider_rows()
     FakeProviderRepository.model_rows = _model_rows()
 
+    from app.foundation import secrets
+
     monkeypatch.setattr("app.api.config.AgentProfileRepository", FakeProfileRepository)
     monkeypatch.setattr("app.api.config.ProviderRepository", FakeProviderRepository)
     monkeypatch.setattr("app.api.config.get_settings", _settings)
+    monkeypatch.setattr("app.foundation.secrets.get_settings", _settings)
     monkeypatch.setattr("app.domain.profiles.AgentProfileRepository", FakeProfileRepository)
+    secrets._fernet.cache_clear()
 
     async def no_session():
         yield None
@@ -525,6 +642,108 @@ class TestModelEndpoints:
 
     def test_deleting_an_unknown_model_is_a_404(self, client):
         assert client.delete("/config/providers/openai/models/nope").status_code == 404
+
+
+class TestNamedProfiles:
+    def test_creating_a_named_profile_lists_it_on_the_agent(self, client):
+        response = client.post(
+            "/config/agents/answer_synthesizer/profiles",
+            json={"name": "Conservador", "persona": "Sé breve y cita."},
+        )
+
+        assert response.status_code == 200
+        profiles = response.json()["profiles"]
+        assert len(profiles) == 1
+        assert profiles[0]["name"] == "Conservador"
+        assert profiles[0]["is_default"] is True
+        assert profiles[0]["effective"]["sources"]["persona"] == "profile"
+
+    def test_a_duplicate_name_is_refused(self, client):
+        client.post(
+            "/config/agents/answer_synthesizer/profiles",
+            json={"name": "Conservador"},
+        )
+
+        response = client.post(
+            "/config/agents/answer_synthesizer/profiles",
+            json={"name": "conservador"},
+        )
+
+        assert response.status_code == 422
+        assert "nombre" in response.json()["detail"]
+
+    def test_marking_a_profile_default_unsets_the_previous_one(self, client):
+        first = client.post(
+            "/config/agents/answer_synthesizer/profiles",
+            json={"name": "Conservador"},
+        ).json()["profiles"][0]
+        second = client.post(
+            "/config/agents/answer_synthesizer/profiles",
+            json={"name": "Exhaustivo", "is_default": True},
+        ).json()["profiles"]
+
+        by_name = {row["name"]: row for row in second}
+        assert by_name["Exhaustivo"]["is_default"] is True
+        assert by_name["Conservador"]["is_default"] is False
+        assert first["id"] == by_name["Conservador"]["id"]
+
+    def test_deleting_the_last_profile_falls_back_to_settings(self, client):
+        created = client.post(
+            "/config/agents/answer_synthesizer/profiles",
+            json={"name": "Conservador", "provider": "openai", "model": "gpt-4o"},
+        ).json()["profiles"][0]
+
+        response = client.delete(
+            f"/config/agents/answer_synthesizer/profiles/{created['id']}"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["profiles"] == []
+        assert response.json()["effective"]["sources"]["model"] == "settings"
+
+    def test_a_foreign_profile_id_is_a_404(self, client):
+        response = client.delete("/config/agents/answer_synthesizer/profiles/missing")
+
+        assert response.status_code == 404
+
+    def test_a_deterministic_agent_cannot_hold_a_named_profile(self, client):
+        response = client.post(
+            "/config/agents/query_planner/profiles",
+            json={"name": "Nope"},
+        )
+
+        assert response.status_code == 422
+        assert "determinista" in response.json()["detail"]
+
+    def test_the_anonymous_put_is_an_alias_for_the_default_profile(self, client):
+        client.post(
+            "/config/agents/answer_synthesizer/profiles",
+            json={"name": "Conservador", "persona": "original"},
+        )
+        response = client.put(
+            "/config/agents/answer_synthesizer",
+            json={"persona": "actualizado"},
+        )
+
+        profiles = response.json()["profiles"]
+        assert len(profiles) == 1
+        assert profiles[0]["name"] == "Conservador"
+        assert profiles[0]["persona"] == "actualizado"
+
+    def test_get_config_includes_the_graph_flow(self, client):
+        flow = client.get("/config").json()["flow"]
+
+        keys = {node["key"] for node in flow["nodes"]}
+        assert "orchestrator" in keys
+        assert "answer_synthesizer" in keys
+        assert flow["ladder"] == [
+            "query_planner",
+            "evidence_retriever",
+            "answer_synthesizer",
+            "citation_validator",
+        ]
+        sources = {edge["source"] for edge in flow["edges"]}
+        assert {"START", "orchestrator", "answer_review_gate"} <= sources
 
 
 class TestModelRefresh:

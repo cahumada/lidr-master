@@ -164,6 +164,41 @@ def agent_spec(key: str) -> AgentSpec | None:
     return _BY_KEY.get(key)
 
 
+def graph_flow() -> dict:
+    """Topology the console draws, derived from the graph that actually runs.
+
+    Nodes come from this catalog; edges and the fallback ladder come from
+    ``build.py`` and the orchestrator, so a screen cannot invent a connector
+    the compiled graph does not have.
+
+    || Topología que dibuja la consola, derivada del grafo que realmente corre.
+    Los nodos salen de este catálogo; las aristas y la escalera, de ``build.py``
+    y del orquestador.
+    """
+    from app.domain.graph.build import AGENT_NODES
+    from app.domain.graph.orchestrator import FALLBACK_LADDER
+
+    nodes = [
+        {
+            "key": spec.key,
+            "label": spec.label,
+            "kind": spec.kind,
+            "role": spec.role,
+            "explanation": spec.explanation,
+            "llm_driven": spec.llm_driven,
+            "tools": spec.tools,
+        }
+        for spec in AGENT_SPECS
+    ]
+    edges = [{"source": "START", "target": "orchestrator"}]
+    for name in AGENT_NODES:
+        edges.append({"source": "orchestrator", "target": name})
+        edges.append({"source": name, "target": "orchestrator"})
+    edges.append({"source": "orchestrator", "target": "answer_review_gate"})
+    edges.append({"source": "answer_review_gate", "target": "END"})
+    return {"nodes": nodes, "edges": edges, "ladder": list(FALLBACK_LADDER)}
+
+
 def configurable_agent_keys() -> tuple[str, ...]:
     """Agents whose model and persona actually change behaviour.
 

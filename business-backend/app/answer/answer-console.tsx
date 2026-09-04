@@ -28,6 +28,7 @@ import type {
   AnswerAgenticStart,
   GraphActivityEntry,
   RoutingRecord,
+  NamedAgentProfile,
   SearchFacets,
   SearchHit,
 } from "@/lib/ai-service/types"
@@ -366,6 +367,9 @@ function RetrievalSheet({
   onWindowTypesChange,
   flags,
   onFlagsChange,
+  profiles,
+  profileId,
+  onProfileIdChange,
 }: {
   initialFacets: SearchFacets
   limit: string
@@ -376,6 +380,9 @@ function RetrievalSheet({
   onWindowTypesChange: (value: string[]) => void
   flags: RetrievalFlags
   onFlagsChange: (value: RetrievalFlags) => void
+  profiles: NamedAgentProfile[]
+  profileId: string
+  onProfileIdChange: (value: string) => void
 }) {
   return (
     <Sheet>
@@ -395,6 +402,30 @@ function RetrievalSheet({
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-4 px-4 pb-6">
+          {profiles.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="answer-profile" className="text-xs">
+                Perfil del sintetizador
+              </Label>
+              <select
+                id="answer-profile"
+                value={profileId}
+                onChange={(event) => onProfileIdChange(event.target.value)}
+                className="border-input bg-background h-9 rounded-md border px-3 text-sm"
+              >
+                <option value="">Default ({profiles.find((p) => p.is_default)?.name ?? "servicio"})</option>
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name}
+                    {profile.is_default ? " · default" : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-muted-foreground text-[10px] leading-relaxed">
+                Solo esta corrida. Vacío usa el default persistido, no lo cambia.
+              </p>
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="answer-limit" className="text-xs">
               Chunks al prompt
@@ -526,10 +557,17 @@ function AssistantBody({
   )
 }
 
-export function AnswerConsole({ initialFacets }: { initialFacets: SearchFacets }) {
+export function AnswerConsole({
+  initialFacets,
+  profiles,
+}: {
+  initialFacets: SearchFacets
+  profiles: NamedAgentProfile[]
+}) {
   const [question, setQuestion] = useState("")
   const [turns, setTurns] = useState<ChatTurn[]>([])
   const [limit, setLimit] = useState("10")
+  const [profileId, setProfileId] = useState("")
   const [moduleCodes, setModuleCodes] = useState<string[]>([])
   const [windowTypes, setWindowTypes] = useState<string[]>([])
   const [flags, setFlags] = useState<RetrievalFlags>({ rerank: true, split: true, lexical: false })
@@ -666,6 +704,7 @@ export function AnswerConsole({ initialFacets }: { initialFacets: SearchFacets }
       lexical: flags.lexical,
       split: flags.split,
       rerank: flags.rerank,
+      profile_id: profileId || undefined,
     }
 
     try {
@@ -841,6 +880,9 @@ export function AnswerConsole({ initialFacets }: { initialFacets: SearchFacets }
             onWindowTypesChange={setWindowTypes}
             flags={flags}
             onFlagsChange={setFlags}
+            profiles={profiles}
+            profileId={profileId}
+            onProfileIdChange={setProfileId}
           />
           <Textarea
             value={question}
