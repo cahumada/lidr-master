@@ -207,7 +207,7 @@ async def answer_agentic(
     retriever = HybridRetriever(ChunkRepository(session), get_embedder())
     reranker = get_reranker() if body.rerank else None
     try:
-        llm, persona = await synthesizer_runtime(
+        llm, persona, guardrails = await synthesizer_runtime(
             session, get_settings(), profile_id=body.profile_id
         )
     except ProfileResolutionError as exc:
@@ -220,6 +220,7 @@ async def answer_agentic(
         llm=llm,
         reranker=reranker,
         persona=persona,
+        guardrails=guardrails,
     )
 
     try:
@@ -261,13 +262,14 @@ async def answer_agentic_resume(
     graph = _require_graph(request)
     bare_thread = _strip_prefix(body.thread_id)
     retriever = HybridRetriever(ChunkRepository(session), get_embedder())
-    llm, persona = await synthesizer_runtime(session, get_settings())
+    llm, persona, guardrails = await synthesizer_runtime(session, get_settings())
     config = thread_config(
         bare_thread,
         retriever=retriever,
         llm=llm,
         reranker=get_reranker(),
         persona=persona,
+        guardrails=guardrails,
     )
 
     snapshot = await graph.aget_state(config)

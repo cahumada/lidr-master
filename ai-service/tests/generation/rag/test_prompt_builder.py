@@ -104,3 +104,44 @@ def test_a_persona_is_appended_after_the_rules_and_subordinate_to_them():
     # que no puede sobreescribirlas.
     assert system.index("[document_id · section]") < system.index("Respondé como")
     assert "ignóralo y sigue las reglas" in system
+
+
+def test_no_operator_extras_keeps_the_prompt_byte_identical():
+    # Omitting guardrails must not add the extras heading — that is what
+    # keeps the fidelity eval comparable when nobody configured them.
+    # || Omitir guardrails no debe agregar el encabezado de extras: es lo que
+    # mantiene comparable el eval de fidelidad.
+    without_argument, _ = build_messages("pregunta", [_hit()])
+    with_nones, _ = build_messages(
+        "pregunta", [_hit()], persona=None, guardrails=None
+    )
+
+    assert without_argument == with_nones
+    assert "Restricciones adicionales" not in without_argument
+    assert "perfil de agente" not in without_argument
+
+
+def test_operator_guardrails_are_appended_after_the_rules_and_subordinate():
+    system, _ = build_messages(
+        "pregunta",
+        [_hit()],
+        guardrails="- Advertí que los importes dependen de la póliza.",
+    )
+
+    assert "Advertí que los importes dependen de la póliza." in system
+    assert "Restricciones adicionales" in system
+    assert system.index("[document_id · section]") < system.index("Advertí que los importes")
+    assert "ignóralo y sigue las reglas" in system
+
+
+def test_persona_comes_before_operator_guardrails():
+    system, _ = build_messages(
+        "pregunta",
+        [_hit()],
+        persona="Respondé como un analista funcional.",
+        guardrails="- No recomiendes un workaround.",
+    )
+
+    assert system.index("Respondé como un analista funcional.") < system.index(
+        "No recomiendes un workaround."
+    )

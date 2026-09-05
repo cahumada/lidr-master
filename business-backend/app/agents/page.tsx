@@ -10,6 +10,8 @@ export const metadata = {
   title: "Agentes · Visual Time RAG",
 }
 
+export const dynamic = "force-dynamic"
+
 const UNREACHABLE: ServiceConfig = {
   providers: [],
   models: [],
@@ -33,8 +35,9 @@ export default async function AgentsPage() {
     <PageFrame>
       <PageIntro title="Tipos de agentes">
         El catálogo lo sirve el propio servicio IA (<code>GET /config</code>), no
-        una copia escrita acá. Acá se crean los perfiles nombrados del
-        sintetizador; el flujo del grafo se mira en{" "}
+        una copia escrita acá. Acá se ve el system prompt, se edita la persona y
+        los guardrails de operador, y se distinguen las tools concedidas de las
+        que cada nodo usa. El flujo del grafo se mira en{" "}
         <Link href="/agents/flow" className="text-foreground underline-offset-4 hover:underline">
           Configuración → Flujo
         </Link>

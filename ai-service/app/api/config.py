@@ -41,6 +41,14 @@ from app.domain.graph.catalog import (
     agent_spec,
     configurable_agent_keys,
     graph_flow,
+    tool_catalog,
+)
+from app.domain.graph.inspector import (
+    GUARDRAILS_TEMPLATE,
+    PERSONA_TEMPLATE,
+    base_system_prompt,
+    compose_system_prompt,
+    system_guardrails_view,
 )
 from app.domain.profiles import (
     AgentProfileRepository,
@@ -80,6 +88,28 @@ class ConfigSources(BaseModel):
     )
     max_tokens: str
     persona: str = Field(description="'profile' or 'unset'. || 'profile' o 'unset'.")
+    guardrails: str = Field(description="'profile' or 'unset'. || 'profile' o 'unset'.")
+
+
+class SystemGuardrailView(BaseModel):
+    """One grounding rule the operator can see and cannot turn off.
+
+    || Una regla de grounding que el operador ve y no puede apagar.
+    """
+
+    id: str
+    kind: str = Field(description="'prompt' or 'code'. || 'prompt' o 'code'.")
+    title: str
+    description: str
+
+
+class ToolCatalogView(BaseModel):
+    """One tool the privilege table knows. || Una tool que conoce la tabla de privilegios."""
+
+    name: str
+    description: str
+    granted_to: list[str]
+    used_by: list[str]
 
 
 class ProviderView(BaseModel):
@@ -155,6 +185,7 @@ class EffectiveConfigView(BaseModel):
     )
     max_tokens: int
     persona: str | None = None
+    guardrails: str | None = None
     supports_temperature: bool
     provider_available: bool = Field(
         description="False when the effective provider has no key configured — the next "
@@ -171,6 +202,11 @@ class NamedProfileView(BaseModel):
     name: str
     is_default: bool
     persona: str | None = None
+    guardrails: str | None = None
+    composed_system_prompt: str = Field(
+        description="Base prompt plus this profile's persona and operator guardrails. "
+        "|| Prompt base más la persona y los guardrails de este perfil."
+    )
     provider: str | None = None
     model: str | None = None
     temperature: float | None = None
@@ -190,6 +226,20 @@ class AgentConfigView(BaseModel):
         default_factory=list,
         description="Tools it may call, from the privilege table. "
         "|| Herramientas que puede llamar, de la tabla de privilegios.",
+    )
+    tools_used: list[str] = Field(
+        default_factory=list,
+        description="Tools this node actually calls. || Herramientas que este nodo llama.",
+    )
+    system_prompt: str | None = Field(
+        default=None,
+        description="Rendered answer/v1 system prompt without operator extras. "
+        "Present on the synthesizer. || System prompt base; solo el sintetizador.",
+    )
+    system_guardrails: list[SystemGuardrailView] = Field(
+        default_factory=list,
+        description="Prompt rules plus the code grounding check. Not writable. "
+        "|| Reglas del prompt más el chequeo de código. No se editan.",
     )
     llm_driven: bool = Field(
         description="False for the deterministic agents — they have no model to pick. "
@@ -215,6 +265,44 @@ class AgentConfigView(BaseModel):
     )
 
 
+class NodeExampleView(BaseModel):
+    """What a node receives and leaves for the worked example question.
+
+    ``caveat`` marks what only illustrates the node instead of being what the
+    code deterministically produces — the synthesizer writes with a model, and
+    the retrieved documents depend on the loaded corpus.
+
+    || Qué recibe y qué deja un nodo para la pregunta de ejemplo. ``caveat``
+    marca lo que solo ilustra, en vez de ser lo que el código produce siempre.
+    """
+
+    receives: str
+    leaves: str
+    detail: list[str] = Field(
+        default_factory=list,
+        description="Literal values shown verbatim: sub-queries, document ids. "
+        "|| Valores literales que se muestran tal cual: subconsultas, ids.",
+    )
+    caveat: str | None = Field(
+        default=None,
+        description="Present when the example illustrates rather than asserts. "
+        "|| Presente cuando el ejemplo ilustra en vez de afirmar.",
+    )
+
+
+class FlowExampleView(BaseModel):
+    """The one question the flow screen walks through every node.
+
+    || La pregunta que la pantalla de flujo recorre por todos los nodos.
+    """
+
+    question: str
+    source: str = Field(
+        description="Where the question comes from. || De dónde sale la pregunta."
+    )
+    note: str
+
+
 class FlowNodeView(BaseModel):
     """One node of the answer graph, as the flow screen draws it."""
 
@@ -225,6 +313,8 @@ class FlowNodeView(BaseModel):
     explanation: str
     llm_driven: bool
     tools: list[str] = Field(default_factory=list)
+    tools_used: list[str] = Field(default_factory=list)
+    example: NodeExampleView
 
 
 class FlowEdgeView(BaseModel):
@@ -245,6 +335,10 @@ class GraphFlowView(BaseModel):
     ladder: list[str] = Field(
         description="The orchestrator's fallback order. || La escalera de fallback del orquestador."
     )
+    example: FlowExampleView = Field(
+        description="One real question walked through every node. "
+        "|| Una pregunta real recorrida por todos los nodos."
+    )
 
 
 class ServiceConfigResponse(BaseModel):
@@ -259,6 +353,23 @@ class ServiceConfigResponse(BaseModel):
         "|| Modelos que la consola puede ofrecer, con su proveedor."
     )
     persona_max_chars: int
+    guardrails_max_chars: int = Field(
+        description="Same cap as persona: operator extras share one budget. "
+        "|| El mismo tope que persona: los extras de operador comparten presupuesto."
+    )
+    persona_template: str = Field(
+        description="Suggested voice for a senior insurance analyst. "
+        "|| Voz sugerida de un analista funcional senior de seguros."
+    )
+    guardrails_template: str = Field(
+        description="Suggested extra operator constraints. "
+        "|| Restricciones extra de operador sugeridas."
+    )
+    tools: list[ToolCatalogView] = Field(
+        default_factory=list,
+        description="Every tool the privilege table knows. "
+        "|| Todas las tools que conoce la tabla de privilegios.",
+    )
     agents: list[AgentConfigView]
     credential_storage_enabled: bool = Field(
         description="False when SECRETS_KEY is unset: credentials cannot be stored, and "
@@ -292,6 +403,11 @@ class AgentProfileUpdate(BaseModel):
         description="Appended to the system prompt, after the rules and subordinate to them. "
         "|| Se appendea al system prompt, después de las reglas y subordinado a ellas.",
     )
+    guardrails: str | None = Field(
+        default=None,
+        description="Extra operator constraints, appended after the persona. "
+        "|| Restricciones extra de operador, después de la persona.",
+    )
     provider: str | None = Field(
         default=None,
         description="Must be sent together with `model` and match a catalog entry. "
@@ -314,6 +430,7 @@ class NamedProfileWrite(BaseModel):
     )
     is_default: bool = False
     persona: str | None = Field(default=None)
+    guardrails: str | None = Field(default=None)
     provider: str | None = None
     model: str | None = None
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
@@ -339,6 +456,7 @@ def _effective_view(
         temperature=merged.temperature,
         max_tokens=merged.max_tokens,
         persona=merged.persona,
+        guardrails=merged.guardrails,
         supports_temperature=merged.supports_temperature,
         provider_available=bool(provider and provider.available),
         sources=ConfigSources(**merged.sources),
@@ -356,6 +474,10 @@ def _named_profile_view(
         name=row.name,
         is_default=row.is_default,
         persona=row.persona,
+        guardrails=row.guardrails,
+        composed_system_prompt=compose_system_prompt(
+            persona=row.persona, guardrails=row.guardrails
+        ),
         provider=row.provider,
         model=row.model,
         temperature=row.temperature,
@@ -385,6 +507,13 @@ def _agent_view(
         explanation=spec.explanation,
         kind=spec.kind,
         tools=spec.tools,
+        tools_used=list(spec.tools_used),
+        system_prompt=base_system_prompt() if spec.llm_driven else None,
+        system_guardrails=(
+            [SystemGuardrailView.model_validate(item) for item in system_guardrails_view()]
+            if spec.llm_driven
+            else []
+        ),
         llm_driven=spec.llm_driven,
         configurable=configurable,
         config_source=spec.config_source,
@@ -411,6 +540,23 @@ def _validated_persona(persona: str | None, settings: Settings) -> str | None:
             detail=(
                 f"persona is {len(cleaned)} chars, over the "
                 f"{settings.AGENT_PERSONA_MAX_CHARS} cap. || La persona excede el tope."
+            ),
+        )
+    return cleaned
+
+
+def _validated_guardrails(guardrails: str | None, settings: Settings) -> str | None:
+    """Same cap as persona: operator extras share one budget.
+
+    || El mismo tope que persona: los extras de operador comparten presupuesto.
+    """
+    cleaned = (guardrails or "").strip() or None
+    if cleaned and len(cleaned) > settings.AGENT_PERSONA_MAX_CHARS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"guardrails is {len(cleaned)} chars, over the "
+                f"{settings.AGENT_PERSONA_MAX_CHARS} cap. || Los guardrails exceden el tope."
             ),
         )
     return cleaned
@@ -562,6 +708,10 @@ async def read_config(
         ],
         models=[_model_view(row, resolved) for row in models],
         persona_max_chars=settings.AGENT_PERSONA_MAX_CHARS,
+        guardrails_max_chars=settings.AGENT_PERSONA_MAX_CHARS,
+        persona_template=PERSONA_TEMPLATE,
+        guardrails_template=GUARDRAILS_TEMPLATE,
+        tools=[ToolCatalogView.model_validate(item) for item in tool_catalog()],
         agents=[
             _agent_view(spec, profiles.get(spec.key, []), settings, resolved, capabilities)
             for spec in AGENT_SPECS
@@ -591,11 +741,13 @@ async def update_agent_profile(
     _, resolved, models, _ = await _load(session, settings)
 
     persona = _validated_persona(body.persona, settings)
+    guardrails = _validated_guardrails(body.guardrails, settings)
     provider, model = await _validated_pair(body.provider, body.model, settings, resolved, models)
 
     profile = await AgentProfileRepository(session).upsert(
         agent_key,
         persona=persona,
+        guardrails=guardrails,
         provider=provider,
         model=model,
         temperature=body.temperature,
@@ -610,6 +762,7 @@ async def update_agent_profile(
         temperature=body.temperature,
         max_tokens=body.max_tokens,
         persona_chars=len(persona or ""),
+        guardrails_chars=len(guardrails or ""),
     )
     return await _agent_response(spec, session, settings)
 
@@ -634,11 +787,12 @@ async def _write_named_profile_knobs(
     body: NamedProfileWrite,
     settings: Settings,
     session: AsyncSession,
-) -> tuple[str, str | None, str | None, str | None, float | None, int | None]:
+) -> tuple[str, str | None, str | None, str | None, str | None, float | None, int | None]:
     _, resolved, models, _ = await _load(session, settings)
     persona = _validated_persona(body.persona, settings)
+    guardrails = _validated_guardrails(body.guardrails, settings)
     provider, model = await _validated_pair(body.provider, body.model, settings, resolved, models)
-    return body.name, persona, provider, model, body.temperature, body.max_tokens
+    return body.name, persona, guardrails, provider, model, body.temperature, body.max_tokens
 
 
 @router.post("/agents/{agent_key}/profiles", response_model=AgentConfigView)
@@ -653,8 +807,8 @@ async def create_named_profile(
     """
     settings = get_settings()
     spec = _require_configurable(agent_key)
-    name, persona, provider, model, temperature, max_tokens = await _write_named_profile_knobs(
-        body, settings, session
+    name, persona, guardrails, provider, model, temperature, max_tokens = (
+        await _write_named_profile_knobs(body, settings, session)
     )
     try:
         created = await AgentProfileRepository(session).create(
@@ -662,6 +816,7 @@ async def create_named_profile(
             name=name,
             is_default=body.is_default,
             persona=persona,
+            guardrails=guardrails,
             provider=provider,
             model=model,
             temperature=temperature,
@@ -695,8 +850,8 @@ async def update_named_profile(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No profile {profile_id!r} for {agent_key!r}. || No existe ese perfil.",
         )
-    name, persona, provider, model, temperature, max_tokens = await _write_named_profile_knobs(
-        body, settings, session
+    name, persona, guardrails, provider, model, temperature, max_tokens = (
+        await _write_named_profile_knobs(body, settings, session)
     )
     try:
         await repo.update(
@@ -704,6 +859,7 @@ async def update_named_profile(
             name=name,
             is_default=body.is_default,
             persona=persona,
+            guardrails=guardrails,
             provider=provider,
             model=model,
             temperature=temperature,

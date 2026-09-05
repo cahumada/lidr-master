@@ -111,6 +111,7 @@ class AgentProfileRow(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     persona: Mapped[str | None] = mapped_column(Text)
+    guardrails: Mapped[str | None] = mapped_column(Text)
     provider: Mapped[str | None] = mapped_column(String(32))
     model: Mapped[str | None] = mapped_column(String(64))
     temperature: Mapped[float | None] = mapped_column(Float)
@@ -146,6 +147,7 @@ class EffectiveAgentConfig:
     temperature: float | None
     max_tokens: int
     persona: str | None
+    guardrails: str | None
     supports_temperature: bool
     sources: dict[str, str]
 
@@ -224,6 +226,7 @@ def resolve_agent_config(
     temperature = getattr(profile, "temperature", None)
     max_tokens = getattr(profile, "max_tokens", None)
     persona = getattr(profile, "persona", None)
+    guardrails = getattr(profile, "guardrails", None)
 
     # The pair moves together: a stored model with no stored provider would
     # otherwise be read against the default provider, which may not serve it.
@@ -255,6 +258,7 @@ def resolve_agent_config(
         temperature=effective_temperature,
         max_tokens=max_tokens or settings.ANSWER_MAX_TOKENS,
         persona=persona or None,
+        guardrails=guardrails or None,
         supports_temperature=accepts_temperature,
         sources={
             "provider": "profile" if provider else "settings",
@@ -262,6 +266,7 @@ def resolve_agent_config(
             "temperature": temperature_source,
             "max_tokens": "profile" if max_tokens else "settings",
             "persona": "profile" if persona else "unset",
+            "guardrails": "profile" if guardrails else "unset",
         },
     )
 
@@ -299,8 +304,8 @@ async def synthesizer_runtime(
     settings: Settings,
     *,
     profile_id: str | None = None,
-) -> tuple[Any, str | None]:
-    """The LLM and persona the synthesizer profile asks for.
+) -> tuple[Any, str | None, str | None]:
+    """The LLM, persona and operator guardrails the synthesizer profile asks for.
 
     The single seam every synthesis path goes through — ``POST /answer``,
     ``POST /answer/agentic`` and the background runner — so a persona
@@ -327,7 +332,7 @@ async def synthesizer_runtime(
         temperature=effective.temperature,
         supports_temperature=effective.supports_temperature,
     )
-    return llm, effective.persona
+    return llm, effective.persona, effective.guardrails
 
 
 async def resolved_provider(session: AsyncSession, settings: Settings, provider_id: str):
@@ -422,6 +427,7 @@ class AgentProfileRepository:
         name: str,
         is_default: bool,
         persona: str | None,
+        guardrails: str | None,
         provider: str | None,
         model: str | None,
         temperature: float | None,
@@ -447,6 +453,7 @@ class AgentProfileRepository:
             name=name,
             is_default=is_default,
             persona=persona,
+            guardrails=guardrails,
             provider=provider,
             model=model,
             temperature=temperature,
@@ -467,6 +474,7 @@ class AgentProfileRepository:
         name: str,
         is_default: bool,
         persona: str | None,
+        guardrails: str | None,
         provider: str | None,
         model: str | None,
         temperature: float | None,
@@ -486,6 +494,7 @@ class AgentProfileRepository:
         was_default = row.is_default
         row.name = name
         row.persona = persona
+        row.guardrails = guardrails
         row.provider = provider
         row.model = model
         row.temperature = temperature
@@ -532,6 +541,7 @@ class AgentProfileRepository:
         agent_key: str,
         *,
         persona: str | None,
+        guardrails: str | None,
         provider: str | None,
         model: str | None,
         temperature: float | None,
@@ -551,12 +561,14 @@ class AgentProfileRepository:
                 name=DEFAULT_PROFILE_NAME,
                 is_default=True,
                 persona=persona,
+                guardrails=guardrails,
                 provider=provider,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
         current.persona = persona
+        current.guardrails = guardrails
         current.provider = provider
         current.model = model
         current.temperature = temperature

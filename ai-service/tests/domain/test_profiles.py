@@ -41,18 +41,21 @@ class TestResolveAgentConfig:
         assert effective.max_tokens == 1024
         assert effective.temperature == 0.0
         assert effective.persona is None
+        assert effective.guardrails is None
         assert effective.sources == {
             "provider": "settings",
             "model": "settings",
             "temperature": "settings",
             "max_tokens": "settings",
             "persona": "unset",
+            "guardrails": "unset",
         }
 
     def test_profile_overrides_win_and_are_reported_as_such(self):
         profile = AgentProfileRow(
             agent_key="answer_synthesizer",
             persona="Hablás como un analista funcional.",
+            guardrails="- Advertí que los importes dependen de la póliza.",
             provider="openai",
             model="gpt-4o",
             temperature=0.7,
@@ -66,6 +69,7 @@ class TestResolveAgentConfig:
         assert effective.temperature == 0.7
         assert effective.max_tokens == 2048
         assert effective.persona == "Hablás como un analista funcional."
+        assert effective.guardrails == "- Advertí que los importes dependen de la póliza."
         assert set(effective.sources.values()) == {"profile"}
 
     def test_a_profile_carries_its_provider_with_its_model(self):
@@ -128,6 +132,26 @@ class TestResolveAgentConfig:
         effective = resolve_agent_config(profile, _settings())
 
         assert effective.persona is None
+        assert effective.sources["persona"] == "unset"
+
+    def test_a_blank_guardrails_reads_as_unset(self):
+        profile = AgentProfileRow(agent_key="answer_synthesizer", guardrails="")
+
+        effective = resolve_agent_config(profile, _settings())
+
+        assert effective.guardrails is None
+        assert effective.sources["guardrails"] == "unset"
+
+    def test_stored_guardrails_are_an_override(self):
+        profile = AgentProfileRow(
+            agent_key="answer_synthesizer",
+            guardrails="- No recomiendes un workaround.",
+        )
+
+        effective = resolve_agent_config(profile, _settings())
+
+        assert effective.guardrails == "- No recomiendes un workaround."
+        assert effective.sources["guardrails"] == "profile"
         assert effective.sources["persona"] == "unset"
 
 

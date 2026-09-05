@@ -32,6 +32,7 @@ def thread_config(
     llm: Any,
     reranker: Any,
     persona: str | None = None,
+    guardrails: str | None = None,
 ) -> dict:
     """Runnable config for one graph thread. || Config del runnable para un hilo del grafo."""
     return {
@@ -41,6 +42,7 @@ def thread_config(
             "llm": llm,
             "reranker": reranker,
             "persona": persona,
+            "guardrails": guardrails,
         }
     }
 
@@ -106,6 +108,7 @@ async def _stream_and_log(
     llm: Any,
     reranker: Any,
     persona: str | None = None,
+    guardrails: str | None = None,
 ):
     """Run the graph via ``astream``, narrating each node into the activity log.
 
@@ -113,7 +116,12 @@ async def _stream_and_log(
     """
     activity_log = get_activity_log()
     config = thread_config(
-        thread_id, retriever=retriever, llm=llm, reranker=reranker, persona=persona
+        thread_id,
+        retriever=retriever,
+        llm=llm,
+        reranker=reranker,
+        persona=persona,
+        guardrails=guardrails,
     )
 
     async for update in graph.astream(initial_state(body), config, stream_mode="updates"):
@@ -144,7 +152,7 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
         async with session_factory() as session:
             retriever = HybridRetriever(ChunkRepository(session), get_embedder())
             reranker = get_reranker() if body.rerank else None
-            llm, persona = await synthesizer_runtime(
+            llm, persona, guardrails = await synthesizer_runtime(
                 session, get_settings(), profile_id=body.profile_id
             )
             snapshot = await _stream_and_log(
@@ -155,6 +163,7 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
                 llm=llm,
                 reranker=reranker,
                 persona=persona,
+                guardrails=guardrails,
             )
     except Exception as exc:  # noqa: BLE001 — a background failure must not vanish silently.
         log.error("answer_agentic_background_failed", thread_id=thread_id, error=str(exc)[:300])

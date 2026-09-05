@@ -50,7 +50,7 @@ def stub_synthesizer_runtime(monkeypatch):
             return "respuesta"
 
     async def _runtime(session, settings, *, profile_id=None):
-        return _StubLLM(), None
+        return _StubLLM(), None, None
 
     for target in (
         "app.api.answer_agentic.synthesizer_runtime",

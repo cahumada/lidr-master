@@ -57,7 +57,9 @@ async def answer(
     # resuelve acá y no dentro de `generate_answer` para que el script de eval
     # siga llamando a la misma función con un LLM explícito y sin base.
     try:
-        llm, persona = await synthesizer_runtime(session, settings, profile_id=body.profile_id)
+        llm, persona, guardrails = await synthesizer_runtime(
+            session, settings, profile_id=body.profile_id
+        )
     except ProfileResolutionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.detail
@@ -73,4 +75,5 @@ async def answer(
         decompose_query=body.split,
         reranker=get_reranker() if body.rerank else None,
         persona=persona,
+        guardrails=guardrails,
     )

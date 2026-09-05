@@ -90,7 +90,7 @@ def _use_llm(monkeypatch, llm: FakeLLM, persona: str | None = None) -> None:
     """
 
     async def _runtime(session, settings, *, profile_id=None):
-        return llm, persona
+        return llm, persona, None
 
     monkeypatch.setattr("app.api.answer.synthesizer_runtime", _runtime)
 
@@ -215,7 +215,7 @@ def test_an_unknown_profile_id_is_refused(client, monkeypatch, llm):
             raise ProfileResolutionError(
                 f"No profile {profile_id!r}. || No existe el perfil {profile_id!r}."
             )
-        return llm, None
+        return llm, None, None
 
     monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
     monkeypatch.setattr("app.api.answer.synthesizer_runtime", _runtime)
@@ -233,7 +233,7 @@ def test_a_profile_id_is_forwarded_to_the_runtime(client, monkeypatch, llm):
 
     async def _runtime(session, settings, *, profile_id=None):
         seen.append(profile_id)
-        return llm, "Sé breve."
+        return llm, "Sé breve.", None
 
     monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
     monkeypatch.setattr("app.api.answer.synthesizer_runtime", _runtime)

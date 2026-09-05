@@ -39,22 +39,31 @@ def build_context(hits: list[SearchHit]) -> str:
 
 
 def build_messages(
-    question: str, hits: list[SearchHit], *, persona: str | None = None
+    question: str,
+    hits: list[SearchHit],
+    *,
+    persona: str | None = None,
+    guardrails: str | None = None,
 ) -> tuple[str, str]:
     """Render the versioned system + user pair for this question.
 
-    ``persona`` is the ``answer_synthesizer`` profile's text, appended to the
-    system prompt after the rules — subordinate to them on purpose: a persona
-    is meant to change the voice, and no configuration should be able to talk
-    the model out of citing its sources.
+    ``persona`` and ``guardrails`` come from the ``answer_synthesizer``
+    profile and are appended after the rules — subordinate to them on
+    purpose. A persona changes the voice; operator guardrails add
+    constraints. Neither should be able to talk the model out of citing
+    its sources.
 
     || Renderiza el par system + user versionado para esta pregunta.
-    ``persona`` es el texto del perfil de ``answer_synthesizer``, appendeado al
-    system prompt después de las reglas y subordinado a ellas a propósito: una
-    persona cambia la voz, y ninguna configuración debería poder convencer al
-    modelo de no citar sus fuentes.
+    ``persona`` y ``guardrails`` salen del perfil y se appendean después
+    de las reglas, subordinados a ellas.
     """
-    system = render_prompt(PROMPT_NAME, PROMPT_VERSION, "system", persona=persona)
+    system = render_prompt(
+        PROMPT_NAME,
+        PROMPT_VERSION,
+        "system",
+        persona=persona,
+        guardrails=guardrails,
+    )
     user = render_prompt(
         PROMPT_NAME,
         PROMPT_VERSION,

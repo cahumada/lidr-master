@@ -15,6 +15,8 @@ import type {
   NamedAgentProfile,
   ProviderConfig,
   ServiceConfig,
+  SystemGuardrail,
+  ToolCatalogEntry,
 } from "@/lib/ai-service/types";
 
 /** `provider:model` is the form's option value; the pair travels together.
@@ -57,10 +59,118 @@ function SourceNote({ source }: { source: string }) {
   return <span className="text-muted-foreground text-[10px]">default del servicio</span>;
 }
 
+function toolDescription(catalog: ToolCatalogEntry[], name: string): string | undefined {
+  return catalog.find((item) => item.name === name)?.description;
+}
+
+function ToolChips({
+  names,
+  catalog,
+  empty,
+}: {
+  names: string[];
+  catalog: ToolCatalogEntry[];
+  empty: string;
+}) {
+  if (names.length === 0) {
+    return (
+      <Badge variant="secondary" className="text-[10px]">
+        {empty}
+      </Badge>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      {names.map((name) => (
+        <div key={name} className="flex flex-col gap-0.5">
+          <Badge variant="secondary" className="w-fit font-mono text-[10px]">
+            {name}
+          </Badge>
+          {toolDescription(catalog, name) && (
+            <span className="text-muted-foreground text-[11px] leading-relaxed">
+              {toolDescription(catalog, name)}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ToolPair({
+  granted,
+  used,
+  catalog,
+}: {
+  granted: string[];
+  used: string[];
+  catalog: ToolCatalogEntry[];
+}) {
+  return (
+    <div className="grid gap-3 text-xs sm:grid-cols-2">
+      <div className="flex flex-col gap-1.5">
+        <span className="text-muted-foreground">Disponibles</span>
+        <ToolChips names={granted} catalog={catalog} empty="ninguna concedida" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-muted-foreground">Utilizadas</span>
+        <ToolChips names={used} catalog={catalog} empty="ninguna" />
+      </div>
+    </div>
+  );
+}
+
+function SystemPromptBlock({ prompt }: { prompt: string }) {
+  return (
+    <details open className="rounded-md border">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-medium">
+        System prompt (solo lectura)
+      </summary>
+      <pre className="bg-muted/40 max-h-80 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[11px] leading-relaxed">
+        {prompt}
+      </pre>
+    </details>
+  );
+}
+
+function SystemGuardrailsList({ items }: { items: SystemGuardrail[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs font-medium">Guardrails de sistema</p>
+      <p className="text-muted-foreground text-[11px] leading-relaxed">
+        No se editan: son las cinco reglas del prompt más el chequeo de citas en
+        código. Un perfil no puede apagarlos.
+      </p>
+      <ul className="flex flex-col gap-2">
+        {items.map((item) => (
+          <li key={item.id} className="rounded-md border px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium">{item.title}</span>
+              <Badge variant="outline" className="text-[10px]">
+                {item.kind === "code" ? "código" : "prompt"}
+              </Badge>
+            </div>
+            <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+              {item.description}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** A deterministic agent: nothing to configure, and the screen says why.
  * || Un agente determinista: nada que configurar, y la pantalla dice por qué.
  */
-function ReadOnlyAgent({ agent }: { agent: AgentConfig }) {
+function ReadOnlyAgent({
+  agent,
+  catalog,
+}: {
+  agent: AgentConfig;
+  catalog: ToolCatalogEntry[];
+}) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-2">
@@ -71,20 +181,11 @@ function ReadOnlyAgent({ agent }: { agent: AgentConfig }) {
         </div>
         <p className="text-sm">{agent.role}</p>
         <p className="text-muted-foreground text-xs leading-relaxed">{agent.explanation}</p>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-muted-foreground">Herramientas:</span>
-          {agent.tools.length === 0 ? (
-            <Badge variant="secondary" className="text-[10px]">
-              ninguna
-            </Badge>
-          ) : (
-            agent.tools.map((tool) => (
-              <Badge key={tool} variant="secondary" className="font-mono text-[10px]">
-                {tool}
-              </Badge>
-            ))
-          )}
-        </div>
+        <ToolPair
+          granted={agent.tools}
+          used={agent.tools_used ?? []}
+          catalog={catalog}
+        />
         <p className="text-muted-foreground border-t pt-2 text-xs">
           Determinista: no llama a ningún modelo, así que no tiene persona ni modelo que
           configurar.
@@ -156,6 +257,9 @@ function NamedProfileCard({
   models,
   providers,
   personaMaxChars,
+  guardrailsMaxChars,
+  personaTemplate,
+  guardrailsTemplate,
   onSaved,
 }: {
   agentKey: string;
@@ -163,11 +267,15 @@ function NamedProfileCard({
   models: ModelConfig[];
   providers: ProviderConfig[];
   personaMaxChars: number;
+  guardrailsMaxChars: number;
+  personaTemplate: string;
+  guardrailsTemplate: string;
   onSaved: (updated: AgentConfig) => void;
 }) {
   const effective = profile.effective;
   const [name, setName] = useState(profile.name);
   const [persona, setPersona] = useState(profile.persona ?? "");
+  const [guardrails, setGuardrails] = useState(profile.guardrails ?? "");
   const [pair, setPair] = useState(
     effective.sources.model === "profile"
       ? pairValue(effective.provider, effective.model)
@@ -205,6 +313,7 @@ function NamedProfileCard({
             name: name.trim(),
             is_default: asDefault,
             persona: persona.trim() || null,
+            guardrails: guardrails.trim() || null,
             provider: picked?.provider ?? null,
             model: picked?.model ?? null,
             temperature:
@@ -299,28 +408,95 @@ function NamedProfileCard({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Label htmlFor={`persona-${profile.id}`} className="text-xs">
               Persona
             </Label>
-            <span
-              className={`text-[10px] ${
-                persona.length > personaMaxChars
-                  ? "text-destructive font-medium"
-                  : "text-muted-foreground"
-              }`}
-            >
-              {persona.length} / {personaMaxChars}
-            </span>
+            <div className="flex items-center gap-2">
+              {personaTemplate && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setPersona(personaTemplate)}
+                >
+                  Cargar template
+                </Button>
+              )}
+              <span
+                className={`text-[10px] ${
+                  persona.length > personaMaxChars
+                    ? "text-destructive font-medium"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {persona.length} / {personaMaxChars}
+              </span>
+            </div>
           </div>
+          <p className="text-muted-foreground text-[11px] leading-relaxed">
+            Cambia la voz, no las cinco reglas. Template: analista funcional senior
+            del mercado asegurador, especialista en Visual Time.
+          </p>
           <Textarea
             id={`persona-${profile.id}`}
             value={persona}
             onChange={(event) => setPersona(event.target.value)}
             placeholder="p. ej. Respondé como un analista funcional: primero la regla, después el caso borde."
-            rows={4}
+            rows={6}
           />
         </div>
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label htmlFor={`guardrails-${profile.id}`} className="text-xs">
+              Guardrails de operador
+            </Label>
+            <div className="flex items-center gap-2">
+              {guardrailsTemplate && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => setGuardrails(guardrailsTemplate)}
+                >
+                  Cargar template
+                </Button>
+              )}
+              <span
+                className={`text-[10px] ${
+                  guardrails.length > guardrailsMaxChars
+                    ? "text-destructive font-medium"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {guardrails.length} / {guardrailsMaxChars}
+              </span>
+            </div>
+          </div>
+          <p className="text-muted-foreground text-[11px] leading-relaxed">
+            Restricciones extra de negocio. Van después de las cinco reglas y no
+            pueden contradecirlas.
+          </p>
+          <Textarea
+            id={`guardrails-${profile.id}`}
+            value={guardrails}
+            onChange={(event) => setGuardrails(event.target.value)}
+            placeholder="p. ej. Si la respuesta toca importes, advertí que el valor exacto depende de la póliza."
+            rows={5}
+          />
+        </div>
+
+        {profile.composed_system_prompt && (
+          <details className="rounded-md border">
+            <summary className="cursor-pointer px-3 py-2 text-xs font-medium">
+              Prompt compuesto de este perfil
+            </summary>
+            <pre className="bg-muted/40 max-h-80 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[11px] leading-relaxed">
+              {profile.composed_system_prompt}
+            </pre>
+          </details>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
@@ -381,7 +557,12 @@ function NamedProfileCard({
 
         <div className="flex flex-wrap gap-2">
           <Button
-            disabled={pending || !name.trim() || persona.length > personaMaxChars}
+            disabled={
+              pending ||
+              !name.trim() ||
+              persona.length > personaMaxChars ||
+              guardrails.length > guardrailsMaxChars
+            }
             onClick={() => void save()}
           >
             {pending ? "Guardando…" : "Guardar"}
@@ -480,12 +661,20 @@ function ConfigurableAgent({
   models,
   providers,
   personaMaxChars,
+  guardrailsMaxChars,
+  personaTemplate,
+  guardrailsTemplate,
+  catalog,
   onSaved,
 }: {
   agent: AgentConfig;
   models: ModelConfig[];
   providers: ProviderConfig[];
   personaMaxChars: number;
+  guardrailsMaxChars: number;
+  personaTemplate: string;
+  guardrailsTemplate: string;
+  catalog: ToolCatalogEntry[];
   onSaved: (updated: AgentConfig) => void;
 }) {
   return (
@@ -499,21 +688,14 @@ function ConfigurableAgent({
         </div>
         <p className="text-sm">{agent.role}</p>
         <p className="text-muted-foreground text-xs leading-relaxed">{agent.explanation}</p>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-muted-foreground">Herramientas:</span>
-          {agent.tools.length === 0 ? (
-            <Badge variant="secondary" className="text-[10px]">
-              ninguna
-            </Badge>
-          ) : (
-            agent.tools.map((tool) => (
-              <Badge key={tool} variant="secondary" className="font-mono text-[10px]">
-                {tool}
-              </Badge>
-            ))
-          )}
-        </div>
+        <ToolPair
+          granted={agent.tools}
+          used={agent.tools_used ?? []}
+          catalog={catalog}
+        />
       </div>
+      {agent.system_prompt && <SystemPromptBlock prompt={agent.system_prompt} />}
+      <SystemGuardrailsList items={agent.system_guardrails ?? []} />
       <CreateProfileForm agentKey={agent.key} onSaved={onSaved} />
       {agent.profiles.length === 0 && (
         <p className="text-muted-foreground text-xs">
@@ -528,6 +710,9 @@ function ConfigurableAgent({
           models={models}
           providers={providers}
           personaMaxChars={personaMaxChars}
+          guardrailsMaxChars={guardrailsMaxChars}
+          personaTemplate={personaTemplate}
+          guardrailsTemplate={guardrailsTemplate}
           onSaved={onSaved}
         />
       ))}
@@ -560,9 +745,43 @@ export function AgentsConsole({ initialConfig }: { initialConfig: ServiceConfig 
 
   const editable = config.agents.filter((agent) => agent.configurable);
   const readOnly = config.agents.filter((agent) => !agent.configurable);
+  const catalog = config.tools ?? [];
+  const personaTemplate = config.persona_template ?? "";
+  const guardrailsTemplate = config.guardrails_template ?? "";
+  const guardrailsMaxChars = config.guardrails_max_chars ?? config.persona_max_chars;
 
   return (
     <div className="flex flex-col gap-8">
+      {catalog.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight">Tools del grafo</h2>
+            <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+              Lo que la tabla de privilegios concede y lo que cada nodo realmente
+              llama. No se asignan desde acá.
+            </p>
+          </div>
+          <Card>
+            <CardContent className="flex flex-col gap-3">
+              {catalog.map((tool) => (
+                <div key={tool.name} className="flex flex-col gap-1">
+                  <Badge variant="secondary" className="w-fit font-mono text-[10px]">
+                    {tool.name}
+                  </Badge>
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    {tool.description}
+                  </p>
+                  <p className="text-muted-foreground text-[11px]">
+                    Concedida a {tool.granted_to.join(", ") || "nadie"} · usada por{" "}
+                    {tool.used_by.join(", ") || "nadie"}
+                  </p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
       <section className="flex flex-col gap-3">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">Configurables</h2>
@@ -579,6 +798,10 @@ export function AgentsConsole({ initialConfig }: { initialConfig: ServiceConfig 
             models={config.models}
             providers={config.providers}
             personaMaxChars={config.persona_max_chars}
+            guardrailsMaxChars={guardrailsMaxChars}
+            personaTemplate={personaTemplate}
+            guardrailsTemplate={guardrailsTemplate}
+            catalog={catalog}
             onSaved={replaceAgent}
           />
         ))}
@@ -593,7 +816,7 @@ export function AgentsConsole({ initialConfig }: { initialConfig: ServiceConfig 
           </p>
         </div>
         {readOnly.map((agent) => (
-          <ReadOnlyAgent key={agent.key} agent={agent} />
+          <ReadOnlyAgent key={agent.key} agent={agent} catalog={catalog} />
         ))}
       </section>
     </div>

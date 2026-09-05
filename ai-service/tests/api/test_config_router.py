@@ -146,6 +146,7 @@ class FakeProfileRepository:
         name,
         is_default,
         persona,
+        guardrails,
         provider,
         model,
         temperature,
@@ -165,6 +166,7 @@ class FakeProfileRepository:
             name=cleaned,
             is_default=is_default,
             persona=persona,
+            guardrails=guardrails,
             provider=provider,
             model=model,
             temperature=temperature,
@@ -180,6 +182,7 @@ class FakeProfileRepository:
         name,
         is_default,
         persona,
+        guardrails,
         provider,
         model,
         temperature,
@@ -193,7 +196,8 @@ class FakeProfileRepository:
         was_default = row.is_default
         row.name = cleaned
         row.persona = persona
-        row.provider = provider
+        row.guardrails = guardrails
+        row.provider = provider,
         row.model = model
         row.temperature = temperature
         row.max_tokens = max_tokens
@@ -220,7 +224,7 @@ class FakeProfileRepository:
                 promoted.is_default = True
         return row
 
-    async def upsert(self, agent_key, *, persona, provider, model, temperature, max_tokens):
+    async def upsert(self, agent_key, *, persona, guardrails, provider, model, temperature, max_tokens):
         current = await self.default_for(agent_key)
         if current is None:
             return await self.create(
@@ -228,12 +232,14 @@ class FakeProfileRepository:
                 name=DEFAULT_PROFILE_NAME,
                 is_default=True,
                 persona=persona,
+                guardrails=guardrails,
                 provider=provider,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
         current.persona = persona
+        current.guardrails = guardrails
         current.provider = provider
         current.model = model
         current.temperature = temperature
@@ -438,7 +444,37 @@ class TestReadConfig:
         agents = {a["key"]: a for a in client.get("/config").json()["agents"]}
 
         assert agents["evidence_retriever"]["tools"] == ["search_corpus"]
+        assert agents["evidence_retriever"]["tools_used"] == ["search_corpus"]
         assert agents["evidence_retriever"]["llm_driven"] is False
+        assert agents["answer_synthesizer"]["tools"] == []
+        assert agents["answer_synthesizer"]["tools_used"] == []
+
+    def test_the_synthesizer_exposes_its_prompt_and_system_guardrails(self, client):
+        body = client.get("/config").json()
+        agents = {a["key"]: a for a in body["agents"]}
+        synthesizer = agents["answer_synthesizer"]
+
+        assert synthesizer["system_prompt"]
+        assert "[document_id · section]" in synthesizer["system_prompt"]
+        assert "SOLO" in synthesizer["system_prompt"]
+        kinds = {item["id"]: item["kind"] for item in synthesizer["system_guardrails"]}
+        assert kinds["cite_provenance"] == "prompt"
+        assert kinds["citation_grounding"] == "code"
+        assert agents["query_planner"]["system_prompt"] is None
+        assert agents["query_planner"]["system_guardrails"] == []
+
+    def test_templates_and_the_tool_catalog_travel_at_the_root(self, client):
+        body = client.get("/config").json()
+
+        assert "analista funcional senior" in body["persona_template"]
+        assert "Visual Time" in body["persona_template"]
+        assert "workaround" in body["guardrails_template"]
+        assert body["guardrails_max_chars"] == body["persona_max_chars"]
+        names = {item["name"] for item in body["tools"]}
+        assert names == {"search_corpus"}
+        search = body["tools"][0]
+        assert search["granted_to"] == ["evidence_retriever"]
+        assert search["used_by"] == ["evidence_retriever"]
 
 
 class TestUpdateAgentProfile:
@@ -509,6 +545,35 @@ class TestUpdateAgentProfile:
         )
 
         assert response.status_code == 422
+
+    def test_operator_guardrails_are_stored_and_composed_into_the_prompt(self, client):
+        response = client.put(
+            "/config/agents/answer_synthesizer",
+            json={
+                "persona": "Respondé como un analista funcional.",
+                "guardrails": "- Advertí que los importes dependen de la póliza.",
+            },
+        )
+
+        assert response.status_code == 200
+        profile = response.json()["profiles"][0]
+        assert profile["guardrails"] == "- Advertí que los importes dependen de la póliza."
+        assert response.json()["effective"]["sources"]["guardrails"] == "profile"
+        assert "Advertí que los importes" in profile["composed_system_prompt"]
+        assert "Respondé como un analista funcional." in profile["composed_system_prompt"]
+        assert profile["composed_system_prompt"].index("[document_id · section]") < (
+            profile["composed_system_prompt"].index("Advertí que los importes")
+        )
+
+    def test_guardrails_over_the_cap_are_refused(self, client):
+        cap = client.get("/config").json()["guardrails_max_chars"]
+
+        response = client.put(
+            "/config/agents/answer_synthesizer", json={"guardrails": "x" * (cap + 1)}
+        )
+
+        assert response.status_code == 422
+        assert "guardrails" in response.json()["detail"]
 
     def test_deleting_returns_the_agent_on_its_defaults(self, client):
         client.put(
@@ -744,6 +809,29 @@ class TestNamedProfiles:
         ]
         sources = {edge["source"] for edge in flow["edges"]}
         assert {"START", "orchestrator", "answer_review_gate"} <= sources
+
+    def test_get_config_includes_the_worked_example(self, client):
+        # The flow screen explains each node with one real question. It reads
+        # that question from here, so a served flow without it would leave the
+        # screen with nothing concrete to show.
+        # || La pantalla de flujo explica cada nodo con una pregunta real y la
+        # lee de acá; un flujo servido sin ella dejaría la pantalla sin nada
+        # concreto que mostrar.
+        flow = client.get("/config").json()["flow"]
+
+        assert flow["example"]["question"]
+        assert "golden_curated" in flow["example"]["source"]
+        for node in flow["nodes"]:
+            assert node["example"]["receives"]
+            assert node["example"]["leaves"]
+
+        planner = next(node for node in flow["nodes"] if node["key"] == "query_planner")
+        synthesizer = next(
+            node for node in flow["nodes"] if node["key"] == "answer_synthesizer"
+        )
+        assert len(planner["example"]["detail"]) == 3
+        assert planner["example"]["caveat"] is None
+        assert synthesizer["example"]["caveat"]
 
 
 class TestModelRefresh:

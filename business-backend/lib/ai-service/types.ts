@@ -263,6 +263,23 @@ export interface AnswerAgenticResumeRequest {
 
 // --- Configuración de agentes || Agent configuration -------------------------
 
+/** One grounding rule the operator can see and cannot turn off. */
+export interface SystemGuardrail {
+  id: string;
+  /** 'prompt' | 'code'. */
+  kind: string;
+  title: string;
+  description: string;
+}
+
+/** One tool the privilege table knows. || Una tool de la tabla de privilegios. */
+export interface ToolCatalogEntry {
+  name: string;
+  description: string;
+  granted_to: string[];
+  used_by: string[];
+}
+
 /** Whether each effective value came from a profile or from the settings. || De dónde salió cada valor. */
 export interface ConfigSources {
   /** 'profile' | 'settings'. */
@@ -274,6 +291,8 @@ export interface ConfigSources {
   max_tokens: string;
   /** 'profile' | 'unset'. */
   persona: string;
+  /** 'profile' | 'unset'. Absent on an older service. */
+  guardrails?: string;
 }
 
 /** One generation provider and whether it can be used. || Un proveedor y si se puede usar. */
@@ -349,6 +368,8 @@ export interface EffectiveAgentConfig {
   temperature: number | null;
   max_tokens: number;
   persona: string | null;
+  /** Extra operator constraints. Absent on an older service. */
+  guardrails?: string | null;
   supports_temperature: boolean;
   /** False when the effective provider has no key: the next answer would fail. */
   provider_available: boolean;
@@ -365,6 +386,12 @@ export interface AgentConfig {
   kind: string;
   /** Tools it may call, from the service's privilege table. || Herramientas permitidas. */
   tools: string[];
+  /** Tools this node actually calls. || Herramientas que este nodo llama. */
+  tools_used?: string[];
+  /** Rendered answer/v1 system prompt without operator extras. Synthesizer only. */
+  system_prompt?: string | null;
+  /** Prompt rules plus the code grounding check. Not writable. */
+  system_guardrails?: SystemGuardrail[];
   /** False for the deterministic agents: no model to pick. || False para los deterministas. */
   llm_driven: boolean;
   /** Whether a profile changes what this agent does. || Si un perfil cambia lo que hace. */
@@ -382,6 +409,9 @@ export interface NamedAgentProfile {
   name: string;
   is_default: boolean;
   persona: string | null;
+  guardrails?: string | null;
+  /** Base prompt plus this profile's extras. || Prompt base más los extras de este perfil. */
+  composed_system_prompt?: string;
   provider: string | null;
   model: string | null;
   temperature: number | null;
@@ -394,6 +424,20 @@ export interface GraphFlow {
   nodes: GraphFlowNode[];
   edges: GraphFlowEdge[];
   ladder: string[];
+  /**
+   * The one real question the flow screen walks through every node. Optional
+   * because an older service build serves a flow without it — the screen then
+   * omits the walkthrough instead of inventing one.
+   * || La pregunta real que la pantalla recorre por todos los nodos. Opcional
+   * porque un servicio viejo no la manda; la pantalla la omite, no la inventa.
+   */
+  example?: FlowExample;
+}
+
+export interface FlowExample {
+  question: string;
+  source: string;
+  note: string;
 }
 
 export interface GraphFlowNode {
@@ -404,6 +448,22 @@ export interface GraphFlowNode {
   explanation: string;
   llm_driven: boolean;
   tools: string[];
+  tools_used?: string[];
+  example?: FlowNodeExample;
+}
+
+/**
+ * What one node receives and leaves for the example question. `caveat` marks
+ * what only illustrates the node — the synthesizer writes with a model, and
+ * what the retriever finds depends on the loaded corpus.
+ * || Qué recibe y qué deja un nodo con la pregunta de ejemplo. `caveat` marca
+ * lo que solo ilustra.
+ */
+export interface FlowNodeExample {
+  receives: string;
+  leaves: string;
+  detail: string[];
+  caveat: string | null;
 }
 
 export interface GraphFlowEdge {
@@ -415,6 +475,12 @@ export interface ServiceConfig {
   providers: ProviderConfig[];
   models: ModelConfig[];
   persona_max_chars: number;
+  /** Same cap as persona. Absent on an older service. */
+  guardrails_max_chars?: number;
+  persona_template?: string;
+  guardrails_template?: string;
+  /** Every tool the privilege table knows. || Todas las tools de la tabla de privilegios. */
+  tools?: ToolCatalogEntry[];
   agents: AgentConfig[];
   flow: GraphFlow;
   /**
@@ -435,6 +501,7 @@ export interface ServiceConfig {
  */
 export interface AgentProfileUpdate {
   persona?: string | null;
+  guardrails?: string | null;
   /** Travels together with `model` — the service validates the pair. */
   provider?: string | null;
   model?: string | null;
@@ -447,6 +514,7 @@ export interface NamedProfileWrite {
   name: string;
   is_default?: boolean;
   persona?: string | null;
+  guardrails?: string | null;
   provider?: string | null;
   model?: string | null;
   temperature?: number | null;

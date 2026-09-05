@@ -5,17 +5,30 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
+from app.domain.graph.agents.query_planner import _suggest_filters
 from app.domain.graph.build import AGENT_NODES, build_answer_graph
 from app.domain.graph.catalog import (
     AGENT_KEYS,
     AGENT_SPECS,
+    EXAMPLE_NOTE,
+    EXAMPLE_QUESTION,
+    EXAMPLE_SOURCE,
+    EXAMPLE_SUB_QUERIES,
     SYNTHESIZER_AGENT,
     agent_spec,
     configurable_agent_keys,
     graph_flow,
+    tool_catalog,
 )
 from app.domain.graph.orchestrator import FALLBACK_LADDER
 from app.domain.graph.privilege import AGENT_PRIVILEGES, SEARCH_CORPUS_TOOL
+from app.generation.rag.retrieval.decomposition import decompose
+
+GOLDEN_CURATED = Path(__file__).resolve().parents[3] / "evals" / "golden_curated.json"
+EXAMPLE_GOLDEN_ID = "U-multi-lote-pac-rechazos"
 
 
 class TestCatalogMatchesTheGraph:
@@ -39,6 +52,22 @@ class TestCatalogMatchesTheGraph:
         with_tools = {spec.key: spec.tools for spec in AGENT_SPECS if spec.tools}
 
         assert with_tools == {"evidence_retriever": [SEARCH_CORPUS_TOOL]}
+
+    def test_only_the_retriever_uses_a_tool(self):
+        used = {spec.key: list(spec.tools_used) for spec in AGENT_SPECS if spec.tools_used}
+
+        assert used == {"evidence_retriever": [SEARCH_CORPUS_TOOL]}
+        assert agent_spec(SYNTHESIZER_AGENT).tools_used == ()
+
+    def test_the_tool_catalog_covers_every_granted_name(self):
+        catalog = tool_catalog()
+        names = {item["name"] for item in catalog}
+
+        assert names == {SEARCH_CORPUS_TOOL}
+        search = next(item for item in catalog if item["name"] == SEARCH_CORPUS_TOOL)
+        assert search["granted_to"] == ["evidence_retriever"]
+        assert search["used_by"] == ["evidence_retriever"]
+        assert search["description"]
 
 
 class TestConfigurability:
@@ -84,3 +113,78 @@ class TestGraphFlowMatchesTheCompiledGraph:
             compiled_edges.add((source, target))
 
         assert served == compiled_edges
+
+
+class TestTheWorkedExampleCannotDrift:
+    """The example is prose on a screen, so it reads as a fact. These tests are
+    what make the deterministic half of it one.
+
+    || El ejemplo es prosa en una pantalla, así que se lee como un hecho. Estos
+    tests son lo que hace que la mitad determinista lo sea.
+    """
+
+    def test_every_node_says_what_it_receives_and_leaves(self):
+        # A node without an example is a card the flow screen cannot explain,
+        # which is the whole problem this example exists to fix.
+        # || Un nodo sin ejemplo es una ficha que la pantalla no puede explicar.
+        for spec in AGENT_SPECS:
+            assert spec.example.receives
+            assert spec.example.leaves
+
+    def test_the_planner_example_is_what_decompose_returns(self):
+        # Written out in the catalog so the console can show them verbatim; if
+        # `decompose()` changes, this fails instead of the screen quietly
+        # showing a split the code no longer produces.
+        # || Escritas en el catálogo para mostrarlas tal cual; si `decompose()`
+        # cambia, falla acá y no en silencio en la pantalla.
+        assert list(EXAMPLE_SUB_QUERIES) == decompose(EXAMPLE_QUESTION)
+
+    def test_the_planner_example_claims_no_filters(self):
+        # The example text says the heuristic proposes no `module_code` for
+        # this question. That claim is only true while the heuristic agrees.
+        # || El texto del ejemplo dice que la heurística no propone
+        # `module_code`; solo es cierto mientras la heurística coincida.
+        assert _suggest_filters(EXAMPLE_QUESTION) == {}
+
+    def test_the_example_question_is_the_annotated_golden_one(self):
+        # Its value is that a person asked it and a person annotated it. A
+        # question edited here and not there would lose exactly that.
+        # || Su valor es que la preguntó una persona y la anotó una persona.
+        entries = json.loads(GOLDEN_CURATED.read_text(encoding="utf-8"))["questions"]
+        golden = next(entry for entry in entries if entry["id"] == EXAMPLE_GOLDEN_ID)
+
+        assert EXAMPLE_QUESTION == golden["question"]
+        assert EXAMPLE_GOLDEN_ID in EXAMPLE_SOURCE
+
+    def test_the_retriever_example_cites_the_annotated_documents(self):
+        # The documents shown are the annotated ones, not a recorded run — the
+        # screen says so, and this keeps the two lists the same.
+        # || Los documentos mostrados son los anotados, no una corrida grabada.
+        entries = json.loads(GOLDEN_CURATED.read_text(encoding="utf-8"))["questions"]
+        golden = next(entry for entry in entries if entry["id"] == EXAMPLE_GOLDEN_ID)
+        shown = [line.split(" ", 1)[0] for line in agent_spec("evidence_retriever").example.detail]
+
+        assert shown == golden["relevant_document_ids"]
+
+    def test_illustrative_examples_are_marked(self):
+        # The synthesizer writes with a model and the retriever depends on the
+        # loaded corpus. Both must carry a caveat; the deterministic nodes must
+        # not, or the mark would stop meaning anything.
+        # || El sintetizador escribe con un modelo y el recuperador depende del
+        # corpus. Los dos llevan salvedad; los deterministas no, o la marca
+        # dejaría de significar algo.
+        with_caveat = {spec.key for spec in AGENT_SPECS if spec.example.caveat}
+
+        assert with_caveat == {"answer_synthesizer", "evidence_retriever"}
+
+    def test_flow_serves_the_example(self):
+        flow = graph_flow()
+
+        assert flow["example"] == {
+            "question": EXAMPLE_QUESTION,
+            "source": EXAMPLE_SOURCE,
+            "note": EXAMPLE_NOTE,
+        }
+        for node in flow["nodes"]:
+            assert node["example"]["receives"]
+            assert node["example"]["leaves"]

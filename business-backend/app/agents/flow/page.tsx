@@ -17,8 +17,9 @@ export default async function FlowPage() {
     <PageFrame>
       <PageIntro title="Flujo de ejecución">
         El mismo grafo que corre <code>POST /answer/agentic</code>, descrito por
-        el servicio. Crear un perfil nombrado no agrega un nodo: el flujo se
-        mira acá, no se reescribe.
+        el servicio y recorrido con una pregunta real del golden set, para ver
+        qué hace cada nodo y no solo qué es. Crear un perfil nombrado no agrega
+        un nodo: el flujo se mira acá, no se reescribe.
       </PageIntro>
       <FlowConsole flow={config?.flow ?? EMPTY_FLOW} />
     </PageFrame>

@@ -33,6 +33,7 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
     # || Del perfil de este agente, cuando hay uno configurado. Inyectada y no
     # leída de la base acá, así esto sigue siendo testeable sin base.
     persona = deps.get("persona")
+    guardrails = deps.get("guardrails")
 
     step = int(state.get("supervisor_steps") or 0)
     query = state.get("query") or ""
@@ -54,7 +55,7 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
         }
 
     started = perf_counter()
-    system, user = build_messages(query, hits, persona=persona)
+    system, user = build_messages(query, hits, persona=persona, guardrails=guardrails)
     answer = llm.complete(system=system, user=user)
     contribution = record_model_action(
         "answer_synthesizer",
@@ -64,6 +65,7 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
             f"answer over {len(hits)} hits"
             f" · {getattr(llm, 'model', '?')}"
             f"{' · persona' if persona else ''}"
+            f"{' · guardrails' if guardrails else ''}"
         ),
         duration_ms=int((perf_counter() - started) * 1000),
     )
@@ -73,6 +75,7 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
         answer_chars=len(answer),
         model=getattr(llm, "model", None),
         persona_chars=len(persona or ""),
+        guardrails_chars=len(guardrails or ""),
     )
     return {
         "answer": answer,
