@@ -39,8 +39,10 @@ from app.domain.graph.runner import (
     THREAD_PREFIX as _THREAD_PREFIX,
 )
 from app.domain.graph.runner import (
+    close_turn,
     completed_result,
     initial_state,
+    open_turn,
     run_agentic_background,
     thread_config,
 )
@@ -50,6 +52,7 @@ from app.domain.profiles import (
     synthesizer_runtime,
 )
 from app.foundation.persistence.database import get_async_session
+from app.generation.conversation.store import SessionStore
 from app.generation.rag.retrieval.hybrid import HybridRetriever
 from app.generation.rag.schemas import AnswerRequest, SearchHit
 from app.generation.rag.store.repository import ChunkRepository
@@ -73,6 +76,27 @@ class AnswerAgenticResponse(BaseModel):
     status: Literal["completed"] = "completed"
     thread_id: str = Field(description="Graph thread id for audit. || Id de hilo del grafo.")
     question: str
+    resolved_question: str = Field(
+        default="",
+        description="What was actually retrieved. Differs from `question` when the session "
+        "resolved a referential follow-up. || Lo que realmente se buscó. Difiere de `question` "
+        "cuando la sesion resolvio una pregunta de seguimiento referencial.",
+    )
+    resolved_referents: list[str] = Field(
+        default_factory=list,
+        description="What the rewrite named. Empty means nothing was rewritten. "
+        "|| Que nombro la reescritura. Vacio significa que no se reescribio nada.",
+    )
+    session_memory_used: bool = Field(
+        default=False,
+        description="Whether a conversation session was in play for this turn. "
+        "|| Si hubo una sesion de conversacion en juego en este turno.",
+    )
+    anchors_applied: list[dict] = Field(
+        default_factory=list,
+        description="Pinned constraints this turn retrieved with. "
+        "|| Restricciones fijadas con las que se recupero en este turno.",
+    )
     answer: str
     citations: list[SearchHit]
     grounded: bool = Field(
@@ -83,6 +107,17 @@ class AnswerAgenticResponse(BaseModel):
     needs_human_review: bool = False
     review_reasons: list[str] = Field(default_factory=list)
     routing_history: list[dict] = Field(default_factory=list)
+    context_truncated: bool = Field(
+        default=False,
+        description="True when the token budget left evidence out of the prompt. "
+        "|| True cuando el presupuesto de tokens dejó evidencia fuera del prompt.",
+    )
+    dropped_hits: int = Field(
+        default=0,
+        ge=0,
+        description="Retrieved chunks that did not fit the context budget. "
+        "|| Chunks recuperados que no entraron en el presupuesto de contexto.",
+    )
 
 
 class AnswerAgenticPausedResponse(BaseModel):
@@ -95,6 +130,12 @@ class AnswerAgenticPausedResponse(BaseModel):
     citations: list[SearchHit] = Field(default_factory=list)
     review_reasons: list[str]
     confidence: float | None = None
+    resolved_question: str = ""
+    resolved_referents: list[str] = Field(default_factory=list)
+    session_memory_used: bool = False
+    anchors_applied: list[dict] = Field(default_factory=list)
+    context_truncated: bool = False
+    dropped_hits: int = Field(default=0, ge=0)
 
 
 class AnswerAgenticResumeRequest(BaseModel):
@@ -128,6 +169,10 @@ class AnswerAgenticProgress(BaseModel):
     thread_id: str
     activity: list[GraphActivityEntry] = Field(default_factory=list)
     question: str | None = None
+    resolved_question: str | None = None
+    resolved_referents: list[str] = Field(default_factory=list)
+    session_memory_used: bool | None = None
+    anchors_applied: list[dict] = Field(default_factory=list)
     answer: str | None = None
     citations: list[SearchHit] = Field(default_factory=list)
     grounded: bool | None = None
@@ -135,6 +180,8 @@ class AnswerAgenticProgress(BaseModel):
     needs_human_review: bool | None = None
     review_reasons: list[str] = Field(default_factory=list)
     routing_history: list[dict] = Field(default_factory=list)
+    context_truncated: bool | None = None
+    dropped_hits: int | None = None
     error: str | None = Field(
         default=None, description="Set only when status='failed'. || Solo cuando status='failed'."
     )
@@ -148,6 +195,10 @@ def _completed_response(thread_id: str, values: dict) -> AnswerAgenticResponse:
     return AnswerAgenticResponse(
         thread_id=thread_id,
         question=values.get("query") or "",
+        resolved_question=values.get("resolved_question") or values.get("query") or "",
+        resolved_referents=list(values.get("resolved_referents") or []),
+        session_memory_used=bool(values.get("session_id")),
+        anchors_applied=list(values.get("conversation_anchors") or []),
         answer=values.get("answer") or "",
         citations=_hits_from_state(values),
         grounded=bool(values.get("citations_valid", True)),
@@ -155,6 +206,8 @@ def _completed_response(thread_id: str, values: dict) -> AnswerAgenticResponse:
         needs_human_review=bool(values.get("needs_human_review")),
         review_reasons=list(values.get("review_reasons") or []),
         routing_history=list(values.get("routing_history") or []),
+        context_truncated=bool(values.get("context_truncated")),
+        dropped_hits=int(values.get("dropped_hits") or 0),
     )
 
 
@@ -164,8 +217,14 @@ def _paused_response(thread_id: str, question: str, values: dict, reasons: list[
         question=question,
         answer=values.get("answer"),
         citations=_hits_from_state(values),
+        resolved_question=values.get("resolved_question") or values.get("query") or "",
+        resolved_referents=list(values.get("resolved_referents") or []),
+        session_memory_used=bool(values.get("session_id")),
+        anchors_applied=list(values.get("conversation_anchors") or []),
         review_reasons=reasons,
         confidence=values.get("confidence"),
+        context_truncated=bool(values.get("context_truncated")),
+        dropped_hits=int(values.get("dropped_hits") or 0),
     )
 
 
@@ -223,8 +282,12 @@ async def answer_agentic(
         guardrails=guardrails,
     )
 
+    settings = get_settings()
+    store = SessionStore(session, ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS)
+    conversation = await open_turn(store, body)
+
     try:
-        await graph.ainvoke(initial_state(body), config)
+        await graph.ainvoke(initial_state(body, conversation), config)
         snapshot = await graph.aget_state(config)
     except Exception as exc:
         log.error("answer_agentic_failed", error_type=type(exc).__name__, error=str(exc)[:300])
@@ -246,6 +309,13 @@ async def answer_agentic(
             media_type="application/json",
         )
 
+    await close_turn(
+        store,
+        conversation,
+        values,
+        written_question=body.question,
+        max_turns=settings.CONVERSATION_MAX_TURNS,
+    )
     return _completed_response(thread_id, values)
 
 
@@ -316,7 +386,35 @@ async def answer_agentic_resume(
         activity_log.append(bare_thread, "answer_review_gate", "Gate de revisión", message)
         activity_log.finish(bare_thread, "completed", result=completed_result(values, ""))
 
+    # The turn the pause left open closes HERE, and only here. The paused run
+    # deliberately wrote nothing: what the session records is the answer the
+    # reviewer accepted, not the draft that stopped at the gate.
+    # || El turno que la pausa dejó abierto cierra ACÁ, y solo acá. La corrida
+    # pausada no escribió nada a propósito: lo que la sesión registra es la
+    # respuesta que el revisor aceptó, no el borrador que se detuvo en el gate.
+    await _close_resumed_turn(session, values)
+
     return _completed_response(bare_thread, values)
+
+
+async def _close_resumed_turn(session: AsyncSession, values: dict) -> None:
+    """Record the resumed turn on its session, if the run had one.
+
+    || Registra en su sesión el turno resumido, si la corrida tenía una.
+    """
+    session_id = values.get("session_id")
+    if not session_id:
+        return
+    settings = get_settings()
+    store = SessionStore(session, ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS)
+    conversation = await store.get(str(session_id))
+    await close_turn(
+        store,
+        conversation,
+        values,
+        written_question=values.get("query") or "",
+        max_turns=settings.CONVERSATION_MAX_TURNS,
+    )
 
 
 @router.post(
@@ -390,6 +488,10 @@ async def answer_agentic_progress(thread_id: str):
         thread_id=thread_id,
         activity=activity,
         question=result.get("question"),
+        resolved_question=result.get("resolved_question"),
+        resolved_referents=result.get("resolved_referents") or [],
+        session_memory_used=result.get("session_memory_used"),
+        anchors_applied=result.get("anchors_applied") or [],
         answer=result.get("answer"),
         citations=[SearchHit.model_validate(hit) for hit in result.get("citations") or []],
         grounded=result.get("grounded"),
@@ -397,4 +499,6 @@ async def answer_agentic_progress(thread_id: str):
         needs_human_review=result.get("needs_human_review"),
         review_reasons=result.get("review_reasons") or [],
         routing_history=result.get("routing_history") or [],
+        context_truncated=result.get("context_truncated"),
+        dropped_hits=result.get("dropped_hits"),
     )

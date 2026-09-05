@@ -18,6 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -169,6 +170,61 @@ class Settings(BaseSettings):
     ANSWER_MODEL: str = "gpt-4o-mini"
     ANSWER_MAX_TOKENS: int = 1024
     ANSWER_TEMPERATURE: float = 0.0
+
+    # Token ceiling for the CONTEXT BLOCK — the retrieved chunks — and not for
+    # the whole prompt: the system prompt and the persona are bounded and
+    # known, the evidence is the part that grows with the question. The
+    # effective size is not `limit`: the agentic path unions the hits of every
+    # sub-query, so `limit x sub-queries` is the real ceiling.
+    #
+    # The count is an ESTIMATE. It uses the embedding model's tokenizer
+    # (`count_tokens`), not the tokenizer of the model that answers, because
+    # this service synthesizes through three providers and only one of them
+    # has a local tokenizer. 16384 is roomy against every window in the
+    # catalog on purpose: that margin is what absorbs the difference.
+    #
+    # `ge=1`: a 0 does NOT mean "no limit", it would mean an empty context.
+    # || Techo en tokens del BLOQUE DE CONTEXTO —los chunks recuperados—, no
+    # del prompt entero. El tamaño efectivo no es `limit`: el camino agéntico
+    # une los hits de cada subconsulta. El conteo es una ESTIMACIÓN, con el
+    # tokenizer de los embeddings y no el del modelo que responde, porque el
+    # servicio sintetiza con tres proveedores y solo uno tiene tokenizer
+    # local; 16384 es holgado a propósito, y ese margen es el que absorbe la
+    # diferencia. `ge=1`: un 0 no significa «sin límite», significa contexto
+    # vacío.
+    ANSWER_MAX_CONTEXT_TOKENS: int = Field(default=16384, ge=1)
+
+    # --- Memoria conversacional || Conversation memory ---------------------
+
+    # How many (question, answer) pairs the sliding window holds. Four, not the
+    # course's six: there the turns ARE the content, here they compete with the
+    # evidence for attention and for budget, and the evidence is what backs the
+    # citations. What repairs a follow-up is the structured facts, which live
+    # outside the window and never expire with it.
+    # || Cuántos pares (pregunta, respuesta) guarda la ventana deslizante.
+    # Cuatro y no los seis del curso: allá los turnos SON el contenido, acá
+    # compiten con la evidencia por atención y por presupuesto, y la evidencia
+    # es lo que respalda las citas. Lo que arregla una pregunta de seguimiento
+    # son los hechos estructurados, que viven fuera de la ventana.
+    CONVERSATION_MAX_TURNS: int = Field(default=4, ge=1)
+
+    # Ceiling for the memory block, charged INSIDE ANSWER_MAX_CONTEXT_TOKENS
+    # and never on top of it. When the prompt does not fit, memory is trimmed
+    # before any retrieved chunk: a displaced turn costs a repeated sentence, a
+    # displaced chunk costs a citation.
+    # || Techo del bloque de memoria, cobrado ADENTRO de
+    # ANSWER_MAX_CONTEXT_TOKENS y nunca encima. Si el prompt no entra, se
+    # recorta la memoria antes que cualquier chunk recuperado: un turno
+    # desplazado cuesta una frase repetida, un chunk desplazado cuesta una cita.
+    CONVERSATION_MEMORY_MAX_TOKENS: int = Field(default=1024, ge=1)
+
+    # How long a conversation stays readable. An expired session is treated as
+    # absent -- the turn is answered without memory and says so -- instead of
+    # failing with a 404 in the middle of a conversation.
+    # || Cuánto vive una conversación. Una sesión vencida se trata como
+    # inexistente —el turno se responde sin memoria y lo dice— en vez de fallar
+    # con un 404 en medio de la conversación.
+    CONVERSATION_SESSION_TTL_DAYS: int = Field(default=30, ge=1)
 
     # --- Proveedores de generación || Generation providers -----------------
 

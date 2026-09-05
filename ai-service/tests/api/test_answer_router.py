@@ -15,12 +15,34 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config import get_settings
 from app.dependencies import get_embedder, get_reranker
 from app.domain.profiles import ProfileResolutionError
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.answer import INSUFFICIENT_CONTEXT_MESSAGE
 from app.generation.rag.retrieval.hybrid import RetrievalResult, RetrievedChunk
 from app.main import app
+
+
+def _chunk(content_hash: str, *, text: str) -> RetrievedChunk:
+    """A retrieved chunk with the shape the budget measures.
+
+    || Un chunk recuperado con la forma que mide el presupuesto.
+    """
+    return RetrievedChunk(
+        content_hash=content_hash,
+        chunk_id=f"CA014::Validaciones::{content_hash}",
+        document_id="CA014",
+        document_title="Coberturas de la poliza individual",
+        section="Validaciones",
+        bullet_path="Capital > Limites",
+        module_code="CA",
+        document_kind="content",
+        text=text,
+        score=0.031,
+        branches=["vector"],
+        ranks={"vector": 1},
+    )
 
 
 class FakeRetriever:
@@ -150,6 +172,69 @@ def test_empty_retrieval_does_not_call_the_llm(client, monkeypatch, retriever, l
     assert body["answer"] == INSUFFICIENT_CONTEXT_MESSAGE
     assert body["citations"] == []
     assert body["grounded"] is True
+    assert body["dropped_hits"] == 0
+    assert body["context_truncated"] is False
+    assert llm.calls == []
+
+
+def test_a_generous_budget_reports_no_truncation(client, monkeypatch, llm):
+    monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
+    _use_llm(monkeypatch, llm)
+
+    body = client.post("/answer", json={"question": "tope de capital"}).json()
+
+    assert body["context_truncated"] is False
+    assert body["dropped_hits"] == 0
+
+
+def test_the_budget_trims_the_evidence_and_says_so(
+    client, monkeypatch, retriever, llm
+):
+    """Trimming is reported in the contract, not only in a log.
+
+    || El recorte se reporta en el contrato, no solo en un log.
+    """
+    retriever.result = RetrievalResult(
+        chunks=[
+            _chunk(f"h{index}", text="regla de negocio " * 40) for index in range(5)
+        ],
+        branch_counts={},
+        identifier_terms=[],
+    )
+    monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
+    monkeypatch.setattr(get_settings(), "ANSWER_MAX_CONTEXT_TOKENS", 400, raising=False)
+    _use_llm(monkeypatch, llm)
+
+    body = client.post("/answer", json={"question": "tope de capital"}).json()
+
+    assert body["context_truncated"] is True
+    assert body["dropped_hits"] > 0
+    # citations are what the model was shown, never the whole retrieval.
+    assert len(body["citations"]) == 5 - body["dropped_hits"]
+
+
+def test_evidence_that_does_not_fit_skips_the_llm(
+    client, monkeypatch, retriever, llm
+):
+    """Told apart from an empty retrieval by dropped_hits.
+
+    || Se distingue de una recuperación vacía por dropped_hits.
+    """
+    retriever.result = RetrievalResult(
+        chunks=[_chunk("h0", text="regla " * 500)],
+        branch_counts={},
+        identifier_terms=[],
+    )
+    monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
+    monkeypatch.setattr(get_settings(), "ANSWER_MAX_CONTEXT_TOKENS", 20, raising=False)
+    _use_llm(monkeypatch, llm)
+
+    body = client.post("/answer", json={"question": "tope de capital"}).json()
+
+    assert body["answer"] == INSUFFICIENT_CONTEXT_MESSAGE
+    assert body["citations"] == []
+    assert body["dropped_hits"] == 1
+    assert body["context_truncated"] is True
     assert llm.calls == []
 
 
@@ -244,3 +329,22 @@ def test_a_profile_id_is_forwarded_to_the_runtime(client, monkeypatch, llm):
 
     assert response.status_code == 200
     assert seen == ["abc-1"]
+
+
+def test_the_single_shot_endpoint_refuses_a_session(client, monkeypatch, llm):
+    """Accepting `session_id` and ignoring it would answer without memory
+    while the caller believed otherwise.
+
+    || Aceptar `session_id` e ignorarlo respondería sin memoria mientras quien
+    llama cree lo contrario.
+    """
+    monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
+    _use_llm(monkeypatch, llm)
+
+    response = client.post(
+        "/answer", json={"question": "tope de capital", "session_id": "s-1"}
+    )
+
+    assert response.status_code == 422
+    assert "answer/agentic" in str(response.json()["detail"])
+    assert llm.calls == []

@@ -29,6 +29,51 @@ def _hit(**overrides) -> SearchHit:
     return SearchHit(**defaults)
 
 
+def test_without_memory_the_prompt_is_v1():
+    """An answer produced with memory is not comparable to one produced
+    without it, so the version has to say which one this is.
+
+    || Una respuesta producida con memoria no es comparable con una producida
+    sin ella, así que la versión tiene que decir cuál es cuál.
+    """
+    system, _ = build_messages("pregunta", [_hit()])
+
+    assert system == render_prompt("answer", "v1", "system", persona=None, guardrails=None)
+    assert "Lo que ya pasó en esta conversación" not in system
+
+
+def test_memory_renders_the_v2_prompt():
+    system, _ = build_messages("pregunta", [_hit()], memory="- Módulos en juego: CA")
+
+    assert "Lo que ya pasó en esta conversación" in system
+    assert "- Módulos en juego: CA" in system
+
+
+def test_memory_is_declared_not_to_be_provenance():
+    """A remembered document_id must not look like a citable source.
+
+    || Un document_id recordado no puede parecer una fuente citable.
+    """
+    system, _ = build_messages("pregunta", [_hit()], memory="- La respuesta anterior citó: CA014")
+
+    assert "NO es procedencia" in system
+
+
+def test_memory_does_not_displace_the_citation_rules():
+    """Same subordination as the persona: it changes what is understood,
+    never the obligation to cite.
+
+    || La misma subordinación que la persona: cambia lo que se entiende, nunca
+    la obligación de citar.
+    """
+    system, _ = build_messages("pregunta", [_hit()], memory="- Módulos en juego: CA")
+
+    assert "[document_id · section]" in system
+    assert system.index("Reglas, todas obligatorias") < system.index(
+        "Lo que ya pasó en esta conversación"
+    )
+
+
 def test_each_chunk_enters_with_its_provenance():
     context = build_context([_hit()])
 

@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import structlog
 
+from app.config import get_settings
 from app.foundation.llm.wrapper import LLM
 from app.generation.rag.guardrails import check_grounding
-from app.generation.rag.prompt_builder import build_messages
+from app.generation.rag.prompt_builder import build_budgeted_messages
 from app.generation.rag.retrieval.hybrid import DEFAULT_BRANCHES, HybridRetriever
 from app.generation.rag.schemas import AnswerResponse, search_hits_from_chunks
 from app.generation.rag.store.repository import SearchFilters
@@ -79,22 +80,57 @@ async def generate_answer(
             grounded=True,
         )
 
-    system, user = build_messages(
-        question, citations, persona=persona, guardrails=guardrails
+    system, user, budgeted = build_budgeted_messages(
+        question,
+        citations,
+        budget=get_settings().ANSWER_MAX_CONTEXT_TOKENS,
+        persona=persona,
+        guardrails=guardrails,
     )
+
+    # Evidence was retrieved and none of it fit. Treated as insufficient
+    # context -- there is nothing to ground an answer on -- but reported with
+    # `dropped_hits` set, which is what separates it from having found
+    # nothing at all.
+    # || Se recuperó evidencia y no entró ninguna. Se trata como contexto
+    # insuficiente —no hay con qué anclar una respuesta— pero se reporta con
+    # `dropped_hits`, que es lo que lo separa de no haber encontrado nada.
+    if not budgeted.kept:
+        log.warning(
+            "answer_context_budget_exhausted",
+            query=question,
+            hits=len(citations),
+            budget=budgeted.budget,
+        )
+        return AnswerResponse(
+            question=question,
+            answer=INSUFFICIENT_CONTEXT_MESSAGE,
+            citations=[],
+            grounded=True,
+            context_truncated=True,
+            dropped_hits=budgeted.dropped_count,
+        )
+
     answer = llm.complete(system=system, user=user)
-    grounding = check_grounding(answer, citations)
+    # The prose is checked against what the model was actually shown, not
+    # against everything the retriever found.
+    # || La prosa se chequea contra lo que el modelo realmente vio, no contra
+    # todo lo que encontró el retriever.
+    grounding = check_grounding(answer, budgeted.kept)
 
     log.info(
         "answer",
         query=question,
-        hits=len(citations),
+        hits=len(budgeted.kept),
+        dropped=budgeted.dropped_count,
         grounded=grounding.grounded,
         unsupported=grounding.unsupported_document_ids,
     )
     return AnswerResponse(
         question=question,
         answer=answer,
-        citations=citations,
+        citations=budgeted.kept,
         grounded=grounding.grounded,
+        context_truncated=budgeted.truncated,
+        dropped_hits=budgeted.dropped_count,
     )

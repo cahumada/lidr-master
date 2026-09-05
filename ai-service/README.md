@@ -133,6 +133,107 @@ Para cada pregunta del golden set con un `document_id` esperado, confirma que
 las `citations` de la respuesta lo incluyen. Método y números en
 [`evals/GENERATION_EVAL.md`](evals/GENERATION_EVAL.md).
 
+### Presupuesto de contexto
+
+`ANSWER_MAX_CONTEXT_TOKENS` (default 16384) es el techo en tokens del **bloque
+de contexto** —los chunks que entran al prompt—, no del prompt entero ni de la
+respuesta (eso es `ANSWER_MAX_TOKENS`).
+
+Existe porque el tamaño efectivo del contexto **no es el `limit` de la
+consulta**: el camino agéntico corre una búsqueda por subconsulta y une los
+resultados, así que el techo real es `limit × subconsultas`. Sin presupuesto, un
+perfil apuntando a un modelo de ventana chica desbordaba según la *forma* de la
+pregunta, con un error del proveedor a mitad de la corrida.
+
+Tres cosas que conviene saber:
+
+- **El conteo es una estimación.** Usa el tokenizer de los embeddings
+  (`count_tokens`) y no el del modelo que responde, porque el servicio sintetiza
+  con tres proveedores y solo uno tiene tokenizer local. El default es holgado a
+  propósito: ese margen absorbe la diferencia entre tokenizers.
+- **Lo que no entra se descarta entero y se avisa.** La respuesta lleva
+  `context_truncated` y `dropped_hits`, y la consola muestra un aviso. Un chunk
+  que no llegó al prompt es información de negocio perdida para esa respuesta;
+  descartarla en silencio sería un defecto.
+- **`citations` es lo que el modelo vio**, no todo lo que devolvió el retriever.
+  Un chunk descartado por presupuesto no respalda nada.
+
+`dropped_hits > 0` con `citations` vacío significa que **sí** hubo evidencia y
+no entró ninguna — distinto de no haber encontrado nada, que reporta
+`dropped_hits = 0`.
+
+**Cuánto margen hay hoy**, medido sobre las 35 preguntas del golden set y no
+estimado: el camino `/answer` llega como mucho al 20% del presupuesto; el
+agéntico —el que multiplica por subconsulta— al 41%, desde una pregunta que
+el planner parte en tres; y con una sesión de conversación llena encima, al
+43%. Ninguna pregunta se trunca. Ese margen es también el que absorbe la
+diferencia entre el tokenizer que cuenta y el del modelo que responde.
+
+## Memoria conversacional
+
+```bash
+curl -X POST localhost:8000/answer/session          # -> {"session_id": "..."}
+```
+
+El `session_id` es **opcional** en `POST /answer/agentic[/start]`. Sin él, el
+turno se responde sin memoria, exactamente como antes de que existieran las
+sesiones — y el prompt renderizado es `answer/v1` byte a byte, que es lo que
+mantiene comparable el eval de fidelidad.
+
+Un `session_id` **no** es un `thread_id`: un thread es *una* corrida del grafo
+(con su pausa de revisión humana); una sesión son muchas.
+
+### Lo que la memoria alimenta
+
+La diferencia de fondo con el estimador conversacional del curso: acá la
+memoria alimenta la **recuperación** antes que la generación. Una pregunta de
+seguimiento —«¿y para siniestros?»— llega al planner sin referente, y si no se
+resuelve **antes** de buscar, el retriever trae ruido y el sintetizador redacta
+una respuesta bien citada a una pregunta que nadie hizo. Ninguna cantidad de
+memoria en el prompt de síntesis arregla eso: el sintetizador solo puede citar
+lo que le trajeron.
+
+Por eso el orden es `resolver → decompose → retrieve`, y la pregunta resuelta
+viaja en la respuesta (`resolved_question`, `resolved_referents`) y se muestra
+en la consola cuando difiere de la escrita. Una reescritura que el usuario no
+ve es una reescritura que nadie puede chequear.
+
+### Los cuatro slots
+
+| Slot | Qué es | Cuándo se pierde |
+|---|---|---|
+| `facts` | módulos y ventanas en juego, transacciones mencionadas, qué citó la respuesta anterior | **nunca** — son lo que arregla la recuperación del turno siguiente |
+| `anchors` | filtros que el usuario fijó explícitamente («de acá en adelante, solo módulo CA») | solo cuando los quita, o después de los turnos |
+| `turns` | los últimos `CONVERSATION_MAX_TURNS` pares, con la respuesta recortada | primero, cuando el presupuesto aprieta |
+| — | resumen acumulativo | **no existe**: ver abajo |
+
+El detector de anchors es heurístico y conservador: hacen falta una frase que
+acota **y** algo concreto que fijar. «¿qué valida el módulo CA?» no fija nada —
+eso es un filtro de una pregunta, no una decisión sobre la conversación. Un
+anchor aplicado se muestra como chip en la consola, con la pregunta que lo
+fijó, y se puede quitar; un filtro aplicado en silencio es un defecto.
+
+### La evidencia gana el presupuesto
+
+`CONVERSATION_MEMORY_MAX_TOKENS` se cobra **adentro** de
+`ANSWER_MAX_CONTEXT_TOKENS`, nunca encima. La evidencia se ajusta primero
+contra el presupuesto entero y la memoria se queda con lo que sobre, hasta su
+propio techo. Es lo contrario de lo que haría un chat genérico, y es
+deliberado: un turno desplazado cuesta una frase repetida, un chunk desplazado
+cuesta una cita.
+
+### Lo que la memoria NO es
+
+`citation_validator` sigue validando contra los hits de **este** turno. Un
+`document_id` citado en un turno anterior, o nombrado en el bloque de memoria,
+no respalda nada — y el prompt `v2` se lo dice al modelo con todas las letras.
+
+**Sin resumen acumulativo.** Es el mecanismo del curso que más cuesta (una
+llamada LLM por compactación) y el que menos aporta acá: con hechos
+estructurados y preguntas resueltas, cuatro pares de ventana alcanzan. Vuelve
+si aparecen sesiones donde el resolver pierda referentes de más de cuatro
+turnos atrás — con esa evidencia adelante, no antes.
+
 ## Evaluación de la recuperación
 
 ```bash
@@ -490,6 +591,7 @@ app/
     │   ├── loader.py                        # COPY masivo e idempotente
     │   └── repository.py                    # búsqueda por similitud con filtros
     ├── prompt_builder.py                    # contexto con procedencia visible
+    ├── context_budget.py                    # techo en tokens, recorte reportado
     ├── guardrails.py                        # citas vs. hits recuperados
     └── answer.py                            # orquestación retrieve → LLM → guardrail
 ```

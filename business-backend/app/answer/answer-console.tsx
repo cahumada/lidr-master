@@ -26,6 +26,7 @@ import type {
   AnswerAgenticPaused,
   AnswerAgenticProgress,
   AnswerAgenticStart,
+  ConversationAnchor,
   GraphActivityEntry,
   RoutingRecord,
   NamedAgentProfile,
@@ -34,10 +35,15 @@ import type {
 } from "@/lib/ai-service/types"
 
 /**
- * Session chat over independent agentic runs. Each send is a new
- * `thread_id`; the thread is presentation, not memory on the service.
- * || Chat de sesión sobre corridas agenticas independientes. Cada envío es
- * un `thread_id` nuevo; el hilo es presentación, no memoria del servicio.
+ * Session chat over independent agentic runs. Each send is still a new
+ * `thread_id` — a thread is ONE graph run — but the thread is now backed by a
+ * service-side `session_id`, so the conversation survives a reload and a
+ * referential follow-up can be resolved before retrieval.
+ * || Chat de sesión sobre corridas agenticas independientes. Cada envío sigue
+ * siendo un `thread_id` nuevo —un thread es UNA corrida— pero ahora el hilo
+ * está respaldado por un `session_id` del servicio, así la conversación
+ * sobrevive una recarga y una pregunta de seguimiento referencial se puede
+ * resolver antes de la recuperación.
  */
 
 const AGENT_FLOW = [
@@ -499,6 +505,13 @@ function AssistantBody({
   if (turn.paused) {
     return (
       <div className="flex flex-col gap-4">
+        {turn.paused.resolved_question &&
+          turn.paused.resolved_question !== turn.paused.question && (
+            <p className="rounded-lg border border-sky-500/40 bg-sky-500/5 px-3 py-2 text-xs">
+              Se buscó:{" "}
+              <span className="font-medium">{turn.paused.resolved_question}</span>
+            </p>
+          )}
         <AwaitingReviewPanel
           paused={turn.paused}
           note={reviewNote}
@@ -534,6 +547,28 @@ function AssistantBody({
           {turn.elapsedMs !== null && <span>{turn.elapsedMs} ms</span>}
           <span className="font-mono">{result.thread_id.slice(0, 8)}…</span>
         </div>
+        {result.resolved_question &&
+          result.resolved_question !== result.question && (
+            <p className="rounded-lg border border-sky-500/40 bg-sky-500/5 px-3 py-2 text-xs">
+              Se buscó:{" "}
+              <span className="font-medium">{result.resolved_question}</span>
+              {result.resolved_referents.length > 0 && (
+                <>
+                  {" "}
+                  — la sesión resolvió la referencia con{" "}
+                  {result.resolved_referents.join(", ")}.
+                </>
+              )}
+            </p>
+          )}
+        {result.context_truncated && (
+          <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs">
+            Evidencia recortada: {result.dropped_hits}{" "}
+            {result.dropped_hits === 1 ? "chunk recuperado no entró" : "chunks recuperados no entraron"}{" "}
+            en el presupuesto de contexto, así que el modelo no los vio. La respuesta se
+            apoya solo en la evidencia listada abajo.
+          </p>
+        )}
         <p className="text-sm leading-relaxed whitespace-pre-wrap">{result.answer}</p>
         <details className="rounded-lg border">
           <summary className="text-muted-foreground cursor-pointer px-3 py-2 text-xs font-medium">
@@ -573,6 +608,8 @@ export function AnswerConsole({
   const [flags, setFlags] = useState<RetrievalFlags>({ rerank: true, split: true, lexical: false })
   const [reviewNote, setReviewNote] = useState("")
   const [busy, setBusy] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [anchors, setAnchors] = useState<ConversationAnchor[]>([])
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const startedAtRef = useRef(0)
@@ -620,6 +657,11 @@ export function AnswerConsole({
         setBusy(false)
 
         if (body.status === "completed") {
+          // The service is the authority on what is pinned: an anchor can be
+          // added by a question the console never parsed.
+          // || El servicio es la autoridad sobre qué está fijado: un anchor
+          // puede agregarlo una pregunta que la consola nunca parseó.
+          setAnchors(body.anchors_applied ?? [])
           patchTurn(turnId, {
             pending: false,
             elapsedMs,
@@ -634,6 +676,12 @@ export function AnswerConsole({
               needs_human_review: body.needs_human_review ?? false,
               review_reasons: body.review_reasons,
               routing_history: body.routing_history,
+              resolved_question: body.resolved_question ?? body.question ?? fallbackQuestion,
+              resolved_referents: body.resolved_referents ?? [],
+              session_memory_used: body.session_memory_used ?? false,
+              anchors_applied: body.anchors_applied ?? [],
+              context_truncated: body.context_truncated ?? false,
+              dropped_hits: body.dropped_hits ?? 0,
             },
           })
         } else if (body.status === "awaiting_human_review") {
@@ -648,6 +696,12 @@ export function AnswerConsole({
               citations: body.citations,
               review_reasons: body.review_reasons,
               confidence: body.confidence,
+              resolved_question: body.resolved_question ?? body.question ?? fallbackQuestion,
+              resolved_referents: body.resolved_referents ?? [],
+              session_memory_used: body.session_memory_used ?? false,
+              anchors_applied: body.anchors_applied ?? [],
+              context_truncated: body.context_truncated ?? false,
+              dropped_hits: body.dropped_hits ?? 0,
             },
           })
         } else {
@@ -695,8 +749,19 @@ export function AnswerConsole({
       },
     ])
 
+    // The session is created lazily, on the first question rather than on
+    // page load: opening the screen and closing it should not leave a row
+    // behind. If it cannot be created the turn still goes out, with no
+    // memory -- degraded, never blocked.
+    // || La sesión se crea perezosamente, en la primera pregunta y no al
+    // cargar la pantalla: abrir la pantalla y cerrarla no debería dejar una
+    // fila. Si no se puede crear, el turno sale igual sin memoria: degradado,
+    // nunca bloqueado.
+    const activeSession = sessionId ?? (await ensureSession())
+
     const payload = {
       question: trimmed,
+      session_id: activeSession,
       limit: Number(limit) || 10,
       max_per_document: 1,
       module_code: moduleCodes.length > 0 ? moduleCodes : undefined,
@@ -779,10 +844,53 @@ export function AnswerConsole({
       clearTimeout(pollTimeoutRef.current)
       pollTimeoutRef.current = null
     }
+    // The service-side session goes too. Leaving it alive would keep memory
+    // dangling off a thread the user declared finished.
+    // || La sesión del lado del servicio también se va. Dejarla viva sería
+    // dejar memoria colgada de un hilo que el usuario dio por terminado.
+    if (sessionId) {
+      void fetch(`/api/answer/session/${encodeURIComponent(sessionId)}`, {
+        method: "DELETE",
+      }).catch(() => undefined)
+    }
+    setSessionId(null)
+    setAnchors([])
     setTurns([])
     setQuestion("")
     setReviewNote("")
     setBusy(false)
+  }
+
+  async function ensureSession(): Promise<string | null> {
+    try {
+      const response = await fetch("/api/answer/session", { method: "POST" })
+      if (!response.ok) return null
+      const body = (await response.json()) as { session_id?: string }
+      if (!body.session_id) return null
+      setSessionId(body.session_id)
+      return body.session_id
+    } catch {
+      return null
+    }
+  }
+
+  async function unpinAnchor(anchor: ConversationAnchor) {
+    if (!sessionId) return
+    try {
+      const response = await fetch(
+        `/api/answer/session/${encodeURIComponent(sessionId)}/anchors/` +
+          `${encodeURIComponent(anchor.kind)}/${encodeURIComponent(anchor.value)}`,
+        { method: "DELETE" },
+      )
+      if (!response.ok) return
+      const body = (await response.json()) as { anchors?: ConversationAnchor[] }
+      setAnchors(body.anchors ?? [])
+    } catch {
+      // Leave the chip where it is: a filter that vanishes from the screen
+      // while the service still applies it is worse than one that stayed.
+      // || Dejar el chip donde está: un filtro que desaparece de la pantalla
+      // mientras el servicio lo sigue aplicando es peor que uno que se quedó.
+    }
   }
 
   function onComposerKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -863,6 +971,31 @@ export function AnswerConsole({
       )}
 
       <div className="bg-background border-t px-4 py-3">
+        {anchors.length > 0 && (
+          <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap items-center gap-2">
+            <span className="text-muted-foreground text-xs">
+              Filtros fijados para esta conversación:
+            </span>
+            {anchors.map((anchor) => (
+              <Badge
+                key={`${anchor.kind}:${anchor.value}`}
+                variant="secondary"
+                className="gap-1"
+                title={`Fijado por: ${anchor.source_question}`}
+              >
+                {anchor.kind === "module_code" ? "módulo" : "ventana"} {anchor.value}
+                <button
+                  type="button"
+                  onClick={() => void unpinAnchor(anchor)}
+                  aria-label={`Quitar ${anchor.value}`}
+                  className="hover:text-destructive ml-1"
+                >
+                  ×
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
         <form
           className="mx-auto flex w-full max-w-3xl items-end gap-2"
           onSubmit={(event) => {
