@@ -93,8 +93,11 @@ presupuesto de contexto, así que ese change entra primero.
 
 ## 7. Verificación y cierre
 
-- [ ] 7.1 `uv run python scripts/validate_specs.py`.
-- [ ] 7.2 `uv run pytest` y `uv run ruff check .` desde `ai-service/`.
+- [x] 7.1 `uv run python scripts/validate_specs.py` -- 11 specs, 15 changes
+      en curso, 0 errores y 0 advertencias.
+- [x] 7.2 `uv run pytest` y `uv run ruff check .` desde `ai-service/` --
+      **818 passed, 0 skipped** en 5:27 (con la base arriba, así que los tests
+      de integración del store corrieron de verdad) y ruff limpio.
 - [x] 7.3 Medir la tasa de FALSOS POSITIVOS del resolver sobre el golden
       set. La task decía «eval de fidelidad con memoria activa» y eso no es
       ejecutable: `scripts/eval_generation.py` llama a `generate_answer`, que

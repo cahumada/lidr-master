@@ -485,10 +485,10 @@ significa algo en cinco nodos y acá en uno.
 
 La persona se appendea al system prompt `answer/v1` **después** de las reglas de
 grounding, con la instrucción explícita de que las reglas ganan si algo entra en
-conflicto: cambia la voz, no puede convencer al modelo de dejar de citar sus
-fuentes. Sin persona configurada el prompt se renderiza **byte-idéntico** al
-anterior, y hay un test que lo verifica — es lo que mantiene comparable el eval
-de fidelidad.
+conflicto: cambia la voz, no puede convencer al modelo de inventar, de omitir
+el cierre `Fuentes citadas:` ni de salir del contexto. Sin persona configurada
+el prompt se renderiza **byte-idéntico** al anterior, y hay un test que lo
+verifica — es lo que mantiene comparable el eval de fidelidad.
 
 Los tres caminos de síntesis (`/answer`, `/answer/agentic`, el runner en
 background) resuelven LLM y persona por la misma función

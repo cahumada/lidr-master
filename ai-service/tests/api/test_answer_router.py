@@ -292,6 +292,8 @@ def test_the_prompt_the_llm_sees_carries_provenance(client, monkeypatch, llm):
 
     assert "[CA014 · Validaciones]" in llm.calls[0]["user"]
     assert "[document_id · section]" in llm.calls[0]["system"]
+    assert "Fuentes citadas" in llm.calls[0]["system"]
+    assert "citá con esos identificadores" not in llm.calls[0]["user"]
 
 
 def test_an_unknown_profile_id_is_refused(client, monkeypatch, llm):

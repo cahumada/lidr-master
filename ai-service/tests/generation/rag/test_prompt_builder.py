@@ -113,15 +113,41 @@ def test_the_user_prompt_carries_the_question_and_the_context():
     assert "¿cuál es el tope de capital?" in user
     assert "[CA014 · Validaciones]" in user
     assert "El capital asegurado" in user
+    assert "Fuentes citadas" in user
     assert system != user
 
 
-def test_the_system_prompt_instructs_grounding_citations_and_refusal():
+def test_the_system_prompt_instructs_grounding_synthesis_sources_and_refusal():
     system = render_prompt("answer", "v1", "system")
 
-    assert "[document_id · section]" in system
     assert "SOLO" in system
+    assert "No cites procedencia" in system
+    assert "en el cuerpo" in system
+    assert "Fuentes citadas" in system
+    assert "comunicación efectiva, no un volcado" in system
     assert "No hay información suficiente" in system
+
+
+def test_the_base_role_covers_both_profiles_and_is_not_a_persona():
+    """Functional vs technical voice is the named profile, not the system role.
+
+    || La voz funcional o técnica es el perfil nombrado, no el rol del system.
+    """
+    system = render_prompt("answer", "v1", "system")
+
+    assert "Eres un analista funcional" not in system
+    assert "el funcional" in system
+    assert "el técnico" in system
+    assert "ajustan la voz" in system or "ajusta la voz" in system
+    assert "nunca el alcance" in system
+
+
+def test_the_user_prompt_asks_for_prose_and_a_source_footer():
+    _, user = build_messages("¿cuál es el tope de capital?", [_hit()])
+
+    assert "citá con esos identificadores" not in user
+    assert "Fuentes citadas" in user
+    assert "no para reenviar" in user
 
 
 def test_no_persona_renders_the_prompt_exactly_as_before():
@@ -133,7 +159,7 @@ def test_no_persona_renders_the_prompt_exactly_as_before():
     with_none, _ = build_messages("pregunta", [_hit()], persona=None)
 
     assert without_argument == with_none
-    assert "perfil de agente" not in without_argument
+    assert "Estilo y voz" not in without_argument
 
 
 def test_a_persona_is_appended_after_the_rules_and_subordinate_to_them():
@@ -163,7 +189,7 @@ def test_no_operator_extras_keeps_the_prompt_byte_identical():
 
     assert without_argument == with_nones
     assert "Restricciones adicionales" not in without_argument
-    assert "perfil de agente" not in without_argument
+    assert "Estilo y voz" not in without_argument
 
 
 def test_operator_guardrails_are_appended_after_the_rules_and_subordinate():
