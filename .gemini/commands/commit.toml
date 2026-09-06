@@ -1,0 +1,4 @@
+description = "Un commit conventional + push. No crea el PR."
+prompt = """
+Read and follow openspec/commands/commit.md. Arguments: {{args}}
+"""

@@ -1,0 +1,4 @@
+description = "Proponer un change OpenSpec para ai-service (sin escribir código de producto)."
+prompt = """
+Read and follow openspec/commands/plan-ai-service.md. Arguments: {{args}}
+"""

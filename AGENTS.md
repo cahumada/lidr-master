@@ -29,6 +29,8 @@ openspec/
 ├── AGENTS.md                         # formato y plantillas de specs/changes (autoridad de formato)
 ├── specs/<capability>/spec.md        # VERDAD ACTUAL — qué hace NUESTRO sistema hoy
 ├── domain/<tema>.md                  # REFERENCIA — el sistema FUENTE (VisualTIME) y su corpus
+├── standards/                        # CÓMO se escribe el código — convenciones de ingeniería
+├── commands/                         # PLAYBOOKS — plan → develop → docs → commit → PR
 └── changes/
     ├── <change-id>/                  # en curso: proposal.md, tasks.md, design.md?, specs/ (deltas)
     └── archive/<YYYY-MM-DD>-<id>/    # completados
@@ -39,6 +41,13 @@ openspec/
 afirmación lleva su estado de evidencia (`[VALIDADO-BD]`, `[TÁCITO]`,
 `[HIPÓTESIS]`, `[VERIFICADO-CORPUS]`) — nunca colapsar una hipótesis en un
 hecho. Detalle en `openspec/AGENTS.md`.
+
+`openspec/standards/` es **cómo** se escribe el código (idioma, testing, BFF,
+frontend, git, rutas). `openspec/commands/` es **cómo se corre un trabajo**
+(plan → implement → docs → commit → PR). Ninguno de los dos es comportamiento
+de runtime; el validador no los recorre. Índices:
+[base-standards.md](openspec/standards/base-standards.md),
+[commands/README.md](openspec/commands/README.md).
 
 ## 2. El ciclo de trabajo
 
@@ -129,3 +138,15 @@ ese harness y dejá las convenciones acá.
 ```markdown
 Ver [AGENTS.md](AGENTS.md) para saber cómo trabajar en este repo.
 ```
+
+Los slash commands / prompts de cada harness apuntan a
+`openspec/commands/`, no copian el playbook:
+
+| Harness | Puntero de entrada | Punteros de comando |
+|---|---|---|
+| Cursor | `.cursor/rules/` | `.cursor/commands/` |
+| Claude Code | `CLAUDE.md` | `.claude/commands/` |
+| OpenCode | `AGENTS.md` (este archivo) | `.opencode/commands/` |
+| GitHub Copilot | `.github/copilot-instructions.md` | `.github/prompts/` |
+| Gemini CLI | `GEMINI.md` | `.gemini/commands/` |
+| Codex u otro | `AGENTS.md` (este archivo) | leé `openspec/commands/` |

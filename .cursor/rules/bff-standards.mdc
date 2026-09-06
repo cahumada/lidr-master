@@ -1,0 +1,7 @@
+---
+description: Puntero a los estándares del BFF (Route Handlers y lib/ai-service).
+globs: ["business-backend/app/api/**", "business-backend/lib/ai-service/**"]
+alwaysApply: false
+---
+
+Ver [openspec/standards/bff-standards.md](../../openspec/standards/bff-standards.md).

@@ -1,3 +1,6 @@
+# Claude Code worktrees are local checkouts, not repo content.
+.claude/worktrees/
+
 # Secrets — never commit. The .env is created locally from .env.example.
 .env
 .env.local

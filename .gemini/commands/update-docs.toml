@@ -1,0 +1,4 @@
+description = "Actualizar specs y estándares según el diff real."
+prompt = """
+Read and follow openspec/commands/update-docs.md. Arguments: {{args}}
+"""
