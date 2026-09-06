@@ -14,6 +14,10 @@ en una rama `-ai-service`.
 - Una **frase** que describe el problema. El agente deriva el change-id.
 - Vacío: pedir al usuario qué se quiere proponer.
 
+Si el enunciado no alcanza para planear sin adivinar, correr
+antes [formalize-need](./formalize-need.md) y usar el
+`[enhanced]` como insumo.
+
 ## Rol
 
 Arquitecto del servicio Python (FastAPI, Pydantic, pgvector, grafo de

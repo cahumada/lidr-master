@@ -53,6 +53,10 @@ de runtime; el validador no los recorre. Índices:
 
 Para cualquier cosa más allá de un typo o un fix de una línea:
 
+Si el enunciado no alcanza para planear, formalizarlo primero con
+[formalize-need](openspec/commands/formalize-need.md). Entrega el
+*qué* en el chat; no usa MCP ni crea el change.
+
 1. **Proponer** — crear `openspec/changes/<change-id>/` con `proposal.md`
    (por qué + qué cambia), `tasks.md` (el checklist), los deltas de spec en
    `specs/<capability>/spec.md`, y `design.md` cuando el enfoque técnico

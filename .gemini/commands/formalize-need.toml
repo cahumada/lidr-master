@@ -1,0 +1,4 @@
+description = "Formalizar una necesidad de desarrollo (historia o no) sin MCP. No crea el change."
+prompt = """
+Read and follow openspec/commands/formalize-need.md. Arguments: {{args}}
+"""
