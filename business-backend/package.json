@@ -7,14 +7,22 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:admin": "tsx scripts/seed-admin.ts",
+    "test": "node --import tsx --test \"lib/auth/*.test.ts\""
   },
   "dependencies": {
+    "@auth/prisma-adapter": "2.11.3",
     "@base-ui/react": "^1.7.0",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "bcryptjs": "3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.40.0",
     "next": "16.3.4",
+    "next-auth": "5.0.0-beta.32",
+    "pg": "8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-markdown": "^10.1.0",
@@ -27,11 +35,15 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "prisma": "7.10.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5"
   }
 }

@@ -87,10 +87,23 @@ Con el nivel A nada de eso aplica: alembic no ve la base de identidad.
 
 **Decisión:** `session.strategy = "jwt"`, con el rol adentro del token.
 
-No es una preferencia: el proveedor de credenciales de Auth.js **solo**
-funciona con JWT. Las sesiones en base requieren que el adapter cree la
-sesión, y el flujo de credenciales no pasa por ahí. Pedir email + contraseña
-y sesiones en base a la vez es pedir dos cosas incompatibles.
+No es una preferencia, y el modo en que falla es peor que un error.
+Verificado en `@auth/core@0.41.3` instalado:
+
+- `lib/init.js:74` decide el default así:
+  `strategy: config.adapter ? "database" : "jwt"`. O sea que **configurar el
+  adapter da vuelta el default a `database`**.
+- `lib/actions/callback/index.js:227` en adelante: la rama de credenciales
+  escribe **siempre** una cookie JWT —llama a `callbacks.jwt`, `jwt.encode` y
+  setea la cookie— sin pasar nunca por el `createSession` del adapter.
+
+Las dos cosas juntas dan el peor desenlace posible: con el default, el login
+por contraseña **parece** funcionar —la cookie se setea, no hay excepción— y
+después la lectura de sesión busca una fila en la tabla `sessions` que nunca
+se escribió. El usuario queda deslogueado sin un solo error en los logs.
+
+Por eso `session.strategy = "jwt"` va **explícito**, y por eso es la primera
+línea de `auth.ts` que hay que revisar si algo del login se comporta raro.
 
 Consecuencias que hay que aceptar con los ojos abiertos:
 
@@ -110,17 +123,28 @@ paquete, y en una beta eso se confirma leyendo la versión que se instaló.
 
 ## 3. Middleware para el gate, servidor para el rol
 
-**Decisión:** `middleware.ts` responde «¿hay sesión?» y nada más. El rol se
+**Decisión:** `proxy.ts` responde «¿hay sesión?» y nada más. El rol se
 verifica en el layout del grupo `(console)`, del lado del servidor.
 
-Poner todo en el middleware es tentador porque es un solo lugar. Es también
-el error que la documentación de Next desaconseja: el middleware corre en el
+**Es `proxy` y no `middleware`.** El convention `middleware` está deprecado en
+Next 16 y renombrado a `proxy`; misma funcionalidad, cambian el nombre del
+archivo y el del export. Escribir `middleware.ts` sería nacer sobre una API
+deprecada.
+
+Poner todo ahí es tentador porque es un solo lugar. Es también el error que la
+documentación desaconseja, y con estas palabras: «Proxy is meant to be invoked
+separately of your render code and in optimized cases deployed to your CDN
+[…] you should not attempt relying on shared modules or globals». Corre en el
 borde, lejos de los datos, y una comprobación que se saltea ahí no tiene
 segunda línea. El patrón sano es **optimista en el borde, verdadero cerca de
 los datos**.
 
 De ahí el 403 explícito: un rol insuficiente recibe una pantalla que dice que
-no alcanza, no un 404. Devolver 404 para «ocultar» la existencia de `/models`
+no alcanza, no un 404. Se renderiza a mano y **no** con el `forbidden()` que
+Next 16 ya trae: esa API está marcada experimental y exige
+`experimental.authInterrupts`. Este change ya se apoya en Auth.js beta y en un
+adapter que no declara Prisma 7; un tercer flag experimental encima es riesgo
+apilado para el mismo resultado visible. Devolver 404 para «ocultar» la existencia de `/models`
 no detiene a nadie que ya sabe que existe —está en el repo público— y sí
 confunde a un usuario legítimo al que le falta un permiso.
 
@@ -129,28 +153,50 @@ se puede usar, **no** para autorizar. Si alguien borra el filtro de la nav,
 la ruta tiene que seguir cerrada. Un test o una verificación explícita en el
 checklist debería fijarlo.
 
-## 4. Sin autoservicio y sin vinculación automática
+## 4. Autoservicio con aprobación, y sin vinculación automática
 
-**Decisión:** un login de Google con un email que no está en la base se
-**rechaza**. No se crea la cuenta sola. Y una cuenta de Google no se vincula
-sola a una cuenta local con el mismo email.
+**Decisión revisada por el dueño (2026-09-06).** La versión anterior de esta
+sección decía «sin autoservicio»: un login de Google con un email desconocido
+se rechazaba y las cuentas las creaba un administrador. Se reemplaza por:
 
-Autoprovisionar con Google significa que cualquiera con cuenta de Google
-entra. Restringir por dominio parece la solución, pero el dominio de un mail
-no es una autorización: es un dato que el proveedor verificó para otra cosa.
-En una consola que edita credenciales de proveedores y dispara rebuilds
-destructivos, la lista blanca explícita cuesta menos que el primer incidente.
+> Cualquiera SHALL poder crear su propia cuenta, con email + contraseña o con
+> Google. La cuenta nace con rol `usuario` y **desactivada**. Un
+> administrador la habilita.
 
-Sobre la vinculación: Auth.js tiene una opción para permitirla y se llama
-`allowDangerousEmailAccountLinking`. El nombre es la documentación. Sin
-verificación de email propia —fuera de alcance— vincular por dirección es
-delegar la identidad en que el proveedor la verificó. Si alguien necesita los
-dos métodos, un administrador vincula a mano.
+**Por qué cambia.** La decisión vieja resolvía el acceso y creaba un problema
+peor en el alta: sin autoservicio, dar de alta a alguien significaba que un
+administrador eligiera y tipeara la contraseña de otra persona. Sin pantalla
+de cambio de contraseña —fuera de alcance— esa contraseña quedaba para
+siempre, conocida por dos personas. Eso no es una molestia operativa: es una
+credencial compartida.
 
-Consecuencia práctica: **el primer administrador se siembra**, con un script
-que corre una persona con acceso a la base. No hay un «primer login se
-autoproclama admin», que es como se abre un agujero el día que la URL se
-filtra.
+**Por qué no autoservicio a secas.** El motivo original sigue en pie y no lo
+deroga la comodidad. La consola se despliega con URL pública en Vercel, y un
+rol `usuario` alcanza `/answer`: registro abierto sin más significa que
+cualquiera con una cuenta de Google consulta la documentación funcional del
+cliente y gasta tokens de LLM en cada pregunta. La aprobación conserva la
+propiedad que importaba —**nadie entra sin que un administrador lo habilite**—
+y tira la que estorbaba.
+
+Encaja además con lo que el dueño pidió para la pantalla: si hay que poder
+desactivar cuentas, la columna existe igual. «Nace desactivada» no agrega
+esquema, usa el que ya hace falta.
+
+**Sin verificación de email, la aprobación es la verificación.** Nada impide
+registrarse con `alguien-mas@ejemplo.com`: no se manda mail de confirmación
+—sigue fuera de alcance— así que la dirección es una afirmación, no un hecho.
+Quien habilita tiene que reconocer a la persona, no a la dirección. Conviene
+que la pantalla lo diga.
+
+**Y por eso `allowDangerousEmailAccountLinking` sigue apagado**, ahora con un
+ataque concreto y no con un principio. Con autoservicio y sin verificación de
+email, vincular por dirección es esto: alguien registra `victima@gmail.com`
+con una contraseña que elige; después la víctima entra con Google, Auth.js
+une las dos cuentas por el email, y el primero —que sabe la contraseña— queda
+adentro de la cuenta de la segunda. Es el pre-hijacking clásico, y lo
+habilita exactamente esa opción. Apagada, el segundo método falla con
+`OAuthAccountNotLinked` y hay que entrar por donde uno se registró; vincular
+los dos métodos lo hace un administrador a mano.
 
 ## 5. Rol → pantalla
 
@@ -159,7 +205,7 @@ filtra.
 | Rol | Pantallas |
 |---|---|
 | `usuario` | `/`, `/answer`, `/search`, `/documents` |
-| `administrador` | las anteriores más `/agents`, `/agents/flow`, `/models`, `/corpus` |
+| `administrador` | las anteriores más `/agents`, `/agents/flow`, `/models`, `/corpus`, `/users` |
 
 El corte no es «lectura vs escritura» sino **qué queda roto si se usa mal**.
 `/documents` escribe, pero es una vista previa de chunking que
@@ -273,3 +319,62 @@ una migración barata. Y hay un detalle que el paso 3 va a tener que
 resolver y conviene anotar ahora: el índice único parcial garantiza **una
 sola versión activa por cliente**, así que multi-tenant no es filtrar por
 `tenant_id`, es manejar el ciclo de vida de varios corpus a la vez.
+
+## 8. La pantalla de usuarios
+
+**Decisión:** `/users`, dentro del grupo `(admin)`. Lista las cuentas,
+habilita y deshabilita, cambia el rol y borra.
+
+Que **solo un administrador pueda promover** no necesita una regla propia: la
+pantalla vive donde vive el resto de la configuración y el layout de `(admin)`
+la cierra igual que a `/models`. La regla se escribe en el spec de todos
+modos, porque es lo que el dueño pidió explícitamente y porque un requirement
+que depende de dónde está un archivo se rompe callado cuando alguien mueve el
+archivo.
+
+### Tres barandas, y por qué cada una
+
+**Nadie cambia su propio rol.** No para prevenir un ataque —un administrador
+que quiere hacerse daño ya puede— sino un accidente: la fila de uno mismo es
+la que está más a mano en la lista. Como efecto colateral, promoverse solo
+deja de ser posible incluso si mañana `/users` se abriera por error.
+
+**El último administrador activo no se puede degradar, desactivar ni
+borrar.** Sin esta baranda, un clic deja la consola sin nadie que pueda
+configurarla, y la única salida es `pnpm seed:admin` desde una máquina con la
+URL de la base. La condición se evalúa **en la misma transacción** que el
+cambio: contarlos antes y escribir después es una condición de carrera, y con
+dos administradores sacándose el rol a la vez el resultado es cero.
+
+**Borrar es distinto de desactivar, y las dos existen.** Desactivar conserva
+la fila: quién era, cuándo entró, qué cuentas de Google tenía vinculadas.
+Borrar la elimina junto con sus `Account` en cascada. El dueño pidió las dos;
+la que hay que ofrecer primero en la interfaz es desactivar, porque es la que
+sirve el 90% de las veces y la única de las dos que se puede deshacer.
+
+### El costo que esto le pasa al JWT, y hay que pagarlo
+
+`auth.ts` mete el rol en el token firmado para no pegarle a la base en cada
+request, y lo dejó anotado: cambiarle el rol a alguien no lo degrada hasta
+que renueve. Con dos roles y sin altas ni bajas, eso era tolerable.
+
+Deja de serlo acá. Desactivar una cuenta que sigue entrando hasta que venza
+su token no es «desactivar», y borrar una cuenta cuyo token sigue resolviendo
+es peor. Las tres operaciones que suma esta pantalla necesitan efecto
+inmediato o no son lo que dicen ser.
+
+Así que el layout de `(console)` pasa a leer la fila del usuario —una consulta
+por render, por id, en una tabla de identidad con pocas filas— y a decidir con
+eso: si no existe o está desactivada, se cierra la sesión. El rol también sale
+de ahí, y el del token queda como lo que era, un cache. Es exactamente la
+reversión de lo que dice el comentario de `callbacks.jwt`, y ese comentario
+hay que actualizarlo en el mismo commit: un comentario que explica una
+decisión que ya no rige es peor que no tener comentario.
+
+### Qué NO entra
+
+Cambiar la contraseña de otro, resetearla, o mandar una invitación por mail.
+Lo primero es una credencial compartida —el problema que §4 acaba de sacarse
+de encima— y lo segundo y lo tercero necesitan mandar correo, que sigue fuera
+de alcance. Alguien que pierde su contraseña vuelve a entrar por Google, o un
+administrador borra la cuenta y la persona se registra de nuevo.

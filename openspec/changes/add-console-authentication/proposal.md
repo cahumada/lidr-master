@@ -49,12 +49,20 @@ FastAPI, esto vive entero en `business-backend/`.
   consola no son dominio de seguros, `ai-service` no tiene usuarios, y hacer
   que el login dependa de él invertiría la dirección consola → servicio y
   dejaría la consola sin login cuando el servicio se cae.
-- **`middleware.ts`** para el gate barato de «hay sesión», más chequeo de rol
-  del lado del servidor en el layout del grupo protegido. El middleware solo
+- **`proxy.ts`** para el gate barato de «hay sesión», más chequeo de rol del
+  lado del servidor en el layout del grupo protegido. `proxy` y no
+  `middleware`: el segundo está deprecado en Next 16 y renombrado. El middleware solo
   no alcanza y la documentación de Next lo dice: la verificación que importa
   va cerca de los datos, no en el borde.
 - **Grupos de rutas** `(auth)` y `(console)`, que es lo que `app-routes.md`
   dejaba anotado como ausente.
+- **Registro autoservicio** y **pantalla `/users`** para administrar cuentas:
+  listar, habilitar, deshabilitar, cambiar rol y borrar. Promover a
+  `administrador` es el único camino a ese rol y exige ya ser administrador.
+  Con tres barandas —nadie cambia su propio rol, el último administrador
+  habilitado no se puede degradar/deshabilitar/borrar, y las tres operaciones
+  tienen efecto en la sesión abierta y no cuando venza el token
+  (`design.md` §8).
 - **403 y no 404** cuando el rol no alcanza. Ocultar que la pantalla existe
   no detiene a nadie y confunde a quien la necesita.
 - **El filtro de la nav no es control de acceso.** `CONSOLE_MODULES` gana un
@@ -72,8 +80,14 @@ revés. Están argumentadas en `design.md`:
 1. **Mapa rol → pantalla.** `usuario`: `/`, `/answer`, `/search`,
    `/documents`. `administrador`: además `/agents`, `/agents/flow`,
    `/models`, `/corpus`.
-2. **Sin autoservicio.** Un login de Google de un email desconocido se
-   rechaza; no se crea la cuenta sola. Las cuentas las crea un administrador.
+2. **Autoservicio con aprobación** (revisado por el dueño el 2026-09-06;
+   antes decía «sin autoservicio»). Cualquiera crea su propia cuenta, con
+   email + contraseña o con Google. Nace con rol `usuario` y **desactivada**;
+   un administrador la habilita. El motivo del cambio y el de la aprobación
+   están en `design.md` §4: la versión vieja obligaba a que un administrador
+   eligiera la contraseña de otra persona —una credencial compartida—, y el
+   autoservicio a secas abriría `/answer` a cualquiera con cuenta de Google,
+   sobre una URL pública.
 3. **Sin vinculación automática** entre una cuenta de Google y una local con
    el mismo email. Auth.js llama a esa opción
    `allowDangerousEmailAccountLinking` y el nombre no es casual: sin
@@ -84,8 +98,6 @@ revés. Están argumentadas en `design.md`:
 
 - Autenticar `ai-service`. Su propio change, y probablemente anterior.
 - Recuperación de contraseña, verificación de email, 2FA.
-- Pantalla de ABM de usuarios. El primer administrador se siembra con un
-  script; los demás se crean por ahí hasta que exista la pantalla.
 - Más de dos roles o permisos por pantalla.
 - **Tenant por usuario, ni siquiera la columna** (`design.md` §7). `TENANT_ID`
   sigue siendo un setting del despliegue. Hacerlo por usuario exige que el
@@ -116,7 +128,8 @@ revés. Están argumentadas en `design.md`:
 - `business-backend/prisma/schema.prisma` (nuevo) — esquema de identidad, con
   `url` pooled y `directUrl` para las migraciones.
 - `business-backend/auth.ts` (nuevo) — configuración de Auth.js.
-- `business-backend/middleware.ts` (nuevo) — gate de sesión.
+- `business-backend/proxy.ts` (nuevo) — gate de sesión. `proxy` y no
+  `middleware`, deprecado en Next 16.
 - `business-backend/app/api/auth/[...nextauth]/route.ts` (nuevo) — el único
   Route Handler que no es relay.
 - `business-backend/app/(auth)/login/page.tsx` (nuevo)
@@ -127,6 +140,11 @@ revés. Están argumentadas en `design.md`:
 - `business-backend/components/app-header.tsx` — identidad y cerrar sesión.
 - `business-backend/.env.example` — variables nuevas, vacías.
 - `business-backend/scripts/seed-admin.ts` (nuevo) — el primer administrador.
+- `business-backend/app/(auth)/register/` (nuevo) — el registro autoservicio.
+- `business-backend/app/(console)/(admin)/users/` (nuevo) — la pantalla de
+  cuentas y sus Server Actions.
+- `business-backend/prisma/schema.prisma` — migración que suma el estado
+  habilitada/deshabilitada, con las cuentas ya existentes habilitadas.
 - `openspec/standards/bff-standards.md` — enmienda de §Identidad y §Seguridad.
 - `openspec/standards/frontend-standards.md` — «no hay auth» deja de ser cierto.
 - `openspec/standards/app-routes.md` — filas nuevas y la línea de los layouts.

@@ -7,7 +7,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { CONSOLE_MODULES } from "@/lib/console-nav"
+import { auth } from "@/auth"
+import { visibleModules } from "@/lib/console-nav"
 
 /**
  * Landing grouped by the three operator modules, not one card per screen.
@@ -23,7 +24,15 @@ import { CONSOLE_MODULES } from "@/lib/console-nav"
  * siguiente corrida y no habría forma de notarlo.
  */
 
-export default function Home() {
+export default async function Home() {
+  // Same filter as the sidebar, from the same table: a screen cannot
+  // show up in one and not the other. Hiding only — the refusal lives
+  // in `(admin)/layout.tsx`.
+  // || El mismo filtro que el sidebar y desde la misma tabla. Solo
+  // oculta: el rechazo vive en `(admin)/layout.tsx`.
+  const session = await auth()
+  const modules = visibleModules(session?.user?.role)
+
   return (
     <PageFrame>
       <div className="max-w-2xl">
@@ -39,7 +48,7 @@ export default function Home() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {CONSOLE_MODULES.map((module) => (
+        {modules.map((module) => (
           <section key={module.id} className="flex flex-col gap-3">
             <div>
               <h2 className="text-sm font-semibold tracking-tight">

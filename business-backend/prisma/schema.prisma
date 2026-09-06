@@ -1,0 +1,119 @@
+// Identidad de la consola: quién entra y con qué rol. Nada más.
+//
+// Vive en la base `dw-insu`, aparte de la del corpus (`railway`) dentro de la
+// misma instancia de Postgres. Alembic no ve estas tablas y un `pg_dump` del
+// corpus no se lleva hashes de contraseña.
+//
+// La lista de modelos es cerrada a propósito: usuarios, cuentas, sesiones y
+// tokens de verificación. Cualquier otra tabla es dominio, y el dominio vive
+// en `ai-service`. Ver `openspec/standards/bff-standards.md` §Identidad.
+//
+// || The console's identity: who signs in and with what role. Nothing else.
+// The model list is closed on purpose -- anything else is domain, and domain
+// lives in the service.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Los dos roles del enunciado. `usuario` consulta; `administrador` además
+/// configura el servicio y puede disparar un rebuild destructivo del corpus.
+/// || The two roles. `usuario` reads; `administrador` also configures.
+enum Role {
+  usuario
+  administrador
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+
+  /// Hash de la contraseña, para el proveedor de credenciales. `null` cuando
+  /// la cuenta solo entra por Google. NUNCA sale de la base ni va a un log.
+  /// || Password hash for the credentials provider. `null` for Google-only
+  /// accounts. It never leaves the database and never reaches a log.
+  passwordHash String?
+
+  /// Default en la BASE y no solo en el código: una fila insertada a mano no
+  /// puede nacer administradora por olvido.
+  /// || Defaulted in the DATABASE, not only in code: a row inserted by hand
+  /// cannot be born an administrator by omission.
+  role Role @default(usuario)
+
+  /// Cuándo se deshabilitó la cuenta. `null` = habilitada.
+  ///
+  /// Timestamp y no un booleano: dice además *cuándo*, que es lo que uno
+  /// quiere saber cuando alguien pregunta por qué no entra. Y el default de
+  /// la columna —`null`, habilitada— es el que necesitan las filas que ya
+  /// existían cuando se agregó: si el default fuera «deshabilitada», la
+  /// migración dejaría afuera al administrador sembrado y no entraría nadie.
+  ///
+  /// Que las cuentas NUEVAS nazcan deshabilitadas es otra cosa, y por eso no
+  /// vive acá: se escribe donde se crea la fila (el registro y el
+  /// `createUser` del adapter), no en el default.
+  ///
+  /// || When the account was disabled. `null` means enabled. A timestamp and
+  /// not a boolean: it also says *when*. The column default is "enabled"
+  /// because that is what the rows predating this column need — a default of
+  /// "disabled" would have locked out the seeded administrator. New accounts
+  /// being born disabled is a different rule, written where the row is
+  /// created.
+  disabledAt DateTime?
+
+  accounts Account[]
+  sessions Session[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+/// El adapter espera este modelo, así que existe -- pero con
+/// `session.strategy = "jwt"` QUEDA VACÍO: la sesión vive en una cookie
+/// firmada y no se escribe una fila por login. Si alguien busca acá los
+/// ingresos y no encuentra nada, es por esto y no por un bug.
+/// || The adapter's contract expects this model, so it exists -- but with the
+/// JWT strategy it STAYS EMPTY: the session lives in a signed cookie and no
+/// row is written per login.
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

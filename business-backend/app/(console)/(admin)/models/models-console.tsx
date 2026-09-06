@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 
-import { ProvidersPanel } from "@/app/agents/providers-panel"
+import { ProvidersPanel } from "@/app/(console)/(admin)/agents/providers-panel"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import type { ServiceConfig } from "@/lib/ai-service/types"
 

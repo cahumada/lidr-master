@@ -31,6 +31,13 @@ email o la contraseña.
 - **WHEN** alguien con sesión pide `/login`
 - **THEN** la consola lo lleva adentro en vez de mostrar el formulario
 
+#### Scenario: cerrar sesión borra las cookies
+
+- **WHEN** alguien cierra sesión
+- **THEN** la consola vence las cookies de Auth.js (sesión, csrf, callback,
+  pkce, state) y las demás cookies de este origen
+- **AND** lo manda a `/login` sin sesión residual
+
 ### Requirement: Dos roles, y el rol decide qué se puede usar
 
 La consola SHALL distinguir `usuario` de `administrador`. Una cuenta nueva
@@ -38,9 +45,9 @@ SHALL nacer como `usuario`, con el default declarado en la base y no solo en
 el código.
 
 Las pantallas que **escriben configuración o destruyen datos** —`/agents`,
-`/agents/flow`, `/models`, `/corpus`— SHALL exigir `administrador`. El resto
-—`/`, `/answer`, `/search`, `/documents`— SHALL estar disponible para
-cualquier sesión.
+`/agents/flow`, `/models`, `/corpus`, `/users`— SHALL exigir `administrador`.
+El resto —`/`, `/answer`, `/search`, `/documents`— SHALL estar disponible
+para cualquier sesión activa.
 
 Un rol insuficiente SHALL recibir **403**, no 404 ni una redirección
 silenciosa: ocultar que la pantalla existe no detiene a quien ya sabe que
@@ -62,6 +69,103 @@ existe, y confunde a quien legítimamente necesita el permiso.
 - **WHEN** se crea una cuenta por cualquiera de los dos métodos
 - **THEN** su rol es `usuario`
 
+### Requirement: Cualquiera puede registrarse, nadie entra sin aprobación
+
+La consola SHALL permitir que una persona cree su propia cuenta, con email +
+contraseña o con Google. La cuenta SHALL nacer con rol `usuario` y
+**desactivada**, y una cuenta desactivada NO SHALL poder iniciar sesión por
+ningún método.
+
+Habilitarla SHALL requerir un administrador. La consola NO SHALL enviar
+correo de verificación ni de invitación, de modo que la dirección declarada
+al registrarse es una afirmación sin comprobar: quien habilita SHALL estar
+reconociendo a la persona y no a la dirección, y la pantalla SHALL decirlo.
+
+Una cuenta de Google NO SHALL vincularse automáticamente a una cuenta local
+con el mismo email. Sin verificación de email, vincular por dirección
+permitiría registrar el email de otro con una contraseña propia y quedar
+dentro de su cuenta cuando esa persona entre con Google.
+
+#### Scenario: alguien se registra
+
+- **WHEN** alguien completa el registro con email y contraseña
+- **THEN** se crea su cuenta con rol `usuario` y desactivada
+- **AND** el mensaje le dice que un administrador tiene que habilitarla
+
+#### Scenario: Google pide elegir la cuenta
+
+- **WHEN** alguien entra o se registra con Google
+- **THEN** Google muestra el selector de cuentas
+- **AND** no reutiliza en silencio la sesión de Gmail que ya estaba abierta
+
+#### Scenario: la cuenta recién creada intenta entrar
+
+- **WHEN** esa persona intenta iniciar sesión antes de ser habilitada
+- **THEN** el login falla
+- **AND** el mensaje distingue «falta habilitación» de «credenciales
+  incorrectas», porque son dos problemas con dos soluciones distintas
+
+#### Scenario: Google con un email que ya existe como cuenta local
+
+- **WHEN** alguien registrado con email y contraseña intenta entrar con
+  Google usando la misma dirección
+- **THEN** la consola NO vincula las dos cuentas sola
+- **AND** el mensaje indica entrar por el método con el que se registró
+
+#### Scenario: un administrador vincula Google a su propia cuenta
+
+- **WHEN** un administrador con sesión por contraseña elige vincular Google
+  desde `/users`
+- **THEN** Auth.js asocia el `Account` de Google a esa fila
+- **AND** después puede entrar con cualquiera de los dos métodos
+
+### Requirement: Un administrador administra las cuentas
+
+La consola SHALL ofrecer `/users`, restringida a `administrador`, que lista
+las cuentas con su email, nombre, rol, estado y método de login.
+
+Desde ahí un administrador SHALL poder habilitar y deshabilitar una cuenta,
+cambiar su rol y borrarla. **Cambiar el rol de `usuario` a `administrador`
+SHALL requerir una sesión con rol `administrador`**, y esa promoción SHALL
+ser el único camino por el que alguien llega a ese rol dentro de la consola.
+
+Ninguna sesión SHALL poder cambiar su propio rol.
+
+La consola NO SHALL permitir degradar, deshabilitar ni borrar al último
+administrador habilitado, y esa comprobación SHALL resolverse en la misma
+transacción que el cambio.
+
+Deshabilitar, degradar y borrar SHALL tener efecto en la sesión que ya está
+abierta, sin esperar a que venza su token.
+
+La consola NO SHALL ofrecer cambiar ni resetear la contraseña de otra
+persona.
+
+#### Scenario: promover a alguien
+
+- **WHEN** un administrador cambia el rol de una cuenta `usuario` a
+  `administrador`
+- **THEN** el cambio se guarda
+- **AND** esa cuenta alcanza las pantallas de administración
+
+#### Scenario: promoverse a sí mismo
+
+- **WHEN** una sesión intenta cambiar el rol de su propia cuenta
+- **THEN** la consola lo rechaza
+
+#### Scenario: el último administrador
+
+- **WHEN** un administrador intenta degradarse, deshabilitarse o borrarse
+  siendo el último habilitado
+- **THEN** la consola lo rechaza y explica que dejaría la consola sin
+  administración
+
+#### Scenario: deshabilitar a alguien que está adentro
+
+- **WHEN** un administrador deshabilita una cuenta con sesión abierta
+- **THEN** esa sesión deja de alcanzar las páginas protegidas en su siguiente
+  request, sin esperar a que venza el token
+
 ### Requirement: La autorización vive en el servidor, no en la navegación
 
 `CONSOLE_MODULES` SHALL declarar qué roles ven cada ítem, y el sidebar y la
@@ -69,9 +173,10 @@ portada SHALL filtrar por eso. Ese filtro es presentación: NO es el control
 de acceso.
 
 La ruta SHALL protegerse del lado del servidor, de forma que desactivar el
-filtro de la navegación no habilite ninguna pantalla. El middleware SHALL
-resolver únicamente si hay sesión; el rol SHALL verificarse cerca de los
-datos, en el layout del grupo protegido.
+filtro de la navegación no habilite ninguna pantalla. El `proxy` —el
+convention que en Next 16 reemplaza a `middleware`— SHALL resolver únicamente
+si hay sesión; el rol SHALL verificarse cerca de los datos, en el layout del
+grupo protegido.
 
 #### Scenario: la nav oculta lo que el rol no puede usar
 

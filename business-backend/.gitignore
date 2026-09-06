@@ -43,3 +43,5 @@ next-env.d.ts
 # El template SI se commitea; el .env real no.
 # || The template IS committed; the real .env is not.
 !.env.example
+
+/lib/generated/prisma
