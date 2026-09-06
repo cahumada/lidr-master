@@ -4,4 +4,3 @@ Este archivo es un puntero a propósito — las convenciones viven en un
 único lugar agnóstico del harness. No copiar contenido acá.
 
 Playbooks (plan → PR): [openspec/commands/README.md](openspec/commands/README.md).
-Slash commands: `.claude/commands/` (también punteros).

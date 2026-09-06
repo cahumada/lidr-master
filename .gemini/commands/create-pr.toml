@@ -1,0 +1,4 @@
+description = "Crear o reportar el PR de la rama actual (MCP de GitHub)."
+prompt = """
+Read and follow openspec/commands/create-pr.md. Arguments: {{args}}
+"""

@@ -1,0 +1,7 @@
+---
+description: Puntero al inventario de rutas que no se borran sin pedido explícito.
+globs: ["business-backend/app/**"]
+alwaysApply: false
+---
+
+Ver [openspec/standards/app-routes.md](../../openspec/standards/app-routes.md). No eliminar páginas ni Route Handlers de esa lista salvo pedido explícito.

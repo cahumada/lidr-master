@@ -1,0 +1,4 @@
+description = "Implementar el tasks.md de un change en ai-service."
+prompt = """
+Read and follow openspec/commands/develop-ai-service.md. Arguments: {{args}}
+"""

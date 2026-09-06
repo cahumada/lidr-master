@@ -1,0 +1,4 @@
+description = "Proponer un change OpenSpec para la consola Next (páginas y BFF)."
+prompt = """
+Read and follow openspec/commands/plan-web.md. Arguments: {{args}}
+"""

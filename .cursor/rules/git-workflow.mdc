@@ -1,0 +1,6 @@
+---
+description: Puntero al flujo de git del monorepo.
+alwaysApply: true
+---
+
+Ver [openspec/standards/git-workflow.md](../../openspec/standards/git-workflow.md).

@@ -1,0 +1,4 @@
+description = "Implementar el tasks.md de un change en la consola Next."
+prompt = """
+Read and follow openspec/commands/develop-web.md. Arguments: {{args}}
+"""

@@ -9,21 +9,33 @@ mueven juntos.
 
 ---
 
-## Tres clases de documento, que no se mezclan || Three kinds of document
+## Cuatro clases de documento, que no se mezclan || Four kinds of document
 
 The commonest way this structure rots is putting the right content in the wrong
 place. The test is *whose behavior does this describe?*
 
 | Carpeta | Describe | Normativo sobre |
 |---|---|---|
-| `openspec/specs/` | **nuestro** servicio, hoy | nuestro código |
+| `openspec/specs/` | **nuestro** servicio, hoy | nuestro código de producto |
 | `openspec/domain/` | el sistema **fuente** (VisualTIME) y su corpus | nada — es referencia |
 | `openspec/changes/` | trabajo propuesto o en curso | nada hasta archivarse |
+| `openspec/standards/` | **cómo** se escribe y se opera el código | agentes y personas |
+| `openspec/commands/` | **cómo se corre un trabajo** (plan → PR) | agentes |
 
 Knowledge about VisualTIME — its tables, its menu tree, its naming conventions,
 how its documents are shaped — is **reference**, not a requirement on us. It
 belongs in `domain/`. Turning it into a `### Requirement:` would assert that
 our code already honors it, which is how a source of truth starts lying.
+
+Engineering conventions — language, testing, git, which files a cleanup must
+not delete — are **not** runtime behavior. They belong in `standards/`, not
+as a capability. The validator does not walk that folder: there is no
+Requirement/Scenario to check. If code and a standard disagree, update the
+standard in the same change that changes the convention, or fix the code.
+
+|| Las convenciones de ingeniería —idioma, testing, git, qué archivos una
+limpieza no puede borrar— no son comportamiento de runtime. Van en
+`standards/`, no como capability. El validador no recorre esa carpeta.
 
 || El modo más común en que esta estructura se podrida es poner el contenido
 correcto en el lugar equivocado. La prueba es *¿de quién describe el
@@ -53,6 +65,30 @@ secciones obligatoria — pero toda afirmación DEBE llevar su estado de
 evidencia, porque la diferencia entre un hecho validado y una hipótesis decide
 si el código puede apoyarse en él. Nunca colapsar una hipótesis en un hecho, y
 registrar quién aportó el conocimiento y cuándo.
+
+### `openspec/standards/`
+
+Free-form markdown, kebab-case. Engineering conventions: how we write and
+operate code, not what the running system does. Index:
+[`base-standards.md`](standards/base-standards.md). The validator does not
+enforce a section structure here.
+
+|| Markdown libre, kebab-case. Convenciones de ingeniería: cómo se escribe y
+se opera el código, no qué hace el sistema en runtime. Índice:
+[`base-standards.md`](standards/base-standards.md). El validador no impone
+estructura de secciones acá.
+
+### `openspec/commands/`
+
+Free-form markdown playbooks. They turn the work cycle (propose → implement
+→ verify → archive) into an invocable sequence: `plan-*`, `develop-*`,
+`update-docs`, `commit`, `create-pr`. Index:
+[`README.md`](commands/README.md). Every harness file (`.cursor/commands/`,
+`.claude/commands/`, `.opencode/commands/`, `.github/prompts/`,
+`.gemini/commands/`, …) SHALL be a thin pointer here, never a second copy.
+
+|| Playbooks. Convierten el ciclo de trabajo en una secuencia invocable.
+Los archivos de cada harness SON punteros, nunca una segunda copia.
 
 ## Capabilities
 

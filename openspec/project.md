@@ -230,6 +230,11 @@ toma ahora; si vive solo en código, espera.**
   reales sean visibles.
 - Los routers no llevan lógica de negocio: solo transporte y mapeo de errores.
 
+El detalle por stack —testing, BFF, frontend, git, inventario de rutas—
+vive en [`openspec/standards/`](standards/base-standards.md). Los playbooks
+(plan → PR) viven en [`openspec/commands/`](commands/README.md). Este
+archivo se queda como mapa.
+
 ## Comandos
 
 Los del servicio corren desde `ai-service/`:

@@ -1,0 +1,7 @@
+---
+description: Puntero a los estándares del servicio IA (Python / FastAPI).
+globs: ["ai-service/**"]
+alwaysApply: false
+---
+
+Ver [openspec/standards/ai-service-standards.md](../../openspec/standards/ai-service-standards.md).

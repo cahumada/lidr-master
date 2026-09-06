@@ -1,0 +1,7 @@
+---
+description: Puntero a los estándares de la consola Next (páginas, componentes, tema).
+globs: ["business-backend/app/**", "business-backend/components/**", "business-backend/lib/**", "business-backend/hooks/**"]
+alwaysApply: false
+---
+
+Ver [openspec/standards/frontend-standards.md](../../openspec/standards/frontend-standards.md). El BFF (`app/api/`, `lib/ai-service/`) usa además el estándar de BFF.

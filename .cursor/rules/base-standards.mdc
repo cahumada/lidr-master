@@ -1,0 +1,6 @@
+---
+description: Puntero a los estándares básicos del monorepo.
+alwaysApply: true
+---
+
+Ver [openspec/standards/base-standards.md](../../openspec/standards/base-standards.md) para saber cómo trabajar en este repo.
