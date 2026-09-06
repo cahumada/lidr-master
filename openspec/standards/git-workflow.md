@@ -33,7 +33,7 @@ Antes de abrir el PR:
 |---|---|
 | Desarrollo normal (commit / push) | Git local. |
 | El agente commiteó o pusheó | Fue con git local; local y remoto están en sync. |
-| Crear o actualizar el PR | Comando `create-pr` (MCP de GitHub), rama ya pusheada. |
+| Crear o actualizar el PR | Comando `create-pr` (MCP de GitHub), rama ya pusheada. Si el MCP no responde: título, cuerpo y URL para pegar en GitHub. |
 
 ## Ramas
 

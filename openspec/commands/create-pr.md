@@ -22,7 +22,9 @@ push) es git local: si la rama no está pusheada, parar y pedir
   `create_pull_request`, `update_pull_request` si ya existe.
 - **Repositorio:** owner `cahumada`, repo `lidr-master`.
 - Si el MCP no responde, **no** caer a `gh` ni a otro MCP.
-  Decirle al usuario que revise la configuración.
+  Entregar en el chat un bloque listo para crear el PR a
+  mano (paso 4b). Pedir que revise la configuración del
+  servidor para la próxima.
 
 Descubrir el schema con la herramienta de inspección del harness
 antes de invocar. No inventar parámetros.
@@ -67,6 +69,19 @@ material.
 - `head`: nombre de la rama actual
 - `base`: `main`
 - `title` / `body` como en el paso 3
+
+### 4b. Fallback: MCP caído
+
+Si el listado o la creación fallan (timeout, `namespaceStatus`
+error, auth rechazada): **no** usar `gh` ni otro MCP. Dejar
+en el chat, para copiar y pegar:
+
+1. **URL** — `https://github.com/cahumada/lidr-master/compare/main...<rama>?expand=1`
+2. **Título** — el del paso 3, en un bloque propio.
+3. **Cuerpo** — el del paso 3, en un bloque markdown aparte.
+
+El usuario abre la URL, pega título y cuerpo, y crea el PR.
+No escribir `pr_body.md` ni ningún archivo temporal.
 
 ### 5. Resumen
 
