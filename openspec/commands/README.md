@@ -9,11 +9,15 @@ El texto canónico vive **acá**. Cada harness solo tiene un puntero.
 Ciclo:
 
 ```
-plan-ai-service / plan-web  →  develop-*  →  update-docs  →  commit  →  create-pr
+formalize-need  →  plan-ai-service / plan-web  →  develop-*  →  update-docs  →  commit  →  create-pr
 ```
+
+`formalize-need` es opcional: si el enunciado ya alcanza para
+planear, ir directo a `plan-*`.
 
 | Comando | Hace | No hace |
 |---|---|---|
+| [formalize-need](./formalize-need.md) | Enuncia el *qué* en markdown (`[original]` / `[enhanced]`) | MCP, rama, change, código |
 | [plan-ai-service](./plan-ai-service.md) | Rama `-ai-service` + `openspec/changes/<id>/` | Código de producto |
 | [plan-web](./plan-web.md) | Rama `-web` + change para Next (páginas y BFF) | Código de producto |
 | [develop-ai-service](./develop-ai-service.md) | Implementa `tasks.md` del servicio | El PR |

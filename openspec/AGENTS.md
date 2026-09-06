@@ -81,8 +81,8 @@ estructura de secciones acá.
 ### `openspec/commands/`
 
 Free-form markdown playbooks. They turn the work cycle (propose → implement
-→ verify → archive) into an invocable sequence: `plan-*`, `develop-*`,
-`update-docs`, `commit`, `create-pr`. Index:
+→ verify → archive) into an invocable sequence: `formalize-need` (optional),
+`plan-*`, `develop-*`, `update-docs`, `commit`, `create-pr`. Index:
 [`README.md`](commands/README.md). Every harness file (`.cursor/commands/`,
 `.claude/commands/`, `.opencode/commands/`, `.github/prompts/`,
 `.gemini/commands/`, …) SHALL be a thin pointer here, never a second copy.

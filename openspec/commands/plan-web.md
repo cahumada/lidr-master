@@ -18,6 +18,10 @@ rama sin sufijo si el contrato y la UI aterrizan juntos).
 - Una **frase** del problema. El agente deriva el change-id.
 - Vacío: preguntar qué se quiere proponer.
 
+Si el enunciado no alcanza para planear sin adivinar, correr
+antes [formalize-need](./formalize-need.md) y usar el
+`[enhanced]` como insumo.
+
 ## Rol
 
 Arquitecto de la consola (App Router, React 19, Tailwind, shadcn, BFF

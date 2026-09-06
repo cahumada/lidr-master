@@ -67,6 +67,9 @@ return Response.json({ error: "Falta la consulta `q`.", status: 400 }, { status:
 
 Para cualquier cosa más allá de un typo o un fix de una línea:
 
+Si el enunciado no alcanza para planear, formalizarlo primero con
+[formalize-need](../commands/formalize-need.md).
+
 1. **Proponer** — `openspec/changes/<change-id>/` con `proposal.md`,
    `tasks.md`, deltas de spec si cambia comportamiento, y `design.md`
    cuando hay trade-offs. `<change-id>` es kebab-case y empieza con verbo.
