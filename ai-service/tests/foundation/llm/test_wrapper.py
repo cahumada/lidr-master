@@ -37,10 +37,18 @@ class FakeOpenAIClient:
         self.chat = SimpleNamespace(completions=FakeCompletions(script))
 
 
-def _completion(text: str | None, *, empty_choices: bool = False):
+def _completion(
+    text: str | None, *, empty_choices: bool = False, finish_reason: str = "stop"
+):
     if empty_choices:
         return SimpleNamespace(choices=[])
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
+    return SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=text), finish_reason=finish_reason
+            )
+        ]
+    )
 
 
 def _openai_llm(
@@ -61,9 +69,10 @@ class TestOpenAICompatibleChatLLM:
             [_completion("El capital no puede superar el máximo. [CA014 · Validaciones]")]
         )
 
-        text = llm.complete(system="sé breve", user="¿cuál es el tope?")
+        completion = llm.complete(system="sé breve", user="¿cuál es el tope?")
 
-        assert "CA014" in text
+        assert "CA014" in completion.text
+        assert completion.truncated is False
 
     def test_complete_sends_system_and_user_and_the_configured_knobs(self):
         llm, client = _openai_llm([_completion("ok")])
@@ -166,13 +175,13 @@ class TestAnthropicChatLLM:
             [_message([_text_block("primera parte. "), _text_block("segunda parte.")])]
         )
 
-        assert llm.complete(system="s", user="u") == "primera parte. segunda parte."
+        assert llm.complete(system="s", user="u").text == "primera parte. segunda parte."
 
     def test_non_text_blocks_are_skipped(self):
         thinking = SimpleNamespace(type="thinking", thinking="...")
         llm, _ = _anthropic_llm([_message([thinking, _text_block("la respuesta")])])
 
-        assert llm.complete(system="s", user="u") == "la respuesta"
+        assert llm.complete(system="s", user="u").text == "la respuesta"
 
     def test_temperature_is_omitted_when_none(self):
         llm, client = _anthropic_llm([_message([_text_block("ok")])], temperature=None)
@@ -212,3 +221,68 @@ class TestAnthropicChatLLM:
     def test_the_adapter_satisfies_the_protocol(self):
         llm, _ = _anthropic_llm([_message([_text_block("ok")])])
         assert isinstance(llm, LLM)
+
+
+class TestTruncationIsReported:
+    """A completion cut at the output cap must not look like a whole answer.
+
+    The provider says why it stopped and neither adapter read it, so half an
+    answer reached the console marked `grounded` with nothing to suggest it
+    was incomplete. These pin both directions on both wire formats.
+
+    || Una completion cortada en el tope no puede parecer una respuesta
+    entera. El proveedor dice por qué paró y ningún adaptador lo leía, así
+    que media respuesta llegaba a la consola marcada `grounded` sin nada que
+    sugiriera que estaba incompleta.
+    """
+
+    def test_openai_length_marks_truncated(self):
+        llm, _ = _openai_llm([_completion("media resp", finish_reason="length")])
+
+        completion = llm.complete(system="s", user="u")
+
+        assert completion.truncated is True
+
+    def test_openai_stop_does_not(self):
+        llm, _ = _openai_llm([_completion("entera", finish_reason="stop")])
+
+        assert llm.complete(system="s", user="u").truncated is False
+
+    def test_anthropic_max_tokens_marks_truncated(self):
+        llm, _ = _anthropic_llm(
+            [_message([_text_block("media resp")], stop_reason="max_tokens")]
+        )
+
+        assert llm.complete(system="s", user="u").truncated is True
+
+    def test_anthropic_end_turn_does_not(self):
+        llm, _ = _anthropic_llm(
+            [_message([_text_block("entera")], stop_reason="end_turn")]
+        )
+
+        assert llm.complete(system="s", user="u").truncated is False
+
+    def test_the_partial_text_comes_back_anyway(self):
+        """Mark, do not reject -- same call the citation guardrail made.
+
+        || Marcar y no rechazar, el mismo criterio del guardrail de citas.
+        """
+        llm, _ = _openai_llm(
+            [_completion("lo que alcanzó a escribir", finish_reason="length")]
+        )
+
+        completion = llm.complete(system="s", user="u")
+
+        assert completion.text == "lo que alcanzó a escribir"
+
+    def test_a_refusal_is_still_an_error_and_not_a_truncation(self):
+        llm, _ = _anthropic_llm(
+            [
+                _message(
+                    [], stop_reason="refusal", stop_details=SimpleNamespace(category="cyber")
+                )
+            ]
+        )
+
+        with pytest.raises(LLMError):
+            llm.complete(system="s", user="u")

@@ -139,6 +139,7 @@ class AnswerAgentState(TypedDict, total=False):
     citations: list[dict]
     context_truncated: bool
     dropped_hits: int
+    answer_truncated: bool
     citations_valid: bool
     confidence: float
     needs_human_review: bool

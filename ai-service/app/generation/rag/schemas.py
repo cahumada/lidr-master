@@ -809,6 +809,14 @@ class AnswerResponse(BaseModel):
         description="True when the token budget left retrieved evidence out of the prompt. "
         "|| True cuando el presupuesto de tokens dejó evidencia recuperada fuera del prompt.",
     )
+    answer_truncated: bool = Field(
+        default=False,
+        description="True when the provider stopped writing because it hit the output cap. The "
+        "text is real but incomplete -- and the prompt writes its source list LAST, so a truncated "
+        "answer usually has no sources at all. || True cuando el proveedor dejo de escribir porque "
+        "llego al tope de salida. El texto es real pero esta incompleto -- y el prompt escribe la "
+        "lista de fuentes AL FINAL, asi que una respuesta truncada suele quedarse sin fuentes.",
+    )
     dropped_hits: int = Field(
         default=0,
         ge=0,

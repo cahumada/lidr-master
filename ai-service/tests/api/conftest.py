@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 
 import pytest
 
+from app.foundation.llm.wrapper import Completion
+
 
 @pytest.fixture(autouse=True)
 def skip_postgres_checkpointer(monkeypatch):
@@ -46,8 +48,8 @@ def stub_synthesizer_runtime(monkeypatch):
     class _StubLLM:
         model = "stub-model"
 
-        def complete(self, *, system: str, user: str) -> str:
-            return "respuesta"
+        def complete(self, *, system: str, user: str) -> Completion:
+            return Completion(text="respuesta")
 
     async def _runtime(session, settings, *, profile_id=None):
         return _StubLLM(), None, None

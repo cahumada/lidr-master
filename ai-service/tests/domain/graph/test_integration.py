@@ -12,6 +12,7 @@ from langgraph.types import Command
 
 from app.domain.graph.build import build_answer_graph
 from app.domain.graph.runner import initial_state
+from app.foundation.llm.wrapper import Completion
 from app.generation.conversation.anchors import detect_anchors
 from app.generation.conversation.facts import facts_from_turn
 from app.generation.conversation.models import ConversationSession, Turn
@@ -21,8 +22,8 @@ from app.generation.rag.schemas import AnswerRequest
 
 
 class FakeLLM:
-    def complete(self, *, system: str, user: str) -> str:
-        return INSUFFICIENT_CONTEXT_MESSAGE
+    def complete(self, *, system: str, user: str) -> Completion:
+        return Completion(text=INSUFFICIENT_CONTEXT_MESSAGE)
 
 
 class EmptyRetriever:
@@ -112,8 +113,8 @@ class ChunkRetriever:
 
 
 class CitingLLM:
-    def complete(self, *, system: str, user: str) -> str:
-        return "El tope aplica. [CA014 · Validaciones]"
+    def complete(self, *, system: str, user: str) -> Completion:
+        return Completion(text="El tope aplica. [CA014 · Validaciones]")
 
 
 def test_three_turns_of_one_conversation(monkeypatch):

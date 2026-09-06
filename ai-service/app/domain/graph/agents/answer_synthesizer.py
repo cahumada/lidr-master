@@ -147,7 +147,8 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
             "agent_contributions": [contribution],
         }
 
-    answer = llm.complete(system=system, user=user)
+    completion = llm.complete(system=system, user=user)
+    answer = completion.text
     contribution = record_model_action(
         "answer_synthesizer",
         "synthesize_answer",
@@ -156,6 +157,7 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
             f"answer over {len(budgeted.kept)} of {len(hits)} hits"
             f" · {getattr(llm, 'model', '?')}"
             f"{f' · {budgeted.dropped_count} dropped by budget' if budgeted.truncated else ''}"
+            f"{' · TRUNCADA en el tope de salida' if completion.truncated else ''}"
             f"{' · persona' if persona else ''}"
             f"{' · guardrails' if guardrails else ''}"
         ),
@@ -166,6 +168,7 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
         hits=len(budgeted.kept),
         dropped=budgeted.dropped_count,
         answer_chars=len(answer),
+        answer_truncated=completion.truncated,
         model=getattr(llm, "model", None),
         persona_chars=len(persona or ""),
         guardrails_chars=len(guardrails or ""),
@@ -179,6 +182,7 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
         "citations": [hit.model_dump() for hit in budgeted.kept],
         "context_truncated": budgeted.truncated,
         "dropped_hits": budgeted.dropped_count,
+        "answer_truncated": completion.truncated,
         "pending_resynthesis": False,
         "pending_revalidation": was_resynthesis,
         "agent_contributions": [contribution],

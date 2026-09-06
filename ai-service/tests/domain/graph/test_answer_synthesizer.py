@@ -11,6 +11,7 @@ import pytest
 
 from app.config import get_settings
 from app.domain.graph.agents.answer_synthesizer import answer_synthesizer
+from app.foundation.llm.wrapper import Completion
 from app.generation.rag.answer import INSUFFICIENT_CONTEXT_MESSAGE
 from app.generation.rag.chunking.base import count_tokens
 from app.generation.rag.context_budget import render_hit_block
@@ -18,14 +19,14 @@ from app.generation.rag.schemas import SearchHit
 
 
 class FakeLLM:
-    def complete(self, *, system: str, user: str) -> str:
-        return "Respuesta citada [CA014 · Validaciones]"
+    def complete(self, *, system: str, user: str) -> Completion:
+        return Completion(text="Respuesta citada [CA014 · Validaciones]")
 
 
 class RefusingLLM:
     """Fails the test if the synthesizer calls it. || Falla el test si lo llaman."""
 
-    def complete(self, *, system: str, user: str) -> str:  # pragma: no cover - must not run
+    def complete(self, *, system: str, user: str) -> Completion:  # pragma: no cover - must not run
         raise AssertionError("the LLM must not be called without context")
 
 
@@ -139,10 +140,10 @@ class CapturingLLM:
         self.system = ""
         self.user = ""
 
-    def complete(self, *, system: str, user: str) -> str:
+    def complete(self, *, system: str, user: str) -> Completion:
         self.system = system
         self.user = user
-        return "Respuesta citada [CA014 · Validaciones]"
+        return Completion(text="Respuesta citada [CA014 · Validaciones]")
 
 
 def _session_state(**overrides) -> dict:
