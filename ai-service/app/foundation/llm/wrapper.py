@@ -33,6 +33,7 @@ Ningún adaptador arma su cliente: los clientes se arman en
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 import structlog
@@ -44,6 +45,34 @@ class LLMError(RuntimeError):
     """The completion could not be produced. || No se pudo producir la completion."""
 
 
+@dataclass(frozen=True)
+class Completion:
+    """The assistant text, and whether the provider ran out of room saying it.
+
+    ``truncated`` exists because the answer was being handed upstream as a
+    plain string and half an answer is indistinguishable from a whole one in
+    a string. Both providers say why they stopped -- OpenAI in
+    ``finish_reason``, Anthropic in ``stop_reason`` -- and neither field was
+    read, so a completion cut at the token cap reached the console marked
+    `grounded` with nothing to suggest it was incomplete.
+
+    A flag and not an exception: the partial text is usually useful, and
+    throwing it away would leave the caller with nothing. Same call the
+    citation guardrail already made -- mark, do not reject.
+
+    || El texto del asistente, y si al proveedor se le acabó el lugar para
+    decirlo. ``truncated`` existe porque la respuesta viajaba como un string
+    pelado, y media respuesta es indistinguible de una entera en un string.
+    Los dos proveedores dicen por qué pararon y nadie leía ese campo, así que
+    una completion cortada en el tope llegaba a la consola marcada `grounded`
+    sin nada que sugiriera que estaba incompleta. Un flag y no una excepción:
+    el texto parcial suele servir, y tirarlo dejaría a quien llama sin nada.
+    """
+
+    text: str
+    truncated: bool = False
+
+
 @runtime_checkable
 class LLM(Protocol):
     """Turns a system + user pair into a completion.
@@ -53,10 +82,10 @@ class LLM(Protocol):
 
     model: str
 
-    def complete(self, *, system: str, user: str) -> str:
-        """Return the assistant text for this turn.
+    def complete(self, *, system: str, user: str) -> Completion:
+        """Return the assistant text for this turn, and whether it was cut short.
 
-        || Devuelve el texto del asistente para este turno.
+        || Devuelve el texto del asistente para este turno, y si quedo cortado.
         """
         ...
 
@@ -80,7 +109,7 @@ class OpenAICompatibleChatLLM:
         self.max_tokens = max_tokens
         self.temperature = temperature
 
-    def complete(self, *, system: str, user: str) -> str:
+    def complete(self, *, system: str, user: str) -> Completion:
         """Call the chat API and return the assistant message.
 
         An empty ``content`` is a contract violation from the provider, not a
@@ -106,9 +135,19 @@ class OpenAICompatibleChatLLM:
         response = self._client.chat.completions.create(**payload)
         if not response.choices:
             raise LLMError("completion returned no choices")
-        content = response.choices[0].message.content
+        choice = response.choices[0]
+        content = choice.message.content
         if not content:
             raise LLMError("completion returned empty content")
+
+        # `"length"` means the model was still writing when it hit
+        # `max_tokens`. It is the provider telling us the answer is
+        # incomplete, and it was being ignored.
+        # || `"length"` significa que el modelo seguia escribiendo cuando
+        # llego al tope. Es el proveedor avisando que la respuesta esta
+        # incompleta, y se estaba ignorando.
+        finish_reason = getattr(choice, "finish_reason", None)
+        truncated = finish_reason == "length"
         logger.info(
             "llm_complete",
             provider="openai_compatible",
@@ -116,8 +155,19 @@ class OpenAICompatibleChatLLM:
             system_chars=len(system),
             user_chars=len(user),
             answer_chars=len(content),
+            finish_reason=finish_reason,
         )
-        return content
+        if truncated:
+            # A warning and not an info line: this is lost content, not colour.
+            # || Advertencia y no info: esto es contenido perdido, no color.
+            logger.warning(
+                "llm_completion_truncated",
+                provider="openai_compatible",
+                model=self.model,
+                max_tokens=self.max_tokens,
+                answer_chars=len(content),
+            )
+        return Completion(text=content, truncated=truncated)
 
 
 class AnthropicChatLLM:
@@ -159,7 +209,7 @@ class AnthropicChatLLM:
         # `providers.py`.
         self.temperature = temperature
 
-    def complete(self, *, system: str, user: str) -> str:
+    def complete(self, *, system: str, user: str) -> Completion:
         """Call the Messages API and return the assistant text.
 
         || Llama a la Messages API y devuelve el texto del asistente.
@@ -189,6 +239,14 @@ class AnthropicChatLLM:
         if not text:
             raise LLMError(f"completion returned no text blocks (stop_reason={stop_reason!r})")
 
+        # `"max_tokens"` is the counterpart of OpenAI's `"length"`: the model
+        # was mid-sentence when the cap ran out. This adapter already read
+        # `stop_reason` to catch a refusal and looked straight past this one.
+        # || `"max_tokens"` es la contraparte del `"length"` de OpenAI: el
+        # modelo estaba a mitad de frase cuando se acabo el tope. Este
+        # adaptador ya leia `stop_reason` para detectar un rechazo y pasaba
+        # de largo por este.
+        truncated = stop_reason == "max_tokens"
         logger.info(
             "llm_complete",
             provider="anthropic",
@@ -198,4 +256,12 @@ class AnthropicChatLLM:
             answer_chars=len(text),
             stop_reason=stop_reason,
         )
-        return text
+        if truncated:
+            logger.warning(
+                "llm_completion_truncated",
+                provider="anthropic",
+                model=self.model,
+                max_tokens=self.max_tokens,
+                answer_chars=len(text),
+            )
+        return Completion(text=text, truncated=truncated)

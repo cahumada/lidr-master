@@ -133,6 +133,26 @@ Para cada pregunta del golden set con un `document_id` esperado, confirma que
 las `citations` de la respuesta lo incluyen. Método y números en
 [`evals/GENERATION_EVAL.md`](evals/GENERATION_EVAL.md).
 
+### Tope de salida y respuestas truncadas
+
+`ANSWER_MAX_TOKENS` (default 4096) es el techo de tokens de **salida**. Es un
+CAP y no un objetivo: solo se paga lo que el modelo escribe.
+
+El valor está medido, no estimado: sobre 8 preguntas del golden set el largo
+natural fue mínimo 626, mediana 1373 y máximo 3325 tokens. El default anterior
+de 1024 truncaba 6 de esas 8.
+
+Cuando el proveedor corta por el tope, la respuesta lo dice: `answer_truncated`
+en el contrato y un aviso en la consola. Antes no lo decía — `finish_reason` y
+`stop_reason` venían en la respuesta del proveedor y nadie los leía, así que
+media respuesta llegaba marcada `grounded` sin nada que indicara que estaba
+incompleta. Y como el prompt escribe `Fuentes citadas` **al final**, truncar se
+lleva puesto el bloque de procedencia entero.
+
+**Ojo con los perfiles**: el `max_tokens` guardado en un perfil de agente le
+**gana** a este default. Subirlo acá no arregla un perfil que ya tiene un valor
+menor anotado en la base; eso se edita en la pantalla `/agents`.
+
 ### Presupuesto de contexto
 
 `ANSWER_MAX_CONTEXT_TOKENS` (default 16384) es el techo en tokens del **bloque

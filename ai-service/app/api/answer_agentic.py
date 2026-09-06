@@ -118,6 +118,12 @@ class AnswerAgenticResponse(BaseModel):
         description="Retrieved chunks that did not fit the context budget. "
         "|| Chunks recuperados que no entraron en el presupuesto de contexto.",
     )
+    answer_truncated: bool = Field(
+        default=False,
+        description="True when the provider stopped at the output cap and the answer is "
+        "incomplete. || True cuando el proveedor paro en el tope de salida y la respuesta "
+        "quedo incompleta.",
+    )
 
 
 class AnswerAgenticPausedResponse(BaseModel):
@@ -136,6 +142,7 @@ class AnswerAgenticPausedResponse(BaseModel):
     anchors_applied: list[dict] = Field(default_factory=list)
     context_truncated: bool = False
     dropped_hits: int = Field(default=0, ge=0)
+    answer_truncated: bool = False
 
 
 class AnswerAgenticResumeRequest(BaseModel):
@@ -182,6 +189,7 @@ class AnswerAgenticProgress(BaseModel):
     routing_history: list[dict] = Field(default_factory=list)
     context_truncated: bool | None = None
     dropped_hits: int | None = None
+    answer_truncated: bool | None = None
     error: str | None = Field(
         default=None, description="Set only when status='failed'. || Solo cuando status='failed'."
     )
@@ -208,6 +216,7 @@ def _completed_response(thread_id: str, values: dict) -> AnswerAgenticResponse:
         routing_history=list(values.get("routing_history") or []),
         context_truncated=bool(values.get("context_truncated")),
         dropped_hits=int(values.get("dropped_hits") or 0),
+        answer_truncated=bool(values.get("answer_truncated")),
     )
 
 
@@ -225,6 +234,7 @@ def _paused_response(thread_id: str, question: str, values: dict, reasons: list[
         confidence=values.get("confidence"),
         context_truncated=bool(values.get("context_truncated")),
         dropped_hits=int(values.get("dropped_hits") or 0),
+        answer_truncated=bool(values.get("answer_truncated")),
     )
 
 
@@ -501,4 +511,5 @@ async def answer_agentic_progress(thread_id: str):
         routing_history=result.get("routing_history") or [],
         context_truncated=result.get("context_truncated"),
         dropped_hits=result.get("dropped_hits"),
+        answer_truncated=result.get("answer_truncated"),
     )

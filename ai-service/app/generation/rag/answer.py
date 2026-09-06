@@ -111,7 +111,8 @@ async def generate_answer(
             dropped_hits=budgeted.dropped_count,
         )
 
-    answer = llm.complete(system=system, user=user)
+    completion = llm.complete(system=system, user=user)
+    answer = completion.text
     # The prose is checked against what the model was actually shown, not
     # against everything the retriever found.
     # || La prosa se chequea contra lo que el modelo realmente vio, no contra
@@ -124,6 +125,7 @@ async def generate_answer(
         hits=len(budgeted.kept),
         dropped=budgeted.dropped_count,
         grounded=grounding.grounded,
+        answer_truncated=completion.truncated,
         unsupported=grounding.unsupported_document_ids,
     )
     return AnswerResponse(
@@ -133,4 +135,5 @@ async def generate_answer(
         grounded=grounding.grounded,
         context_truncated=budgeted.truncated,
         dropped_hits=budgeted.dropped_count,
+        answer_truncated=completion.truncated,
     )

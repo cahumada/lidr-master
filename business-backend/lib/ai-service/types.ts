@@ -293,6 +293,8 @@ export interface AnswerAgenticCompleted {
   context_truncated: boolean;
   /** Retrieved chunks that did not fit the context budget. */
   dropped_hits: number;
+  /** True when the provider stopped at the output cap: the answer is incomplete. */
+  answer_truncated: boolean;
 }
 
 export interface AnswerAgenticPaused {
@@ -309,6 +311,7 @@ export interface AnswerAgenticPaused {
   anchors_applied: ConversationAnchor[];
   context_truncated: boolean;
   dropped_hits: number;
+  answer_truncated: boolean;
 }
 
 export type AnswerAgenticResponse = AnswerAgenticCompleted | AnswerAgenticPaused;
@@ -620,5 +623,6 @@ export interface AnswerAgenticProgress {
   routing_history: RoutingRecord[];
   context_truncated: boolean | null;
   dropped_hits: number | null;
+  answer_truncated: boolean | null;
   error: string | null;
 }

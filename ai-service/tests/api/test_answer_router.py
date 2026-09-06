@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from app.config import get_settings
 from app.dependencies import get_embedder, get_reranker
 from app.domain.profiles import ProfileResolutionError
+from app.foundation.llm.wrapper import Completion
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.answer import INSUFFICIENT_CONTEXT_MESSAGE
 from app.generation.rag.retrieval.hybrid import RetrievalResult, RetrievedChunk
@@ -79,9 +80,9 @@ class FakeLLM:
         self.text = text
         self.calls: list[dict] = []
 
-    def complete(self, *, system: str, user: str) -> str:
+    def complete(self, *, system: str, user: str) -> Completion:
         self.calls.append({"system": system, "user": user})
-        return self.text
+        return Completion(text=self.text)
 
 
 @pytest.fixture

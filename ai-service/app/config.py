@@ -168,7 +168,23 @@ class Settings(BaseSettings):
     # esta devuelve prosa). Temperatura 0: hechos de seguros, no estilo. El
     # eval de fidelidad tiene que poder reproducir una corrida.
     ANSWER_MODEL: str = "gpt-4o-mini"
-    ANSWER_MAX_TOKENS: int = 1024
+    # Output cap. A CAP and not a target: only what the model actually writes
+    # is paid for, so a roomy ceiling costs no latency and no tokens by itself.
+    #
+    # 4096 is MEASURED, not guessed. Sampling 8 golden questions (the 4 longest
+    # and the 4 shortest) with a ceiling high enough not to bind: min 626,
+    # median 1373, max 3325 output tokens. The previous value of 1024 truncated
+    # 6 of those 8 -- and truncation now costs the whole `Fuentes citadas`
+    # block, because the prompt writes it last.
+    #
+    # A `max_tokens` stored on an agent profile WINS over this. Raising the
+    # default does not fix a profile that already has a smaller value saved.
+    # || Tope de salida. Es un CAP y no un objetivo: solo se paga lo que el
+    # modelo escribe, asi que un techo holgado no cuesta latencia ni tokens.
+    # 4096 esta MEDIDO: sobre 8 preguntas del golden set, min 626 / mediana
+    # 1373 / max 3325 tokens de salida, y el valor anterior de 1024 truncaba 6
+    # de esas 8. El `max_tokens` guardado en un perfil LE GANA a este default.
+    ANSWER_MAX_TOKENS: int = 4096
     ANSWER_TEMPERATURE: float = 0.0
 
     # Token ceiling for the CONTEXT BLOCK — the retrieved chunks — and not for

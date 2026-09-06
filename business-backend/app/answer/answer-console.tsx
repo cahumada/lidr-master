@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { ArrowUp, Plus, SlidersHorizontal } from "lucide-react"
 
+import { AnswerMarkdown } from "./answer-markdown"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -332,8 +333,14 @@ function AwaitingReviewPanel({
         </div>
 
         {paused.answer && (
-          <div className="rounded-md border p-3">
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{paused.answer}</p>
+          <div className="flex flex-col gap-2 rounded-md border p-3">
+            {paused.answer_truncated && (
+              <p className="text-destructive text-xs">
+                Esta respuesta parcial además quedó cortada por el tope de
+                tokens de salida del perfil.
+              </p>
+            )}
+            <AnswerMarkdown>{paused.answer}</AnswerMarkdown>
           </div>
         )}
 
@@ -569,7 +576,18 @@ function AssistantBody({
             apoya solo en la evidencia listada abajo.
           </p>
         )}
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{result.answer}</p>
+        {result.answer_truncated && (
+          <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs">
+            Respuesta incompleta: el modelo llegó al tope de tokens de salida y
+            se cortó a mitad. Lo que falta suele incluir el cierre de fuentes.
+            Subí el tope de salida del perfil vigente en{" "}
+            <a href="/agents" className="underline underline-offset-2">
+              Agentes
+            </a>
+            .
+          </p>
+        )}
+        <AnswerMarkdown>{result.answer}</AnswerMarkdown>
         <details className="rounded-lg border">
           <summary className="text-muted-foreground cursor-pointer px-3 py-2 text-xs font-medium">
             Evidencia recuperada ({result.citations.length})
@@ -682,6 +700,7 @@ export function AnswerConsole({
               anchors_applied: body.anchors_applied ?? [],
               context_truncated: body.context_truncated ?? false,
               dropped_hits: body.dropped_hits ?? 0,
+              answer_truncated: body.answer_truncated ?? false,
             },
           })
         } else if (body.status === "awaiting_human_review") {
@@ -702,6 +721,7 @@ export function AnswerConsole({
               anchors_applied: body.anchors_applied ?? [],
               context_truncated: body.context_truncated ?? false,
               dropped_hits: body.dropped_hits ?? 0,
+              answer_truncated: body.answer_truncated ?? false,
             },
           })
         } else {
@@ -1037,7 +1057,9 @@ export function AnswerConsole({
         </form>
         <p className="text-muted-foreground mx-auto mt-2 max-w-3xl text-center text-[11px]">
           Enter envía · Shift+Enter hace un salto de línea. Cada turno es una
-          corrida nueva: el servicio no recuerda el hilo.
+          corrida nueva del grafo, pero el hilo tiene memoria: el servicio
+          recuerda los filtros, las transacciones nombradas y lo que citó la
+          respuesta anterior.
         </p>
       </div>
     </div>

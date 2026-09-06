@@ -227,6 +227,7 @@ def completed_result(values: dict, fallback_question: str) -> dict:
         "routing_history": list(values.get("routing_history") or []),
         "context_truncated": bool(values.get("context_truncated")),
         "dropped_hits": int(values.get("dropped_hits") or 0),
+        "answer_truncated": bool(values.get("answer_truncated")),
     }
 
 
@@ -249,6 +250,7 @@ def paused_result(values: dict, fallback_question: str, reasons: list[str]) -> d
         "confidence": values.get("confidence"),
         "context_truncated": bool(values.get("context_truncated")),
         "dropped_hits": int(values.get("dropped_hits") or 0),
+        "answer_truncated": bool(values.get("answer_truncated")),
     }
 
 
