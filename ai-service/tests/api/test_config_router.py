@@ -456,9 +456,12 @@ class TestReadConfig:
 
         assert synthesizer["system_prompt"]
         assert "[document_id · section]" in synthesizer["system_prompt"]
+        assert "Fuentes citadas" in synthesizer["system_prompt"]
         assert "SOLO" in synthesizer["system_prompt"]
         kinds = {item["id"]: item["kind"] for item in synthesizer["system_guardrails"]}
+        titles = {item["id"]: item["title"] for item in synthesizer["system_guardrails"]}
         assert kinds["cite_provenance"] == "prompt"
+        assert titles["cite_provenance"] == "Fuentes al final"
         assert kinds["citation_grounding"] == "code"
         assert agents["query_planner"]["system_prompt"] is None
         assert agents["query_planner"]["system_guardrails"] == []

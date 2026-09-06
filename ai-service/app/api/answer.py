@@ -42,6 +42,26 @@ async def answer(
 
     || Una respuesta citada a ``body.question``, anclada en los chunks recuperados.
     """
+    # Memory lives on the agentic path, which has the planner that resolves a
+    # referential question before retrieval. This endpoint is the single-shot
+    # one -- it is what the fidelity eval calls -- and has no planner to give
+    # the session to. Rejecting is the only honest option: accepting the field
+    # and ignoring it would answer without memory while the caller believed
+    # otherwise, which is the silent behavior this codebase does not allow.
+    # || La memoria vive en el camino agéntico, que tiene el planner que
+    # resuelve una pregunta referencial antes de recuperar. Este endpoint es el
+    # de un solo tiro —es el que llama el eval de fidelidad— y no tiene planner
+    # al que darle la sesión. Rechazar es lo único honesto: aceptar el campo e
+    # ignorarlo respondería sin memoria mientras quien llama cree lo contrario.
+    if body.session_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="POST /answer has no conversation memory. Use POST /answer/agentic "
+            "or /answer/agentic/start with `session_id`. "
+            "|| POST /answer no tiene memoria de conversación. Usar POST /answer/agentic "
+            "o /answer/agentic/start con `session_id`.",
+        )
+
     settings = get_settings()
     filters = SearchFilters(
         settings.TENANT_ID,

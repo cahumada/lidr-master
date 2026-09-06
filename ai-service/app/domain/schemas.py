@@ -119,12 +119,26 @@ class AnswerAgentState(TypedDict, total=False):
     """
 
     query: str
+    # What the user wrote stays in `query`; `resolved_question` is what is
+    # actually retrieved. Two fields and not one: a rewrite the user cannot
+    # see is a rewrite nobody can check.
+    # || Lo que escribió el usuario queda en `query`; `resolved_question` es lo
+    # que realmente se busca. Dos campos y no uno: una reescritura que el
+    # usuario no ve es una reescritura que nadie puede chequear.
+    resolved_question: str
+    resolved_referents: list[str]
+    session_id: str | None
+    conversation_facts: dict
+    conversation_anchors: list[dict]
+    conversation_turns: list[dict]
     sub_queries: list[str]
     filters: QueryFilters
     retrieval_options: RetrievalOptions
     hits: list[dict]
     answer: str
     citations: list[dict]
+    context_truncated: bool
+    dropped_hits: int
     citations_valid: bool
     confidence: float
     needs_human_review: bool

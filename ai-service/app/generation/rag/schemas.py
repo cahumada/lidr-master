@@ -725,6 +725,15 @@ class AnswerRequest(BaseModel):
         description="The question, in natural language or a transaction code. "
         "|| La pregunta, en lenguaje natural o un código de transacción.",
     )
+    session_id: str | None = Field(
+        default=None,
+        description="Conversation to answer within, from `POST /answer/session`. OPTIONAL: "
+        "without it the turn is answered with no memory, exactly as before sessions existed. "
+        "NOT a `thread_id` -- a thread is one graph run, a session spans many. "
+        "|| Conversación en la que responder, de `POST /answer/session`. OPCIONAL: sin ella el "
+        "turno se responde sin memoria, igual que antes de que existieran las sesiones. NO es un "
+        "`thread_id`: un thread es una corrida del grafo, una sesión son muchas.",
+    )
     limit: int = Field(
         default=10,
         ge=1,
@@ -794,4 +803,18 @@ class AnswerResponse(BaseModel):
     grounded: bool = Field(
         description="False when the prose cites a document_id that is not in `citations`. "
         "|| False cuando la prosa cita un document_id que no está en `citations`.",
+    )
+    context_truncated: bool = Field(
+        default=False,
+        description="True when the token budget left retrieved evidence out of the prompt. "
+        "|| True cuando el presupuesto de tokens dejó evidencia recuperada fuera del prompt.",
+    )
+    dropped_hits: int = Field(
+        default=0,
+        ge=0,
+        description="How many retrieved chunks did not fit the context budget. Non-zero with an "
+        "empty `citations` means evidence WAS found and none of it fit -- a different thing from "
+        "finding nothing. || Cuántos chunks recuperados no entraron en el presupuesto de contexto. "
+        "Distinto de cero con `citations` vacío significa que SÍ hubo evidencia y no entró ninguna "
+        "-- otra cosa que no haber encontrado nada.",
     )

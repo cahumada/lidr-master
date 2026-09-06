@@ -221,6 +221,45 @@ export interface AnswerRequest {
   rerank?: boolean;
   /** Named synthesizer profile for this run. Absent = default. */
   profile_id?: string | null;
+  /**
+   * Conversation to answer within, from `POST /api/answer/session`. Optional:
+   * without it the turn is answered with no memory. NOT a `thread_id` — a
+   * thread is one graph run, a session spans many.
+   * || Conversación en la que responder. Opcional: sin ella el turno se
+   * responde sin memoria. NO es un `thread_id`.
+   */
+  session_id?: string | null;
+}
+
+/** A pinned scope constraint and the question that pinned it.
+ * || Una restricción de alcance fijada y la pregunta que la fijó. */
+export interface ConversationAnchor {
+  kind: "module_code" | "window_type_name";
+  value: string;
+  source_question: string;
+}
+
+/** What a conversation remembers between turns.
+ * || Lo que una conversación recuerda entre turnos. */
+export interface ConversationFacts {
+  module_code: string[];
+  window_type_name: string[];
+  transaction_codes: string[];
+  last_document_ids: string[];
+}
+
+/** Response of `POST /answer/session`. || Respuesta de `POST /answer/session`. */
+export interface SessionCreated {
+  session_id: string;
+}
+
+/** Response of `GET /answer/session/{id}`. || Respuesta de `GET /answer/session/{id}`. */
+export interface SessionView {
+  session_id: string;
+  facts: ConversationFacts;
+  anchors: ConversationAnchor[];
+  turns: { question: string; resolved_question: string; answer: string }[];
+  max_turns: number;
 }
 
 export interface RoutingRecord {
@@ -241,6 +280,19 @@ export interface AnswerAgenticCompleted {
   needs_human_review: boolean;
   review_reasons: string[];
   routing_history: RoutingRecord[];
+  /** What was actually retrieved. Differs from `question` when a referential
+   * follow-up was resolved against the session. */
+  resolved_question: string;
+  /** What the rewrite named. Empty means nothing was rewritten. */
+  resolved_referents: string[];
+  /** Whether a conversation session was in play for this turn. */
+  session_memory_used: boolean;
+  /** Pinned constraints this turn retrieved with. */
+  anchors_applied: ConversationAnchor[];
+  /** True when the token budget left retrieved evidence out of the prompt. */
+  context_truncated: boolean;
+  /** Retrieved chunks that did not fit the context budget. */
+  dropped_hits: number;
 }
 
 export interface AnswerAgenticPaused {
@@ -251,6 +303,12 @@ export interface AnswerAgenticPaused {
   citations: SearchHit[];
   review_reasons: string[];
   confidence: number | null;
+  resolved_question: string;
+  resolved_referents: string[];
+  session_memory_used: boolean;
+  anchors_applied: ConversationAnchor[];
+  context_truncated: boolean;
+  dropped_hits: number;
 }
 
 export type AnswerAgenticResponse = AnswerAgenticCompleted | AnswerAgenticPaused;
@@ -549,6 +607,10 @@ export interface AnswerAgenticProgress {
   thread_id: string;
   activity: GraphActivityEntry[];
   question: string | null;
+  resolved_question: string | null;
+  resolved_referents: string[];
+  session_memory_used: boolean | null;
+  anchors_applied: ConversationAnchor[];
   answer: string | null;
   citations: SearchHit[];
   grounded: boolean | null;
@@ -556,5 +618,7 @@ export interface AnswerAgenticProgress {
   needs_human_review: boolean | null;
   review_reasons: string[];
   routing_history: RoutingRecord[];
+  context_truncated: boolean | null;
+  dropped_hits: number | null;
   error: string | null;
 }

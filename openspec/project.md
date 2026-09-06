@@ -274,9 +274,12 @@ Medido sobre 35 preguntas reales de usuarios: `p@10` 0,171 con 94% de hallazgo.
 La fidelidad de las citas de la generación se mide en
 `ai-service/evals/GENERATION_EVAL.md`.
 
-No construido todavía: pantalla de `/answer` en `business-backend/`, streaming
-de la respuesta, versiones de prompt `v2`/`v3`, ingesta batch expuesta por API
-con seguimiento de jobs, y chunking jerárquico/semántico/con overlap.
+No construido todavía: streaming de la respuesta, ingesta batch expuesta por
+API con seguimiento de jobs, y chunking jerárquico/semántico/con overlap.
+Tampoco hay resumen acumulativo de la conversación: la memoria de sesión son
+hechos estructurados, anchors y una ventana corta de turnos, y la condición
+para agregar un resumen está escrita en el `design.md` de
+`add-conversation-memory`.
 
 Existe además, generado fuera de este repo, un corpus JSON enriquecido por
 LLM para el módulo `policies` (`corpus_<tenant>_policies.json`, 174

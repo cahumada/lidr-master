@@ -16,6 +16,10 @@ from app.domain.graph.activity import describe_node
 from app.domain.profiles import synthesizer_runtime
 from app.domain.schemas import AnswerAgentState
 from app.foundation.persistence.database import get_async_session_factory
+from app.generation.conversation.anchors import detect_anchors
+from app.generation.conversation.facts import facts_from_turn
+from app.generation.conversation.models import ConversationSession, Turn
+from app.generation.conversation.store import SessionStore
 from app.generation.rag.retrieval.hybrid import HybridRetriever
 from app.generation.rag.schemas import AnswerRequest
 from app.generation.rag.store.repository import ChunkRepository
@@ -23,6 +27,14 @@ from app.generation.rag.store.repository import ChunkRepository
 log = structlog.get_logger()
 
 THREAD_PREFIX = "answer-agent"
+
+# How much of an answer the session keeps. The window is there so the model
+# knows what was already said, not so it can re-read itself: storing the prose
+# verbatim would spend on repetition the budget that belongs to evidence.
+# || Cuánto de una respuesta guarda la sesión. La ventana existe para que el
+# modelo sepa qué se dijo, no para que se relea: guardar la prosa entera
+# gastaría en repetición el presupuesto que le corresponde a la evidencia.
+TURN_ANSWER_MAX_CHARS = 600
 
 
 def thread_config(
@@ -49,10 +61,23 @@ def thread_config(
 
 
 
-def initial_state(body: AnswerRequest) -> AnswerAgentState:
-    """Seed state for a fresh run. || Estado semilla para una corrida nueva."""
-    return {
+def initial_state(
+    body: AnswerRequest, conversation: ConversationSession | None = None
+) -> AnswerAgentState:
+    """Seed state for a fresh run. || Estado semilla para una corrida nueva.
+
+    Without a ``conversation`` the memory fields stay absent and every node
+    behaves exactly as it did before sessions existed — which is what makes
+    ``session_id`` safe to leave optional on the request.
+
+    || Sin ``conversation`` los campos de memoria quedan ausentes y cada nodo
+    se comporta igual que antes de que existieran las sesiones, que es lo que
+    hace seguro dejar ``session_id`` opcional en el request.
+    """
+    state: AnswerAgentState = {
         "query": body.question,
+        "resolved_question": body.question,
+        "resolved_referents": [],
         "retrieval_options": {
             "limit": body.limit,
             "max_per_document": body.max_per_document,
@@ -66,6 +91,118 @@ def initial_state(body: AnswerRequest) -> AnswerAgentState:
         "agent_contributions": [],
         "review_reasons": [],
     }
+    if conversation is not None:
+        state["session_id"] = conversation.session_id
+        state["conversation_facts"] = conversation.facts.model_dump(mode="json")
+        state["conversation_anchors"] = [
+            anchor.model_dump(mode="json") for anchor in conversation.anchors
+        ]
+        state["conversation_turns"] = [
+            turn.model_dump(mode="json") for turn in conversation.turns
+        ]
+    return state
+
+
+async def open_turn(
+    store: SessionStore, body: AnswerRequest
+) -> ConversationSession | None:
+    """Load the session this request names and pin whatever it declares.
+
+    ``None`` covers three cases the caller does not need to tell apart: no
+    ``session_id`` was sent, the session does not exist, or it is past its
+    TTL. All three answer the turn without memory, which is the behavior that
+    existed before sessions did.
+
+    Pinning happens on the way IN, not on the way out: a question that says
+    "de acá en adelante, solo módulo CA" has to constrain the retrieval of
+    that very turn. Pinning it after the answer would make the first turn the
+    one exception to the rule the user just set.
+
+    || Carga la sesión que nombra este request y fija lo que declare. ``None``
+    cubre tres casos que quien llama no distingue: sin ``session_id``, sesión
+    inexistente, o vencida — los tres responden sin memoria. El fijado ocurre
+    a la ENTRADA y no a la salida: una pregunta que dice «de acá en adelante,
+    solo módulo CA» tiene que acotar la recuperación de ese mismo turno.
+    Fijarla después de responder haría del primer turno la única excepción a
+    la regla que el usuario acaba de poner.
+    """
+    session_id = getattr(body, "session_id", None)
+    if not session_id:
+        return None
+
+    conversation = await store.get(session_id)
+    if conversation is None:
+        log.info("conversation_session_unavailable", session_id=session_id)
+        return None
+
+    pinned = conversation.pin(detect_anchors(body.question))
+    if pinned:
+        await store.save(conversation)
+    return conversation
+
+
+async def close_turn(
+    store: SessionStore,
+    conversation: ConversationSession | None,
+    values: dict,
+    *,
+    written_question: str,
+    max_turns: int,
+    answer_preview_chars: int = TURN_ANSWER_MAX_CHARS,
+) -> None:
+    """Record one finished exchange on the session, exactly once.
+
+    Called where a run REACHES ITS END — not where the graph pauses. A run
+    stopped at the human-review gate has not produced an answer the user
+    accepted, and writing it would leave the session remembering a turn that
+    may still be rejected.
+
+    The stored answer is trimmed: the window exists so the model knows what
+    was already said, and a verbatim answer would spend on prose the budget
+    that belongs to evidence.
+
+    || Registra un intercambio terminado en la sesión, exactamente una vez.
+    Se llama donde una corrida TERMINA, no donde el grafo pausa: una corrida
+    detenida en el gate todavía no produjo una respuesta que el usuario haya
+    aceptado, y escribirla dejaría a la sesión recordando un turno que aún
+    puede rechazarse. La respuesta se guarda recortada: la ventana existe para
+    que el modelo sepa qué se dijo, y guardarla entera gastaría en prosa el
+    presupuesto que le corresponde a la evidencia.
+    """
+    if conversation is None:
+        return
+
+    answer = values.get("answer") or ""
+    cited = [
+        str(hit.get("document_id"))
+        for hit in (values.get("citations") or [])
+        if hit.get("document_id")
+    ]
+    conversation.facts = conversation.facts.merge_with(
+        facts_from_turn(
+            question=values.get("query") or written_question,
+            filters=dict(values.get("filters") or {}),
+            cited_document_ids=list(dict.fromkeys(cited)),
+        )
+    )
+    conversation.append_turn(
+        Turn(
+            question=values.get("query") or written_question,
+            resolved_question=values.get("resolved_question")
+            or values.get("query")
+            or written_question,
+            answer=answer[:answer_preview_chars],
+        ),
+        max_turns=max_turns,
+    )
+    await store.save(conversation)
+    log.info(
+        "conversation_turn_closed",
+        session_id=conversation.session_id,
+        turns=len(conversation.turns),
+        anchors=len(conversation.anchors),
+        cited=len(cited),
+    )
 
 
 def completed_result(values: dict, fallback_question: str) -> dict:
@@ -75,6 +212,12 @@ def completed_result(values: dict, fallback_question: str) -> dict:
     """
     return {
         "question": values.get("query") or fallback_question,
+        "resolved_question": values.get("resolved_question")
+        or values.get("query")
+        or fallback_question,
+        "resolved_referents": list(values.get("resolved_referents") or []),
+        "session_memory_used": bool(values.get("session_id")),
+        "anchors_applied": list(values.get("conversation_anchors") or []),
         "answer": values.get("answer") or "",
         "citations": list(values.get("citations") or []),
         "grounded": bool(values.get("citations_valid", True)),
@@ -82,6 +225,8 @@ def completed_result(values: dict, fallback_question: str) -> dict:
         "needs_human_review": bool(values.get("needs_human_review")),
         "review_reasons": list(values.get("review_reasons") or []),
         "routing_history": list(values.get("routing_history") or []),
+        "context_truncated": bool(values.get("context_truncated")),
+        "dropped_hits": int(values.get("dropped_hits") or 0),
     }
 
 
@@ -92,10 +237,18 @@ def paused_result(values: dict, fallback_question: str, reasons: list[str]) -> d
     """
     return {
         "question": values.get("query") or fallback_question,
+        "resolved_question": values.get("resolved_question")
+        or values.get("query")
+        or fallback_question,
+        "resolved_referents": list(values.get("resolved_referents") or []),
+        "session_memory_used": bool(values.get("session_id")),
+        "anchors_applied": list(values.get("conversation_anchors") or []),
         "answer": values.get("answer"),
         "citations": list(values.get("citations") or []),
         "review_reasons": reasons,
         "confidence": values.get("confidence"),
+        "context_truncated": bool(values.get("context_truncated")),
+        "dropped_hits": int(values.get("dropped_hits") or 0),
     }
 
 
@@ -109,6 +262,7 @@ async def _stream_and_log(
     reranker: Any,
     persona: str | None = None,
     guardrails: str | None = None,
+    conversation=None,
 ):
     """Run the graph via ``astream``, narrating each node into the activity log.
 
@@ -124,7 +278,8 @@ async def _stream_and_log(
         guardrails=guardrails,
     )
 
-    async for update in graph.astream(initial_state(body), config, stream_mode="updates"):
+    seed = initial_state(body, conversation)
+    async for update in graph.astream(seed, config, stream_mode="updates"):
         for node_name, node_update in update.items():
             for entry in describe_node(node_name, node_update):
                 activity_log.append(thread_id, entry["node"], entry["label"], entry["message"])
@@ -148,13 +303,16 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
     activity_log.start(thread_id)
     session_factory = get_async_session_factory()
 
+    settings = get_settings()
     try:
         async with session_factory() as session:
             retriever = HybridRetriever(ChunkRepository(session), get_embedder())
             reranker = get_reranker() if body.rerank else None
             llm, persona, guardrails = await synthesizer_runtime(
-                session, get_settings(), profile_id=body.profile_id
+                session, settings, profile_id=body.profile_id
             )
+            store = SessionStore(session, ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS)
+            conversation = await open_turn(store, body)
             snapshot = await _stream_and_log(
                 thread_id,
                 body,
@@ -164,7 +322,18 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
                 reranker=reranker,
                 persona=persona,
                 guardrails=guardrails,
+                conversation=conversation,
             )
+            values = snapshot.values or {}
+            interrupts = getattr(snapshot, "interrupts", None) or ()
+            if not (snapshot.next and interrupts):
+                await close_turn(
+                    store,
+                    conversation,
+                    values,
+                    written_question=body.question,
+                    max_turns=settings.CONVERSATION_MAX_TURNS,
+                )
     except Exception as exc:  # noqa: BLE001 — a background failure must not vanish silently.
         log.error("answer_agentic_background_failed", thread_id=thread_id, error=str(exc)[:300])
         activity_log.finish(thread_id, "failed", error=str(exc)[:300])

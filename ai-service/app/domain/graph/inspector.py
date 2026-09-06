@@ -84,10 +84,10 @@ SYSTEM_GUARDRAILS: tuple[SystemGuardrail, ...] = (
     SystemGuardrail(
         id="cite_provenance",
         kind="prompt",
-        title="Citar procedencia",
+        title="Fuentes al final",
         description=(
-            "Cada afirmación cita [document_id · section] con los identificadores "
-            "del contexto. Ejemplo: [CA014 · Validaciones]."
+            "No citar [document_id · section] en el cuerpo. Al final de toda la "
+            "respuesta, «Fuentes citadas:» con los document_id realmente usados."
         ),
     ),
     SystemGuardrail(

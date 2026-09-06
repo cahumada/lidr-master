@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.domain.graph.privilege import SEARCH_CORPUS_TOOL, guarded_dispatch
 from app.domain.graph.tools import search_corpus
 from app.domain.schemas import AnswerAgentState, QueryFilters, RetrievalOptions
+from app.generation.rag.context_budget import interleave_by_query
 from app.generation.rag.schemas import SearchHit
 from app.generation.rag.store.repository import SearchFilters
 
@@ -54,9 +55,22 @@ async def evidence_retriever(state: AnswerAgentState, config: RunnableConfig) ->
     was_requery = bool(state.get("requery_requested") and state.get("requery"))
     queries = [state.get("requery")] if was_requery else []
     if not queries:
-        queries = list(state.get("sub_queries") or [state.get("query") or ""])
+        # The resolved question, not the written one: a referential follow-up
+        # searched verbatim brings back whatever looks like it.
+        # || La pregunta resuelta, no la escrita: una pregunta de seguimiento
+        # referencial buscada tal cual trae lo que se le parezca.
+        fallback = state.get("resolved_question") or state.get("query") or ""
+        queries = list(state.get("sub_queries") or [fallback])
 
-    all_hits: dict[str, SearchHit] = {}
+    # One list per sub-query, kept apart instead of merged on arrival. The
+    # grouping is what lets the context budget bite every sub-query a little
+    # rather than erasing the evidence of one of them entirely; merging here
+    # would throw away the only place that information exists.
+    # || Una lista por subconsulta, separadas en vez de unidas al llegar. Esa
+    # agrupación es lo que permite que el presupuesto de contexto recorte un
+    # poco de cada subconsulta en lugar de borrar entera la evidencia de una;
+    # unirlas acá tiraría el único lugar donde ese dato existe.
+    hit_groups: list[list[SearchHit]] = []
     contributions: list[dict] = []
 
     for query in queries:
@@ -89,12 +103,17 @@ async def evidence_retriever(state: AnswerAgentState, config: RunnableConfig) ->
         )
         contributions.append(contribution)
         if result.get("ok", True):
-            for hit in result.get("hits") or []:
-                key = hit.get("content_hash") or hit.get("chunk_id") or str(hit)
-                all_hits[key] = SearchHit.model_validate(hit)
+            hit_groups.append(
+                [SearchHit.model_validate(hit) for hit in (result.get("hits") or [])]
+            )
 
-    hits = list(all_hits.values())
-    log.info("agent_evidence_retriever", queries=len(queries), hits=len(hits))
+    hits = interleave_by_query(hit_groups)
+    log.info(
+        "agent_evidence_retriever",
+        queries=len(queries),
+        groups=len(hit_groups),
+        hits=len(hits),
+    )
     return {
         "hits": [hit.model_dump() for hit in hits],
         "citations": [hit.model_dump() for hit in hits],
