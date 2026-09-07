@@ -35,13 +35,13 @@ export const DEFAULT_ROLE: Role = "usuario"
  * Screens that require `administrador`. Everything not listed is open to any
  * session. A deny-list and not an allow-list on purpose: a screen added
  * tomorrow is readable by default, which is the safe failure for a console
- * whose risk lives in the four routes below and not in reading the corpus.
+ * whose risk lives in the five routes below and not in reading the corpus.
  * || Pantallas que exigen `administrador`. Lo que no está listado queda
  * abierto a cualquier sesión. Deny-list a propósito: una pantalla nueva nace
- * legible, que es el fallo seguro acá — el riesgo vive en estas cuatro rutas
+ * legible, que es el fallo seguro acá — el riesgo vive en estas cinco rutas
  * y no en leer el corpus.
  */
-const ADMIN_ONLY = ["/agents", "/models", "/corpus", "/users"] as const
+const ADMIN_ONLY = ["/agents", "/models", "/corpus", "/users", "/usage"] as const
 
 /**
  * Whether ``role`` may open ``pathname``.

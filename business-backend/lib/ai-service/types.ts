@@ -305,6 +305,18 @@ export interface RoutingRecord {
   source: string;
 }
 
+/** Provider-reported tokens for one completion. Zeros with `reported=false`
+ * are a marker, not a free call.
+ * || Tokens que reportó el proveedor para una completion. Ceros con
+ * `reported=false` son una marca, no una llamada gratis.
+ */
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  reported: boolean;
+}
+
 export interface AnswerAgenticCompleted {
   status: "completed";
   thread_id: string;
@@ -331,6 +343,8 @@ export interface AnswerAgenticCompleted {
   dropped_hits: number;
   /** True when the provider stopped at the output cap: the answer is incomplete. */
   answer_truncated: boolean;
+  /** Last completion of this run. Absent on a service that predates usage. */
+  usage?: TokenUsage;
 }
 
 export interface AnswerAgenticPaused {
@@ -348,6 +362,7 @@ export interface AnswerAgenticPaused {
   context_truncated: boolean;
   dropped_hits: number;
   answer_truncated: boolean;
+  usage?: TokenUsage;
 }
 
 export type AnswerAgenticResponse = AnswerAgenticCompleted | AnswerAgenticPaused;
@@ -661,4 +676,26 @@ export interface AnswerAgenticProgress {
   dropped_hits: number | null;
   answer_truncated: boolean | null;
   error: string | null;
+  usage?: TokenUsage;
+}
+
+// --- Uso de tokens || Token usage --------------------------------------------
+
+/** Totals for one provider + model. || Totales de un proveedor + modelo. */
+export interface UsageByModel {
+  provider_id: string;
+  model: string;
+  calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+}
+
+/** Response of `GET /usage/summary`. Tenant aggregate. */
+export interface UsageSummary {
+  total_calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  by_model: UsageByModel[];
 }

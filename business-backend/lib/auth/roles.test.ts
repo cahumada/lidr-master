@@ -11,7 +11,7 @@ test("las pantallas abiertas lo son para cualquier rol", () => {
 })
 
 test("las pantallas de administración exigen el rol", () => {
-  for (const path of ["/agents", "/models", "/corpus", "/users"]) {
+  for (const path of ["/agents", "/models", "/corpus", "/users", "/usage"]) {
     assert.equal(canAccess("usuario", path), false, path)
     assert.equal(canAccess("administrador", path), true, path)
   }

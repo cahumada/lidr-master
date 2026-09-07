@@ -35,6 +35,7 @@ esté en `CONSOLE_MODULES` no aparece en el sidebar ni en el home.
 | `agents/page.tsx` | Catálogo de agentes desde `GET /config`. Persona, guardrails, tools. `dynamic = "force-dynamic"`. Degrada a catálogo vacío si el servicio no responde. |
 | `agents/flow/page.tsx` | Diagrama del grafo que corre `POST /answer/agentic`. Crear un perfil no agrega un nodo. |
 | `models/page.tsx` | Proveedores, catálogo de modelos, credenciales write-only. Un proveedor sin clave usable se deshabilita en la UI. |
+| `usage/page.tsx` | Agregado de tokens de chat del tenant. Admin. Degrada a vacío + aviso si el servicio no responde. |
 
 ## Layouts y shell
 
@@ -97,6 +98,7 @@ usa el eval del servicio, no la consola.
 | `api/config/providers/[providerId]/models/route.ts` | `POST` — agrega un modelo al catálogo. |
 | `api/config/providers/[providerId]/models/[model]/route.ts` | `PUT` / `DELETE` de un modelo. |
 | `api/config/providers/[providerId]/models/refresh/route.ts` | `POST` — refresca el catálogo remoto del proveedor. |
+| `api/usage/summary/route.ts` | `GET` — relay a `GET /usage/summary`. Reenvía `from` / `to` / `session_id` / `purpose` si vienen. No acepta `tenant_id`. |
 
 ## API del servicio IA (upstream)
 
