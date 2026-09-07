@@ -77,7 +77,8 @@ reenviar (JSON inválido, `q` ausente, archivo ausente).
 | `api/answer/agentic/resume/route.ts` | `POST` — retoma un thread pausado. |
 | `api/answer/agentic/[threadId]/progress/route.ts` | `GET` — progreso en vivo de los nodos. |
 | `api/answer/session/route.ts` | `POST` — crea sesión de conversación (`201`). El id lo emite el servicio, nunca el cliente. |
-| `api/answer/session/[sessionId]/route.ts` | `GET` estado de la sesión; `DELETE` la descarta (204, idempotente). |
+| `api/answer/sessions/route.ts` | `GET` — lista de conversaciones no vacías del tenant. Reenvía `limit`/`offset` si vienen; un `[]` es éxito. |
+| `api/answer/session/[sessionId]/route.ts` | `GET` memoria + transcript (`history`, `title`, timestamps); `PATCH` renombra; `DELETE` la descarta (204, idempotente). |
 | `api/answer/session/[sessionId]/anchors/[kind]/[value]/route.ts` | `DELETE` — quita un anchor. |
 
 No hay Route Handler para `POST /answer` (un solo tiro). Ese camino lo

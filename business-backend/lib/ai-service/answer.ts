@@ -4,6 +4,7 @@ import {
   deleteJson,
   deleteNoContent,
   getJson,
+  patchJson,
   postJson,
   postJsonAllowingStatuses,
 } from "./base-client";
@@ -15,6 +16,7 @@ import type {
   AnswerAgenticStart,
   AnswerRequest,
   SessionCreated,
+  SessionSummary,
   SessionView,
 } from "./types";
 
@@ -81,8 +83,28 @@ export function createAnswerSession(): Promise<SessionCreated> {
   return postJson<SessionCreated>("/answer/session", {});
 }
 
+export function listAnswerSessions(params?: {
+  limit?: number;
+  offset?: number;
+}): Promise<SessionSummary[]> {
+  return getJson<SessionSummary[]>("/answer/sessions", {
+    limit: params?.limit,
+    offset: params?.offset,
+  });
+}
+
 export function readAnswerSession(sessionId: string): Promise<SessionView> {
   return getJson<SessionView>(`/answer/session/${encodeURIComponent(sessionId)}`);
+}
+
+export function renameAnswerSession(
+  sessionId: string,
+  title: string,
+): Promise<SessionView> {
+  return patchJson<SessionView>(
+    `/answer/session/${encodeURIComponent(sessionId)}`,
+    { title },
+  );
 }
 
 /**

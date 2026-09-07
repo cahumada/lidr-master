@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 
+import { ThemeFavicon } from "@/components/theme-favicon"
 import { THEME_INIT_SCRIPT } from "@/lib/theme"
 import "./globals.css"
 
@@ -7,6 +8,9 @@ export const metadata: Metadata = {
   title: "Visual Time RAG",
   description:
     "Consola del RAG sobre la documentación funcional de Visual Time.",
+  icons: {
+    icon: { url: "/brand/logotipo2-negativo.png", type: "image/png" },
+  },
 }
 
 /**
@@ -49,6 +53,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="bg-background text-foreground min-h-full">
+        <ThemeFavicon />
         {children}
       </body>
     </html>
