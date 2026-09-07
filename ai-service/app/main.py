@@ -26,6 +26,7 @@ from app.api.config import router as config_router
 from app.api.corpus import router as corpus_router
 from app.api.documents import router as documents_router
 from app.api.search import router as search_router
+from app.api.usage import router as usage_router
 from app.config import get_settings
 
 
@@ -133,6 +134,7 @@ app.include_router(answer_sessions_router)
 app.include_router(answer_session_router)
 app.include_router(config_router)
 app.include_router(corpus_router)
+app.include_router(usage_router)
 
 
 @app.get("/health")

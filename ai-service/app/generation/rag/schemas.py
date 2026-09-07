@@ -778,6 +778,53 @@ class AnswerRequest(BaseModel):
     )
 
 
+class TokenUsage(BaseModel):
+    """Provider-reported tokens for the last completion of this run.
+
+    Zeros with ``reported=false`` mean the model was not called, or the
+    provider omitted usage — not that the call was free.
+
+    || Tokens que reportó el proveedor para la última completion de esta
+    corrida. Ceros con ``reported=false`` significan que no se llamó al
+    modelo, o que el proveedor omitió usage — no que la llamada fue gratis.
+    """
+
+    input_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Prompt tokens billed. || Tokens de prompt cobrados.",
+    )
+    output_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Completion tokens billed. || Tokens de completion cobrados.",
+    )
+    total_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="input_tokens + output_tokens as the provider reported them. "
+        "|| input_tokens + output_tokens como los reportó el proveedor.",
+    )
+    reported: bool = Field(
+        default=False,
+        description="True when the provider sent a usage block. False means the "
+        "zeros are a marker, not a measurement. || True cuando el proveedor "
+        "mandó un bloque usage. False significa que los ceros son una marca, "
+        "no una medición.",
+    )
+
+
+def token_usage_from_state(values: dict | None) -> TokenUsage:
+    """``TokenUsage`` from graph state or a completed_result payload.
+
+    || ``TokenUsage`` desde el estado del grafo o un payload de completed_result.
+    """
+    raw = (values or {}).get("usage")
+    if not raw:
+        return TokenUsage()
+    return TokenUsage.model_validate(raw)
+
+
 class AnswerResponse(BaseModel):
     """Response for ``POST /answer``. || Respuesta de ``POST /answer``.
 
@@ -825,4 +872,10 @@ class AnswerResponse(BaseModel):
         "finding nothing. || Cuántos chunks recuperados no entraron en el presupuesto de contexto. "
         "Distinto de cero con `citations` vacío significa que SÍ hubo evidencia y no entró ninguna "
         "-- otra cosa que no haber encontrado nada.",
+    )
+    usage: TokenUsage = Field(
+        default_factory=TokenUsage,
+        description="Tokens of the last completion. Zeros with reported=false when the "
+        "model was not called. || Tokens de la última completion. Ceros con "
+        "reported=false cuando no se llamó al modelo.",
     )

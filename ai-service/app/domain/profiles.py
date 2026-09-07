@@ -152,6 +152,25 @@ class EffectiveAgentConfig:
     sources: dict[str, str]
 
 
+@dataclass(frozen=True)
+class SynthesizerRuntime:
+    """What every synthesis path needs, including the provider that built the LLM.
+
+    The provider id used to be discarded after ``build_llm_for``. The ledger
+    needs it on every row, and re-reading the profile to recover it would be
+    a second trip for a value we already had.
+
+    || Lo que cada camino de síntesis necesita, incluido el proveedor que armó
+    el LLM. El id se descartaba después de ``build_llm_for``; el ledger lo
+    necesita en cada fila.
+    """
+
+    llm: Any
+    persona: str | None
+    guardrails: str | None
+    provider_id: str
+
+
 def normalize_profile_name(name: str) -> str:
     """Strip and reject a blank name. || Recorta y rechaza un nombre vacío."""
     cleaned = name.strip()
@@ -304,8 +323,8 @@ async def synthesizer_runtime(
     settings: Settings,
     *,
     profile_id: str | None = None,
-) -> tuple[Any, str | None, str | None]:
-    """The LLM, persona and operator guardrails the synthesizer profile asks for.
+) -> SynthesizerRuntime:
+    """The LLM, persona, guardrails and provider the synthesizer profile asks for.
 
     The single seam every synthesis path goes through — ``POST /answer``,
     ``POST /answer/agentic`` and the background runner — so a persona
@@ -332,7 +351,12 @@ async def synthesizer_runtime(
         temperature=effective.temperature,
         supports_temperature=effective.supports_temperature,
     )
-    return llm, effective.persona, effective.guardrails
+    return SynthesizerRuntime(
+        llm=llm,
+        persona=effective.persona,
+        guardrails=effective.guardrails,
+        provider_id=effective.provider,
+    )
 
 
 async def resolved_provider(session: AsyncSession, settings: Settings, provider_id: str):

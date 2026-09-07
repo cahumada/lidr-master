@@ -52,9 +52,10 @@ from app.domain.profiles import (
     synthesizer_runtime,
 )
 from app.foundation.persistence.database import get_async_session
+from app.foundation.persistence.usage import PURPOSE_SYNTHESIZER, llm_with_accounting
 from app.generation.conversation.store import SessionStore
 from app.generation.rag.retrieval.hybrid import HybridRetriever
-from app.generation.rag.schemas import AnswerRequest, SearchHit
+from app.generation.rag.schemas import AnswerRequest, SearchHit, TokenUsage, token_usage_from_state
 from app.generation.rag.store.repository import ChunkRepository
 
 router = APIRouter(prefix="/answer/agentic", tags=["answer-agentic"])
@@ -124,6 +125,7 @@ class AnswerAgenticResponse(BaseModel):
         "incomplete. || True cuando el proveedor paro en el tope de salida y la respuesta "
         "quedo incompleta.",
     )
+    usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class AnswerAgenticPausedResponse(BaseModel):
@@ -143,6 +145,7 @@ class AnswerAgenticPausedResponse(BaseModel):
     context_truncated: bool = False
     dropped_hits: int = Field(default=0, ge=0)
     answer_truncated: bool = False
+    usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class AnswerAgenticResumeRequest(BaseModel):
@@ -190,6 +193,7 @@ class AnswerAgenticProgress(BaseModel):
     context_truncated: bool | None = None
     dropped_hits: int | None = None
     answer_truncated: bool | None = None
+    usage: TokenUsage = Field(default_factory=TokenUsage)
     error: str | None = Field(
         default=None, description="Set only when status='failed'. || Solo cuando status='failed'."
     )
@@ -217,6 +221,7 @@ def _completed_response(thread_id: str, values: dict) -> AnswerAgenticResponse:
         context_truncated=bool(values.get("context_truncated")),
         dropped_hits=int(values.get("dropped_hits") or 0),
         answer_truncated=bool(values.get("answer_truncated")),
+        usage=token_usage_from_state(values),
     )
 
 
@@ -235,6 +240,7 @@ def _paused_response(thread_id: str, question: str, values: dict, reasons: list[
         context_truncated=bool(values.get("context_truncated")),
         dropped_hits=int(values.get("dropped_hits") or 0),
         answer_truncated=bool(values.get("answer_truncated")),
+        usage=token_usage_from_state(values),
     )
 
 
@@ -275,24 +281,32 @@ async def answer_agentic(
     thread_id = str(uuid4())
     retriever = HybridRetriever(ChunkRepository(session), get_embedder())
     reranker = get_reranker() if body.rerank else None
+    settings = get_settings()
     try:
-        llm, persona, guardrails = await synthesizer_runtime(
-            session, get_settings(), profile_id=body.profile_id
+        runtime = await synthesizer_runtime(
+            session, settings, profile_id=body.profile_id
         )
     except ProfileResolutionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.detail
         ) from exc
+    llm = llm_with_accounting(
+        runtime.llm,
+        purpose=PURPOSE_SYNTHESIZER,
+        provider_id=runtime.provider_id,
+        tenant_id=settings.TENANT_ID,
+        session_id=body.session_id,
+        thread_id=thread_id,
+    )
     config = thread_config(
         thread_id,
         retriever=retriever,
         llm=llm,
         reranker=reranker,
-        persona=persona,
-        guardrails=guardrails,
+        persona=runtime.persona,
+        guardrails=runtime.guardrails,
     )
 
-    settings = get_settings()
     store = SessionStore(session, ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS)
     conversation = await open_turn(store, body)
 
@@ -343,14 +357,22 @@ async def answer_agentic_resume(
     graph = _require_graph(request)
     bare_thread = _strip_prefix(body.thread_id)
     retriever = HybridRetriever(ChunkRepository(session), get_embedder())
-    llm, persona, guardrails = await synthesizer_runtime(session, get_settings())
+    settings = get_settings()
+    runtime = await synthesizer_runtime(session, settings)
+    llm = llm_with_accounting(
+        runtime.llm,
+        purpose=PURPOSE_SYNTHESIZER,
+        provider_id=runtime.provider_id,
+        tenant_id=settings.TENANT_ID,
+        thread_id=bare_thread,
+    )
     config = thread_config(
         bare_thread,
         retriever=retriever,
         llm=llm,
         reranker=get_reranker(),
-        persona=persona,
-        guardrails=guardrails,
+        persona=runtime.persona,
+        guardrails=runtime.guardrails,
     )
 
     snapshot = await graph.aget_state(config)
@@ -514,4 +536,5 @@ async def answer_agentic_progress(thread_id: str):
         context_truncated=result.get("context_truncated"),
         dropped_hits=result.get("dropped_hits"),
         answer_truncated=result.get("answer_truncated"),
+        usage=token_usage_from_state(result),
     )

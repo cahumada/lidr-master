@@ -155,6 +155,7 @@ class AnswerAgentState(TypedDict, total=False):
     pending_resynthesis: bool
     pending_revalidation: bool
     retrieval_attempts: int
+    usage: dict
 
 
 def privilege_violations(state: dict[str, Any]) -> list[dict]:

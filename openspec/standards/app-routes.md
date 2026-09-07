@@ -112,6 +112,7 @@ los módulos de cada router. Swagger en `/docs`.
 | `POST /documents/ingest-file` | Mismo chunking por upload UTF-8. |
 | `GET /search` | Recuperación híbrida. Query `q` (min 2), filtros, ramas, rerank. |
 | `GET /search/facets` | Módulos y tipos de ventana para los combos. |
+| `GET /usage/summary` | Totales de tokens de chat del tenant. Filtros opcionales `from` / `to` / `session_id` / `purpose`. 422 si `from` > `to`. |
 | `POST /answer` | Un tiro: retrieve → generate. Rechaza `session_id` con 422. |
 | `POST /answer/agentic` | Grafo LangGraph. 200 o 202 (gate humano). |
 | `POST /answer/agentic/start` | Igual, en background, para progreso en vivo. |

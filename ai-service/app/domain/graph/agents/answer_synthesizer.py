@@ -14,6 +14,7 @@ from langchain_core.runnables import RunnableConfig
 from app.config import get_settings
 from app.domain.graph.privilege import record_model_action
 from app.domain.schemas import AnswerAgentState
+from app.foundation.llm.wrapper import usage_payload
 from app.generation.conversation.budget import render_memory
 from app.generation.conversation.models import (
     Anchor,
@@ -185,5 +186,6 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
         "answer_truncated": completion.truncated,
         "pending_resynthesis": False,
         "pending_revalidation": was_resynthesis,
+        "usage": usage_payload(completion.usage),
         "agent_contributions": [contribution],
     }
