@@ -63,10 +63,12 @@
       "dw-insu"`— aunque en la connection string va tal cual.
       **Verificado el 2026-09-06 y NO se cumple, aunque el riesgo que este
       punto quería evitar sí está evitado.** `AUTH_DATABASE_URL` apunta a
-      `altaria.proxy.rlwy.net:37392/railway`, y el corpus vive en
-      `altaria.proxy.rlwy.net:31812/railway`: mismo proxy de Railway, puertos
+      la base `railway` de una instancia de Railway, y el corpus vive en la
+      base `railway` de **otra**: mismo proxy TCP de Railway, puertos
       distintos, o sea **dos instancias de Postgres separadas**, no dos bases
-      de la misma. Confirmado consultando `pg_database` en la instancia de
+      de la misma. (Los host:puerto reales no van acá: el repo es público y
+      un endpoint de Postgres escrito en un `.md` es un blanco gratis. Están
+      en `.env.local`, que no se commitea.) Confirmado consultando `pg_database` en la instancia de
       identidad: contiene `postgres` y `railway`, y `railway` tiene
       exactamente `User`, `Account`, `Session`, `VerificationToken` y
       `_prisma_migrations` — ninguna tabla del corpus. El aislamiento es mayor
