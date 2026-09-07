@@ -18,7 +18,13 @@ from app.domain.schemas import AnswerAgentState
 from app.foundation.persistence.database import get_async_session_factory
 from app.generation.conversation.anchors import detect_anchors
 from app.generation.conversation.facts import facts_from_turn
-from app.generation.conversation.models import ConversationSession, Turn
+from app.generation.conversation.models import (
+    DEFAULT_TITLE_MAX_CHARS,
+    CitationSnapshot,
+    ConversationSession,
+    HistoryTurn,
+    Turn,
+)
 from app.generation.conversation.store import SessionStore
 from app.generation.rag.retrieval.hybrid import HybridRetriever
 from app.generation.rag.schemas import AnswerRequest
@@ -149,6 +155,7 @@ async def close_turn(
     written_question: str,
     max_turns: int,
     answer_preview_chars: int = TURN_ANSWER_MAX_CHARS,
+    title_max_chars: int = DEFAULT_TITLE_MAX_CHARS,
 ) -> None:
     """Record one finished exchange on the session, exactly once.
 
@@ -157,49 +164,56 @@ async def close_turn(
     accepted, and writing it would leave the session remembering a turn that
     may still be rejected.
 
-    The stored answer is trimmed: the window exists so the model knows what
-    was already said, and a verbatim answer would spend on prose the budget
-    that belongs to evidence.
+    The memory window stores a trimmed answer so the model knows what was
+    already said without spending the evidence budget on prose. The
+    transcript stores the full answer and a citation snapshot so a reload
+    does not drop provenance.
 
     || Registra un intercambio terminado en la sesión, exactamente una vez.
-    Se llama donde una corrida TERMINA, no donde el grafo pausa: una corrida
-    detenida en el gate todavía no produjo una respuesta que el usuario haya
-    aceptado, y escribirla dejaría a la sesión recordando un turno que aún
-    puede rechazarse. La respuesta se guarda recortada: la ventana existe para
-    que el modelo sepa qué se dijo, y guardarla entera gastaría en prosa el
-    presupuesto que le corresponde a la evidencia.
+    Se llama donde una corrida TERMINA, no donde el grafo pausa. La ventana
+    guarda la respuesta recortada; el transcript, la prosa entera y un
+    snapshot de citas para que un reload no pierda procedencia.
     """
     if conversation is None:
         return
 
     answer = values.get("answer") or ""
-    cited = [
-        str(hit.get("document_id"))
-        for hit in (values.get("citations") or [])
-        if hit.get("document_id")
+    raw_citations = [hit for hit in (values.get("citations") or []) if isinstance(hit, dict)]
+    cited = [str(hit["document_id"]) for hit in raw_citations if hit.get("document_id")]
+    snapshots = [
+        snapshot
+        for snapshot in (CitationSnapshot.from_hit(hit) for hit in raw_citations)
+        if snapshot is not None
     ]
+    written = values.get("query") or written_question
+    resolved = values.get("resolved_question") or written
     conversation.facts = conversation.facts.merge_with(
         facts_from_turn(
-            question=values.get("query") or written_question,
+            question=written,
             filters=dict(values.get("filters") or {}),
             cited_document_ids=list(dict.fromkeys(cited)),
         )
     )
     conversation.append_turn(
-        Turn(
-            question=values.get("query") or written_question,
-            resolved_question=values.get("resolved_question")
-            or values.get("query")
-            or written_question,
-            answer=answer[:answer_preview_chars],
-        ),
+        Turn(question=written, resolved_question=resolved, answer=answer[:answer_preview_chars]),
         max_turns=max_turns,
+    )
+    conversation.append_history(
+        HistoryTurn(
+            question=written,
+            resolved_question=resolved,
+            answer=answer,
+            citations=snapshots,
+            grounded=bool(values.get("citations_valid", True)),
+        ),
+        title_max_chars=title_max_chars,
     )
     await store.save(conversation)
     log.info(
         "conversation_turn_closed",
         session_id=conversation.session_id,
         turns=len(conversation.turns),
+        history=len(conversation.history),
         anchors=len(conversation.anchors),
         cited=len(cited),
     )
@@ -335,6 +349,7 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
                     values,
                     written_question=body.question,
                     max_turns=settings.CONVERSATION_MAX_TURNS,
+                    title_max_chars=settings.CONVERSATION_TITLE_MAX_CHARS,
                 )
     except Exception as exc:  # noqa: BLE001 — a background failure must not vanish silently.
         log.error("answer_agentic_background_failed", thread_id=thread_id, error=str(exc)[:300])

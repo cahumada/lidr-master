@@ -117,7 +117,9 @@ los módulos de cada router. Swagger en `/docs`.
 | `POST /answer/agentic/resume` | Retoma un thread. |
 | `GET /answer/agentic/{thread_id}/progress` | Eventos de nodos. |
 | `POST /answer/session` | Emite `session_id`. |
-| `GET /answer/session/{session_id}` | Hechos, anchors, turnos. |
+| `GET /answer/sessions` | Lista resúmenes del tenant (`title`, `turn_count`, timestamps). Sin vacías ni vencidas. Paginado `limit`/`offset`. |
+| `GET /answer/session/{session_id}` | Memoria (hechos, anchors, ventana) más `title`, `history` y timestamps. |
+| `PATCH /answer/session/{session_id}` | Renombra. 422 si el título queda vacío. |
 | `DELETE /answer/session/{session_id}` | 204 idempotente. |
 | `DELETE /answer/session/{session_id}/anchors/{kind}/{value}` | Quita un anchor. |
 | `POST /corpus/rebuild` | 202 + job id. La raíz del corpus sale de settings, no del body. |

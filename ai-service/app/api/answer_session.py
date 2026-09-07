@@ -1,29 +1,40 @@
-"""Conversation sessions: create, inspect, discard.
+"""Conversation sessions: create, inspect, list, rename, discard.
 
 Thin transport over :class:`SessionStore`. The ids are issued HERE and never
 accepted from the client: an id the service did not mint is an id it cannot
 validate, and it lets two browser tabs share a conversation by accident.
 
-|| Sesiones de conversación: crear, inspeccionar, descartar. Transporte
-delgado sobre :class:`SessionStore`. Los ids se emiten ACÁ y nunca se aceptan
-del cliente: un id que el servicio no acuñó es un id que no puede validar, y
-deja que dos pestañas compartan una conversación por accidente.
+``GET /answer/sessions`` is registered on a sibling router so ``sessions``
+cannot be captured as a ``session_id``.
+
+|| Sesiones de conversación: crear, inspeccionar, listar, renombrar, descartar.
+Transporte delgado sobre :class:`SessionStore`. Los ids se emiten ACÁ y nunca
+se aceptan del cliente.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.foundation.persistence.database import get_async_session
-from app.generation.conversation.models import AnchorKind, ConversationFacts
+from app.generation.conversation.models import (
+    AnchorKind,
+    ConversationFacts,
+    ConversationSession,
+)
 from app.generation.conversation.store import SessionStore
 
 router = APIRouter(prefix="/answer/session", tags=["answer-session"])
+list_router = APIRouter(prefix="/answer/sessions", tags=["answer-session"])
 log = structlog.get_logger()
+
+_UNKNOWN = "Unknown or expired session_id. || session_id desconocido o vencido."
 
 
 class SessionCreated(BaseModel):
@@ -47,52 +58,98 @@ class AnchorView(BaseModel):
 
 
 class TurnView(BaseModel):
-    """One remembered exchange. || Un intercambio recordado."""
+    """One remembered exchange (memory window). || Un intercambio de la ventana."""
 
     question: str
     resolved_question: str
     answer: str
 
 
+class CitationSnapshotView(BaseModel):
+    """What a closed turn cited, without chunk text.
+
+    || Lo que un turno cerrado citó, sin el texto del chunk.
+    """
+
+    document_id: str
+    document_title: str | None = None
+    section: str | None = None
+    bullet_path: str | None = None
+    content_hash: str = ""
+
+
+class HistoryTurnView(BaseModel):
+    """One closed exchange as the operator should see it again.
+
+    || Un intercambio cerrado como el operador debería volver a verlo.
+    """
+
+    question: str
+    resolved_question: str
+    answer: str
+    citations: list[CitationSnapshotView] = Field(default_factory=list)
+    grounded: bool = True
+    created_at: datetime
+
+
 class SessionView(BaseModel):
-    """What the session currently remembers. || Lo que la sesión recuerda hoy."""
+    """Memory slots plus the durable transcript. || Memoria más el transcript."""
 
     session_id: str
+    title: str | None = None
     facts: ConversationFacts
     anchors: list[AnchorView] = Field(default_factory=list)
     turns: list[TurnView] = Field(default_factory=list)
+    history: list[HistoryTurnView] = Field(default_factory=list)
     max_turns: int = Field(
         description="Window size the service trims to. || Tamaño de ventana al que recorta."
     )
+    created_at: datetime
+    updated_at: datetime
+
+
+class SessionSummary(BaseModel):
+    """One row of the conversation list. || Una fila del listado."""
+
+    session_id: str
+    title: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    turn_count: int
+
+
+class SessionRename(BaseModel):
+    """New title for a live session. || Título nuevo de una sesión viva."""
+
+    title: str = Field(
+        min_length=1,
+        description="Replacement title. Cannot be blank. "
+        "|| Título de reemplazo. No puede quedar vacío.",
+    )
+
+    @field_validator("title")
+    @classmethod
+    def collapse_and_cap(cls, value: str) -> str:
+        collapsed = " ".join(value.split())
+        max_chars = get_settings().CONVERSATION_TITLE_MAX_CHARS
+        if not collapsed:
+            raise ValueError("title must not be empty || el título no puede estar vacío")
+        if len(collapsed) > max_chars:
+            raise ValueError(
+                f"title must be at most {max_chars} characters "
+                f"|| el título no puede superar {max_chars} caracteres"
+            )
+        return collapsed
 
 
 def _store(session: AsyncSession) -> SessionStore:
     return SessionStore(session, ttl_days=get_settings().CONVERSATION_SESSION_TTL_DAYS)
 
 
-@router.post("", response_model=SessionCreated, status_code=status.HTTP_201_CREATED)
-async def create_session(
-    session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
-) -> SessionCreated:
-    """Start a conversation. || Arranca una conversación."""
-    conversation = await _store(session).create()
-    return SessionCreated(session_id=conversation.session_id)
-
-
-@router.get("/{session_id}", response_model=SessionView)
-async def read_session(
-    session_id: str,
-    session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
-) -> SessionView:
-    """What this conversation remembers. || Lo que recuerda esta conversación."""
-    conversation = await _store(session).get(session_id)
-    if conversation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Unknown or expired session_id. || session_id desconocido o vencido.",
-        )
+def _to_view(conversation: ConversationSession) -> SessionView:
     return SessionView(
         session_id=conversation.session_id,
+        title=conversation.title,
         facts=conversation.facts,
         anchors=[
             AnchorView(
@@ -110,8 +167,91 @@ async def read_session(
             )
             for turn in conversation.turns
         ],
+        history=[
+            HistoryTurnView(
+                question=turn.question,
+                resolved_question=turn.resolved_question,
+                answer=turn.answer,
+                citations=[
+                    CitationSnapshotView(
+                        document_id=citation.document_id,
+                        document_title=citation.document_title,
+                        section=citation.section,
+                        bullet_path=citation.bullet_path,
+                        content_hash=citation.content_hash,
+                    )
+                    for citation in turn.citations
+                ],
+                grounded=turn.grounded,
+                created_at=turn.created_at,
+            )
+            for turn in conversation.history
+        ],
         max_turns=get_settings().CONVERSATION_MAX_TURNS,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
     )
+
+
+@router.post("", response_model=SessionCreated, status_code=status.HTTP_201_CREATED)
+async def create_session(
+    session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
+) -> SessionCreated:
+    """Start a conversation. || Arranca una conversación."""
+    conversation = await _store(session).create()
+    return SessionCreated(session_id=conversation.session_id)
+
+
+@list_router.get("", response_model=list[SessionSummary])
+async def list_sessions(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
+) -> list[SessionSummary]:
+    """Conversations the operator can reopen. Tenant-wide: the service has no user.
+
+    || Conversaciones que el operador puede reabrir. Del tenant: el servicio
+    no tiene usuario.
+    """
+    conversations = await _store(session).list_recent(limit=limit, offset=offset)
+    return [
+        SessionSummary(
+            session_id=item.session_id,
+            title=item.title,
+            created_at=item.created_at,
+            updated_at=item.updated_at,
+            turn_count=len(item.history),
+        )
+        for item in conversations
+    ]
+
+
+@router.get("/{session_id}", response_model=SessionView)
+async def read_session(
+    session_id: str,
+    session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
+) -> SessionView:
+    """What this conversation remembers, and its transcript.
+
+    || Lo que recuerda esta conversación, y su transcript.
+    """
+    conversation = await _store(session).get(session_id)
+    if conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_UNKNOWN)
+    return _to_view(conversation)
+
+
+@router.patch("/{session_id}", response_model=SessionView)
+async def rename_session(
+    session_id: str,
+    body: SessionRename,
+    session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
+) -> SessionView:
+    """Rename a live session. || Renombra una sesión viva."""
+    conversation = await _store(session).rename(session_id, body.title)
+    if conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_UNKNOWN)
+    return _to_view(conversation)
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -143,10 +283,7 @@ async def unpin_anchor(
     store = _store(session)
     conversation = await store.get(session_id)
     if conversation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Unknown or expired session_id. || session_id desconocido o vencido.",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_UNKNOWN)
     if conversation.unpin(kind, value):
         await store.save(conversation)
     return await read_session(session_id, session)

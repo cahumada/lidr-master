@@ -193,6 +193,11 @@ diferencia entre el tokenizer que cuenta y el del modelo que responde.
 
 ```bash
 curl -X POST localhost:8000/answer/session          # -> {"session_id": "..."}
+curl localhost:8000/answer/sessions                 # resúmenes del tenant
+curl localhost:8000/answer/session/$SESSION_ID      # memoria + transcript
+curl -X PATCH localhost:8000/answer/session/$SESSION_ID \
+  -H 'content-type: application/json' \
+  -d '{"title":"CA014 alta"}'
 ```
 
 El `session_id` es **opcional** en `POST /answer/agentic[/start]`. Sin él, el
@@ -225,6 +230,7 @@ ve es una reescritura que nadie puede chequear.
 | `facts` | módulos y ventanas en juego, transacciones mencionadas, qué citó la respuesta anterior | **nunca** — son lo que arregla la recuperación del turno siguiente |
 | `anchors` | filtros que el usuario fijó explícitamente («de acá en adelante, solo módulo CA») | solo cuando los quita, o después de los turnos |
 | `turns` | los últimos `CONVERSATION_MAX_TURNS` pares, con la respuesta recortada | primero, cuando el presupuesto aprieta |
+| `history` | transcript durable: respuesta entera + snapshot de citas. El sintetizador no lo lee | solo al TTL o al `DELETE` |
 | — | resumen acumulativo | **no existe**: ver abajo |
 
 El detector de anchors es heurístico y conservador: hacen falta una frase que
