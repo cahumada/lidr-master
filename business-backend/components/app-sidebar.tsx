@@ -17,7 +17,8 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
-import { CONSOLE_MODULES } from "@/lib/console-nav"
+import type { Role } from "@/lib/auth/roles"
+import { visibleModules } from "@/lib/console-nav"
 
 /**
  * Module sidebar. Tokens come from `--sidebar-*` in the Woken theme, so
@@ -25,8 +26,13 @@ import { CONSOLE_MODULES } from "@/lib/console-nav"
  * || Sidebar por módulos. Los tokens salen de `--sidebar-*` del tema Woken:
  * claro y oscuro se mantienen alineados sin un color escrito acá.
  */
-export function AppSidebar() {
+export function AppSidebar({ role }: { role: Role }) {
   const pathname = usePathname()
+  // Hiding, not protecting. `app/(console)/(admin)/layout.tsx` is what
+  // refuses; this only keeps the sidebar from listing doors that do not open.
+  // || Ocultar, no proteger. El que rechaza es el layout de `(admin)`; esto
+  // solo evita listar puertas que no abren.
+  const modules = visibleModules(role)
 
   return (
     <Sidebar collapsible="icon">
@@ -51,7 +57,7 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {CONSOLE_MODULES.map((module) => (
+        {modules.map((module) => (
           <SidebarGroup key={module.id}>
             <SidebarGroupLabel>{module.title}</SidebarGroupLabel>
             <SidebarGroupContent>

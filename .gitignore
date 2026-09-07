@@ -1,5 +1,8 @@
 # Claude Code worktrees are local checkouts, not repo content.
 .claude/worktrees/
+# Local harness launch config — ports, env overrides, machine paths.
+# || Config local del harness — puertos, env, rutas de esta máquina.
+.claude/launch.json
 
 # Secrets — never commit. The .env is created locally from .env.example.
 .env

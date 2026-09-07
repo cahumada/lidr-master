@@ -1,8 +1,5 @@
 import type { Metadata } from "next"
 
-import { AppHeader } from "@/components/app-header"
-import { AppSidebar } from "@/components/app-sidebar"
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { THEME_INIT_SCRIPT } from "@/lib/theme"
 import "./globals.css"
 
@@ -13,13 +10,23 @@ export const metadata: Metadata = {
 }
 
 /**
- * No `next/font` here: the "Woken" theme brings its own font stacks
+ * Document shell only: `<html>`, `<body>`, the theme script.
+ *
+ * The console chrome — sidebar, header — used to live here and moved to
+ * `app/(console)/layout.tsx`. It had to: `/login` renders before there is a
+ * session, and a sidebar of screens you cannot open yet is both wrong and a
+ * leak of what exists. What stays here is what every page needs, signed in or
+ * not, and the theme is exactly that.
+ *
+ * No `next/font`: the "Woken" theme brings its own font stacks
  * (`--font-sans`, `--font-mono` in `globals.css`), all of them system fonts.
  * Loading a webfont on top would download bytes that nothing renders.
  *
- * || Sin `next/font` acá: el tema "Woken" trae sus propias pilas tipográficas
- * (`--font-sans`, `--font-mono` en `globals.css`), todas fuentes del sistema.
- * Cargar una webfont encima sería bajar bytes que después nada usa.
+ * || Solo el shell del documento. El chrome de la consola —sidebar, header—
+ * vivía acá y se mudó a `app/(console)/layout.tsx`: `/login` se renderiza
+ * antes de que haya sesión, y un sidebar de pantallas que todavía no se
+ * pueden abrir está mal y además cuenta qué existe. Acá queda lo que toda
+ * página necesita, con sesión o sin ella.
  */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -42,15 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="bg-background text-foreground min-h-full">
-        <SidebarProvider>
-          <AppSidebar />
-          <SidebarInset className="overflow-hidden">
-            <AppHeader />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              {children}
-            </div>
-          </SidebarInset>
-        </SidebarProvider>
+        {children}
       </body>
     </html>
   )
