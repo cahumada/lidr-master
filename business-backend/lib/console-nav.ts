@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   Bot,
   Cpu,
   Database,
@@ -50,9 +51,9 @@ export type ConsoleModule = {
  * que una pantalla nueva no pueda aparecer en uno y no en el otro.
  */
 /**
- * Shorthand for the screens that require `administrador`, so the four entries
+ * Shorthand for the screens that require `administrador`, so the five entries
  * below cannot drift apart by a typo.
- * || Atajo para las pantallas que exigen `administrador`, para que las cuatro
+ * || Atajo para las pantallas que exigen `administrador`, para que las cinco
  * entradas de abajo no se separen por un typo.
  */
 const ADMIN_ONLY_ROLES = ["administrador"] as const
@@ -140,6 +141,13 @@ export const CONSOLE_MODULES: ConsoleModule[] = [
         description:
           "Proveedores, credenciales write-only y el catálogo de modelos.",
         icon: Cpu,
+      },
+      {
+        href: "/usage",
+        roles: ADMIN_ONLY_ROLES,
+        title: "Uso",
+        description: "Tokens cobrados por proveedor y modelo.",
+        icon: BarChart3,
       },
     ],
   },

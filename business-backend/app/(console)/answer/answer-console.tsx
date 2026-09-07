@@ -53,6 +53,7 @@ import type {
   SearchFacets,
   SessionSummary,
   SessionView,
+  TokenUsage,
 } from "@/lib/ai-service/types"
 
 /**
@@ -117,6 +118,8 @@ type ChatTurn = {
   /** Restored from `history`: no live flow, no invented chunk text. */
   reopened?: boolean
   snapshots?: CitationSnapshot[]
+  /** Last completion of a live turn. Absent on a reopened history turn. */
+  usage?: TokenUsage
 }
 
 function historyToTurns(history: HistoryTurn[]): ChatTurn[] {
@@ -541,6 +544,40 @@ function RetrievalSheet({
   )
 }
 
+const TOKEN_NUMBER = new Intl.NumberFormat("es-AR")
+
+function visibleUsage(
+  usage?: TokenUsage,
+): TokenUsage | undefined {
+  if (!usage) return undefined
+  // `reported` is the contract. `total_tokens > 0` covers a payload that
+  // sent counts but omitted the flag (older service).
+  // || `reported` es el contrato. `total_tokens > 0` cubre un payload que
+  // mandó cifras pero omitió el flag (servicio viejo).
+  if (usage.reported || usage.total_tokens > 0) return usage
+  return undefined
+}
+
+function turnUsage(turn: ChatTurn): TokenUsage | undefined {
+  return (
+    visibleUsage(turn.usage) ??
+    visibleUsage(turn.completed?.usage) ??
+    visibleUsage(turn.paused?.usage)
+  )
+}
+
+function UsageMeta({ usage }: { usage?: TokenUsage }) {
+  const shown = visibleUsage(usage)
+  if (!shown) return null
+  return (
+    <span title="Última completion de este turno">
+      {TOKEN_NUMBER.format(shown.input_tokens)} entrada ·{" "}
+      {TOKEN_NUMBER.format(shown.output_tokens)} salida ·{" "}
+      {TOKEN_NUMBER.format(shown.total_tokens)} tokens
+    </span>
+  )
+}
+
 function AssistantBody({
   turn,
   reviewNote,
@@ -563,6 +600,7 @@ function AssistantBody({
   if (turn.paused) {
     return (
       <div className="flex flex-col gap-4">
+        <UsageMeta usage={turnUsage(turn)} />
         {turn.paused.resolved_question &&
           turn.paused.resolved_question !== turn.paused.question && (
             <p className="rounded-lg border border-sky-500/40 bg-sky-500/5 px-3 py-2 text-xs">
@@ -604,6 +642,7 @@ function AssistantBody({
             <span>confianza {Math.round(result.confidence * 100)}%</span>
           )}
           {turn.elapsedMs !== null && <span>{turn.elapsedMs} ms</span>}
+          <UsageMeta usage={turnUsage(turn)} />
           {!turn.reopened && (
             <span className="font-mono">{result.thread_id.slice(0, 8)}…</span>
           )}
@@ -1203,13 +1242,16 @@ export function AnswerConsole({
               context_truncated: body.context_truncated ?? false,
               dropped_hits: body.dropped_hits ?? 0,
               answer_truncated: body.answer_truncated ?? false,
+              usage: body.usage,
             },
+            usage: body.usage,
           })
           void loadThreads()
         } else if (body.status === "awaiting_human_review") {
           patchTurn(turnId, {
             pending: false,
             elapsedMs,
+            usage: body.usage,
             paused: {
               status: "awaiting_human_review",
               thread_id: body.thread_id,
@@ -1225,6 +1267,7 @@ export function AnswerConsole({
               context_truncated: body.context_truncated ?? false,
               dropped_hits: body.dropped_hits ?? 0,
               answer_truncated: body.answer_truncated ?? false,
+              usage: body.usage,
             },
           })
         } else {
@@ -1350,6 +1393,7 @@ export function AnswerConsole({
       patchTurn(pausedTurn.id, {
         paused: null,
         completed: body,
+        usage: body.usage,
         pending: false,
         elapsedMs: elapsedSince(startedAt),
       })
