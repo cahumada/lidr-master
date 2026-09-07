@@ -15,7 +15,9 @@ from app.dependencies import get_activity_log, get_embedder, get_reranker
 from app.domain.graph.activity import describe_node
 from app.domain.profiles import synthesizer_runtime
 from app.domain.schemas import AnswerAgentState
+from app.foundation.llm.wrapper import usage_payload
 from app.foundation.persistence.database import get_async_session_factory
+from app.foundation.persistence.usage import PURPOSE_SYNTHESIZER, llm_with_accounting
 from app.generation.conversation.anchors import detect_anchors
 from app.generation.conversation.facts import facts_from_turn
 from app.generation.conversation.models import (
@@ -242,6 +244,7 @@ def completed_result(values: dict, fallback_question: str) -> dict:
         "context_truncated": bool(values.get("context_truncated")),
         "dropped_hits": int(values.get("dropped_hits") or 0),
         "answer_truncated": bool(values.get("answer_truncated")),
+        "usage": values.get("usage") or usage_payload(),
     }
 
 
@@ -265,6 +268,7 @@ def paused_result(values: dict, fallback_question: str, reasons: list[str]) -> d
         "context_truncated": bool(values.get("context_truncated")),
         "dropped_hits": int(values.get("dropped_hits") or 0),
         "answer_truncated": bool(values.get("answer_truncated")),
+        "usage": values.get("usage") or usage_payload(),
     }
 
 
@@ -324,11 +328,19 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
         async with session_factory() as session:
             retriever = HybridRetriever(ChunkRepository(session), get_embedder())
             reranker = get_reranker() if body.rerank else None
-            llm, persona, guardrails = await synthesizer_runtime(
+            runtime = await synthesizer_runtime(
                 session, settings, profile_id=body.profile_id
             )
             store = SessionStore(session, ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS)
             conversation = await open_turn(store, body)
+            llm = llm_with_accounting(
+                runtime.llm,
+                purpose=PURPOSE_SYNTHESIZER,
+                provider_id=runtime.provider_id,
+                tenant_id=settings.TENANT_ID,
+                session_id=conversation.session_id if conversation else None,
+                thread_id=thread_id,
+            )
             snapshot = await _stream_and_log(
                 thread_id,
                 body,
@@ -336,8 +348,8 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
                 retriever=retriever,
                 llm=llm,
                 reranker=reranker,
-                persona=persona,
-                guardrails=guardrails,
+                persona=runtime.persona,
+                guardrails=runtime.guardrails,
                 conversation=conversation,
             )
             values = snapshot.values or {}

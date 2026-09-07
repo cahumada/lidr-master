@@ -17,8 +17,8 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.dependencies import get_embedder, get_reranker
-from app.domain.profiles import ProfileResolutionError
-from app.foundation.llm.wrapper import Completion
+from app.domain.profiles import ProfileResolutionError, SynthesizerRuntime
+from app.foundation.llm.wrapper import Completion, Usage
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.answer import INSUFFICIENT_CONTEXT_MESSAGE
 from app.generation.rag.retrieval.hybrid import RetrievalResult, RetrievedChunk
@@ -76,12 +76,17 @@ class FakeRetriever:
 
 
 class FakeLLM:
-    def __init__(self, text: str) -> None:
+    model = "gpt-4o-mini"
+
+    def __init__(self, text: str, usage: Usage | None = None) -> None:
         self.text = text
+        self.usage = usage
         self.calls: list[dict] = []
 
     def complete(self, *, system: str, user: str) -> Completion:
         self.calls.append({"system": system, "user": user})
+        if self.usage is not None:
+            return Completion(text=self.text, usage=self.usage)
         return Completion(text=self.text)
 
 
@@ -113,7 +118,9 @@ def _use_llm(monkeypatch, llm: FakeLLM, persona: str | None = None) -> None:
     """
 
     async def _runtime(session, settings, *, profile_id=None):
-        return llm, persona, None
+        return SynthesizerRuntime(
+            llm=llm, persona=persona, guardrails=None, provider_id="openai"
+        )
 
     monkeypatch.setattr("app.api.answer.synthesizer_runtime", _runtime)
 
@@ -303,7 +310,9 @@ def test_an_unknown_profile_id_is_refused(client, monkeypatch, llm):
             raise ProfileResolutionError(
                 f"No profile {profile_id!r}. || No existe el perfil {profile_id!r}."
             )
-        return llm, None, None
+        return SynthesizerRuntime(
+            llm=llm, persona=None, guardrails=None, provider_id="openai"
+        )
 
     monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
     monkeypatch.setattr("app.api.answer.synthesizer_runtime", _runtime)
@@ -321,7 +330,9 @@ def test_a_profile_id_is_forwarded_to_the_runtime(client, monkeypatch, llm):
 
     async def _runtime(session, settings, *, profile_id=None):
         seen.append(profile_id)
-        return llm, "Sé breve.", None
+        return SynthesizerRuntime(
+            llm=llm, persona="Sé breve.", guardrails=None, provider_id="openai"
+        )
 
     monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
     monkeypatch.setattr("app.api.answer.synthesizer_runtime", _runtime)
@@ -332,6 +343,42 @@ def test_a_profile_id_is_forwarded_to_the_runtime(client, monkeypatch, llm):
 
     assert response.status_code == 200
     assert seen == ["abc-1"]
+
+
+def test_a_completion_reports_provider_usage(client, monkeypatch):
+    llm = FakeLLM(
+        "El capital asegurado no puede superar el máximo del plan. [CA014 · Validaciones]",
+        usage=Usage(input_tokens=100, output_tokens=40, total_tokens=140, reported=True),
+    )
+    monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
+    _use_llm(monkeypatch, llm)
+
+    body = client.post("/answer", json={"question": "tope de capital"}).json()
+
+    assert body["usage"] == {
+        "input_tokens": 100,
+        "output_tokens": 40,
+        "total_tokens": 140,
+        "reported": True,
+    }
+
+
+def test_insufficient_context_reports_unbilled_zeros(
+    client, monkeypatch, retriever, llm
+):
+    retriever.result = RetrievalResult(chunks=[])
+    monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
+    _use_llm(monkeypatch, llm)
+
+    body = client.post("/answer", json={"question": "algo que no existe"}).json()
+
+    assert body["usage"] == {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "reported": False,
+    }
+    assert llm.calls == []
 
 
 def test_the_single_shot_endpoint_refuses_a_session(client, monkeypatch, llm):

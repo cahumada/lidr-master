@@ -25,6 +25,7 @@ from app.config import get_settings
 from app.dependencies import get_embedder, get_reranker
 from app.domain.profiles import ProfileResolutionError, synthesizer_runtime
 from app.foundation.persistence.database import get_async_session
+from app.foundation.persistence.usage import PURPOSE_ANSWER, llm_with_accounting
 from app.generation.rag.answer import generate_answer
 from app.generation.rag.retrieval.hybrid import ALL_BRANCHES, DEFAULT_BRANCHES, HybridRetriever
 from app.generation.rag.schemas import AnswerRequest, AnswerResponse
@@ -77,13 +78,19 @@ async def answer(
     # resuelve acá y no dentro de `generate_answer` para que el script de eval
     # siga llamando a la misma función con un LLM explícito y sin base.
     try:
-        llm, persona, guardrails = await synthesizer_runtime(
+        runtime = await synthesizer_runtime(
             session, settings, profile_id=body.profile_id
         )
     except ProfileResolutionError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=exc.detail
         ) from exc
+    llm = llm_with_accounting(
+        runtime.llm,
+        purpose=PURPOSE_ANSWER,
+        provider_id=runtime.provider_id,
+        tenant_id=settings.TENANT_ID,
+    )
     return await generate_answer(
         body.question,
         filters=filters,
@@ -94,6 +101,6 @@ async def answer(
         branches=ALL_BRANCHES if body.lexical else DEFAULT_BRANCHES,
         decompose_query=body.split,
         reranker=get_reranker() if body.rerank else None,
-        persona=persona,
-        guardrails=guardrails,
+        persona=runtime.persona,
+        guardrails=runtime.guardrails,
     )

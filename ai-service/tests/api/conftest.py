@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 
+from app.domain.profiles import SynthesizerRuntime
 from app.foundation.llm.wrapper import Completion
 
 
@@ -52,10 +53,22 @@ def stub_synthesizer_runtime(monkeypatch):
             return Completion(text="respuesta")
 
     async def _runtime(session, settings, *, profile_id=None):
-        return _StubLLM(), None, None
+        return SynthesizerRuntime(
+            llm=_StubLLM(), persona=None, guardrails=None, provider_id="openai"
+        )
 
     for target in (
         "app.api.answer_agentic.synthesizer_runtime",
         "app.domain.graph.runner.synthesizer_runtime",
     ):
         monkeypatch.setattr(target, _runtime)
+
+
+@pytest.fixture(autouse=True)
+def skip_usage_ledger(monkeypatch):
+    """API tests do not persist ledger rows. || Los tests de API no persisten asientos."""
+
+    monkeypatch.setattr(
+        "app.foundation.persistence.usage.UsageStore.record",
+        lambda self, **kwargs: None,
+    )

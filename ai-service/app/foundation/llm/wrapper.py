@@ -14,8 +14,10 @@ Neither adapter builds its own client: the clients are built in
 swappable for a test double, so the tests never need the network.
 
 Still thin on purpose. Retries are the SDKs' job (both retry 429 and 5xx with
-backoff by default); token accounting and streaming would each need a real
-consumer before they earned a layer here.
+backoff by default). Token accounting earned its layer once ``POST /answer``
+and the synthesizer became real consumers: each adapter copies provider
+``usage`` onto ``Completion``. Persistence lives outside this module.
+Streaming still has no consumer.
 
 || Adaptadores delgados sobre un cliente de chat, uno por formato de wire.
 
@@ -46,6 +48,91 @@ class LLMError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class Usage:
+    """Provider-reported token counts for one completion.
+
+    ``reported`` is false when the provider omitted ``usage`` or any field
+    was missing. Zeros in that case are a marker, not a measurement -- the
+    adapters must not guess from character counts or tiktoken.
+
+    || Conteos de tokens que reportó el proveedor para una completion.
+    ``reported`` es false cuando omitió ``usage`` o faltó un campo. Los
+    ceros entonces son una marca, no una medición: los adaptadores no
+    adivinan desde caracteres ni tiktoken.
+    """
+
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    reported: bool = True
+
+
+UNREPORTED_USAGE = Usage(input_tokens=0, output_tokens=0, total_tokens=0, reported=False)
+
+
+def usage_payload(usage: Usage | None = None) -> dict[str, int | bool]:
+    """JSON-ready shape for graph state and HTTP payloads.
+
+    || Forma lista para JSON del estado del grafo y los payloads HTTP.
+    """
+    value = usage if usage is not None else UNREPORTED_USAGE
+    return {
+        "input_tokens": value.input_tokens,
+        "output_tokens": value.output_tokens,
+        "total_tokens": value.total_tokens,
+        "reported": value.reported,
+    }
+
+
+def _int_or_none(value: Any) -> int | None:
+    """A token count the provider actually sent, or ``None``.
+
+    || Un conteo que el proveedor realmente mandó, o ``None``.
+    """
+    if value is None:
+        return None
+    return int(value)
+
+
+def usage_from_openai(response: Any, *, model: str) -> Usage:
+    """Copy OpenAI-compatible ``usage`` onto the shared shape.
+
+    || Copia el ``usage`` compatible con OpenAI a la forma compartida.
+    """
+    raw = getattr(response, "usage", None)
+    prompt = _int_or_none(getattr(raw, "prompt_tokens", None) if raw is not None else None)
+    completion = _int_or_none(
+        getattr(raw, "completion_tokens", None) if raw is not None else None
+    )
+    total = _int_or_none(getattr(raw, "total_tokens", None) if raw is not None else None)
+    if prompt is None or completion is None or total is None:
+        logger.warning("llm_usage_missing", provider="openai_compatible", model=model)
+        return UNREPORTED_USAGE
+    return Usage(
+        input_tokens=prompt, output_tokens=completion, total_tokens=total, reported=True
+    )
+
+
+def usage_from_anthropic(response: Any, *, model: str) -> Usage:
+    """Copy Anthropic ``usage`` and sum input + output as total.
+
+    || Copia el ``usage`` de Anthropic y suma input + output como total.
+    """
+    raw = getattr(response, "usage", None)
+    incoming = _int_or_none(getattr(raw, "input_tokens", None) if raw is not None else None)
+    outgoing = _int_or_none(getattr(raw, "output_tokens", None) if raw is not None else None)
+    if incoming is None or outgoing is None:
+        logger.warning("llm_usage_missing", provider="anthropic", model=model)
+        return UNREPORTED_USAGE
+    return Usage(
+        input_tokens=incoming,
+        output_tokens=outgoing,
+        total_tokens=incoming + outgoing,
+        reported=True,
+    )
+
+
+@dataclass(frozen=True)
 class Completion:
     """The assistant text, and whether the provider ran out of room saying it.
 
@@ -71,6 +158,7 @@ class Completion:
 
     text: str
     truncated: bool = False
+    usage: Usage = UNREPORTED_USAGE
 
 
 @runtime_checkable
@@ -148,6 +236,7 @@ class OpenAICompatibleChatLLM:
         # incompleta, y se estaba ignorando.
         finish_reason = getattr(choice, "finish_reason", None)
         truncated = finish_reason == "length"
+        usage = usage_from_openai(response, model=self.model)
         logger.info(
             "llm_complete",
             provider="openai_compatible",
@@ -156,6 +245,10 @@ class OpenAICompatibleChatLLM:
             user_chars=len(user),
             answer_chars=len(content),
             finish_reason=finish_reason,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            total_tokens=usage.total_tokens,
+            usage_reported=usage.reported,
         )
         if truncated:
             # A warning and not an info line: this is lost content, not colour.
@@ -167,7 +260,7 @@ class OpenAICompatibleChatLLM:
                 max_tokens=self.max_tokens,
                 answer_chars=len(content),
             )
-        return Completion(text=content, truncated=truncated)
+        return Completion(text=content, truncated=truncated, usage=usage)
 
 
 class AnthropicChatLLM:
@@ -247,6 +340,7 @@ class AnthropicChatLLM:
         # adaptador ya leia `stop_reason` para detectar un rechazo y pasaba
         # de largo por este.
         truncated = stop_reason == "max_tokens"
+        usage = usage_from_anthropic(response, model=self.model)
         logger.info(
             "llm_complete",
             provider="anthropic",
@@ -255,6 +349,10 @@ class AnthropicChatLLM:
             user_chars=len(user),
             answer_chars=len(text),
             stop_reason=stop_reason,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            total_tokens=usage.total_tokens,
+            usage_reported=usage.reported,
         )
         if truncated:
             logger.warning(
@@ -264,4 +362,4 @@ class AnthropicChatLLM:
                 max_tokens=self.max_tokens,
                 answer_chars=len(text),
             )
-        return Completion(text=text, truncated=truncated)
+        return Completion(text=text, truncated=truncated, usage=usage)

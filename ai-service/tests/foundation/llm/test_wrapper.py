@@ -11,6 +11,7 @@ import pytest
 
 from app.foundation.llm.wrapper import (
     LLM,
+    UNREPORTED_USAGE,
     AnthropicChatLLM,
     LLMError,
     OpenAICompatibleChatLLM,
@@ -37,17 +38,28 @@ class FakeOpenAIClient:
         self.chat = SimpleNamespace(completions=FakeCompletions(script))
 
 
+def _openai_usage(*, prompt: int = 100, completion: int = 40, total: int = 140):
+    return SimpleNamespace(
+        prompt_tokens=prompt, completion_tokens=completion, total_tokens=total
+    )
+
+
 def _completion(
-    text: str | None, *, empty_choices: bool = False, finish_reason: str = "stop"
+    text: str | None,
+    *,
+    empty_choices: bool = False,
+    finish_reason: str = "stop",
+    usage=None,
 ):
     if empty_choices:
-        return SimpleNamespace(choices=[])
+        return SimpleNamespace(choices=[], usage=usage)
     return SimpleNamespace(
         choices=[
             SimpleNamespace(
                 message=SimpleNamespace(content=text), finish_reason=finish_reason
             )
-        ]
+        ],
+        usage=usage,
     )
 
 
@@ -141,8 +153,16 @@ def _text_block(text: str):
     return SimpleNamespace(type="text", text=text)
 
 
-def _message(blocks: list, *, stop_reason: str = "end_turn", stop_details=None):
-    return SimpleNamespace(content=blocks, stop_reason=stop_reason, stop_details=stop_details)
+def _anthropic_usage(*, incoming: int = 80, outgoing: int = 20):
+    return SimpleNamespace(input_tokens=incoming, output_tokens=outgoing)
+
+
+def _message(
+    blocks: list, *, stop_reason: str = "end_turn", stop_details=None, usage=None
+):
+    return SimpleNamespace(
+        content=blocks, stop_reason=stop_reason, stop_details=stop_details, usage=usage
+    )
 
 
 def _anthropic_llm(
@@ -286,3 +306,84 @@ class TestTruncationIsReported:
 
         with pytest.raises(LLMError):
             llm.complete(system="s", user="u")
+
+
+class TestUsageIsCopiedFromTheProvider:
+    """Both wires report tokens; missing usage is marked, not guessed.
+
+    || Los dos wires reportan tokens; un usage ausente se marca, no se adivina.
+    """
+
+    def test_openai_usage_is_copied_onto_completion(self):
+        llm, _ = _openai_llm(
+            [_completion("ok", usage=_openai_usage(prompt=100, completion=40, total=140))]
+        )
+
+        usage = llm.complete(system="s", user="u").usage
+
+        assert usage.input_tokens == 100
+        assert usage.output_tokens == 40
+        assert usage.total_tokens == 140
+        assert usage.reported is True
+
+    def test_anthropic_usage_is_normalized_to_the_same_shape(self):
+        llm, _ = _anthropic_llm(
+            [_message([_text_block("ok")], usage=_anthropic_usage(incoming=80, outgoing=20))]
+        )
+
+        usage = llm.complete(system="s", user="u").usage
+
+        assert usage.input_tokens == 80
+        assert usage.output_tokens == 20
+        assert usage.total_tokens == 100
+        assert usage.reported is True
+
+    def test_missing_openai_usage_is_unreported_zeros(self):
+        llm, _ = _openai_llm([_completion("el texto")])
+
+        completion = llm.complete(system="s", user="u")
+
+        assert completion.text == "el texto"
+        assert completion.usage == UNREPORTED_USAGE
+
+    def test_missing_anthropic_usage_is_unreported_zeros(self):
+        llm, _ = _anthropic_llm([_message([_text_block("el texto")])])
+
+        completion = llm.complete(system="s", user="u")
+
+        assert completion.text == "el texto"
+        assert completion.usage.reported is False
+        assert completion.usage.input_tokens == 0
+        assert completion.usage.output_tokens == 0
+        assert completion.usage.total_tokens == 0
+
+    def test_partial_openai_usage_is_unreported(self):
+        llm, _ = _openai_llm(
+            [
+                _completion(
+                    "ok",
+                    usage=SimpleNamespace(
+                        prompt_tokens=10, completion_tokens=None, total_tokens=10
+                    ),
+                )
+            ]
+        )
+
+        assert llm.complete(system="s", user="u").usage.reported is False
+
+    def test_truncation_still_reports_usage(self):
+        llm, _ = _openai_llm(
+            [
+                _completion(
+                    "media resp",
+                    finish_reason="length",
+                    usage=_openai_usage(prompt=50, completion=256, total=306),
+                )
+            ]
+        )
+
+        completion = llm.complete(system="s", user="u")
+
+        assert completion.truncated is True
+        assert completion.usage.total_tokens == 306
+        assert completion.usage.reported is True

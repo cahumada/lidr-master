@@ -15,11 +15,11 @@ from __future__ import annotations
 import structlog
 
 from app.config import get_settings
-from app.foundation.llm.wrapper import LLM
+from app.foundation.llm.wrapper import LLM, Usage
 from app.generation.rag.guardrails import check_grounding
 from app.generation.rag.prompt_builder import build_budgeted_messages
 from app.generation.rag.retrieval.hybrid import DEFAULT_BRANCHES, HybridRetriever
-from app.generation.rag.schemas import AnswerResponse, search_hits_from_chunks
+from app.generation.rag.schemas import AnswerResponse, TokenUsage, search_hits_from_chunks
 from app.generation.rag.store.repository import SearchFilters
 
 log = structlog.get_logger()
@@ -136,4 +136,14 @@ async def generate_answer(
         context_truncated=budgeted.truncated,
         dropped_hits=budgeted.dropped_count,
         answer_truncated=completion.truncated,
+        usage=_token_usage(completion.usage),
+    )
+
+
+def _token_usage(usage: Usage) -> TokenUsage:
+    return TokenUsage(
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        total_tokens=usage.total_tokens,
+        reported=usage.reported,
     )
