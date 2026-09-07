@@ -45,3 +45,10 @@ next-env.d.ts
 !.env.example
 
 /lib/generated/prisma
+
+# Harness-local skill installs (Prisma docs copied by `npx skills`, etc.)
+# || Skills instaladas localmente por el harness, no código del producto.
+/.agents/
+/.claude/
+/.windsurf/
+/skills-lock.json
