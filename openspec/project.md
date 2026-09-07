@@ -284,7 +284,9 @@ API con seguimiento de jobs, y chunking jerárquico/semántico/con overlap.
 Tampoco hay resumen acumulativo de la conversación: la memoria de sesión son
 hechos estructurados, anchors y una ventana corta de turnos, y la condición
 para agregar un resumen está escrita en el `design.md` de
-`add-conversation-memory`.
+`add-conversation-memory`. El transcript durable (`history`) y
+`GET /answer/sessions` ya están en el servicio (`add-conversation-history`);
+la capability no se pliega a `openspec/specs/` hasta archivar.
 
 Existe además, generado fuera de este repo, un corpus JSON enriquecido por
 LLM para el módulo `policies` (`corpus_<tenant>_policies.json`, 174

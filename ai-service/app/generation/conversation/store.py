@@ -54,6 +54,7 @@ from app.generation.conversation.models import (
     Anchor,
     ConversationFacts,
     ConversationSession,
+    HistoryTurn,
     Turn,
 )
 
@@ -66,9 +67,11 @@ class ConversationSessionRow(Base):
     __tablename__ = "conversation_sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    title: Mapped[str | None] = mapped_column(String(80), nullable=True)
     facts: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     anchors: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     turns: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    history: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -83,9 +86,11 @@ class ConversationSessionRow(Base):
 def _to_domain(row: ConversationSessionRow) -> ConversationSession:
     return ConversationSession(
         session_id=row.id,
+        title=row.title,
         facts=ConversationFacts.model_validate(row.facts or {}),
         anchors=[Anchor.model_validate(item) for item in (row.anchors or [])],
         turns=[Turn.model_validate(item) for item in (row.turns or [])],
+        history=[HistoryTurn.model_validate(item) for item in (row.history or [])],
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -103,7 +108,12 @@ class SessionStore:
         conversation = ConversationSession()
         self._session.add(
             ConversationSessionRow(
-                id=conversation.session_id, facts={}, anchors=[], turns=[]
+                id=conversation.session_id,
+                facts={},
+                anchors=[],
+                turns=[],
+                history=[],
+                title=None,
             )
         )
         await self._session.commit()
@@ -138,10 +148,44 @@ class SessionStore:
         if row is None:
             row = ConversationSessionRow(id=conversation.session_id)
             self._session.add(row)
+        row.title = conversation.title
         row.facts = conversation.facts.model_dump(mode="json")
         row.anchors = [anchor.model_dump(mode="json") for anchor in conversation.anchors]
         row.turns = [turn.model_dump(mode="json") for turn in conversation.turns]
+        row.history = [turn.model_dump(mode="json") for turn in conversation.history]
         await self._session.commit()
+
+    async def list_recent(self, *, limit: int, offset: int) -> list[ConversationSession]:
+        """Summaries the operator can reopen: not empty, not expired, newest first.
+
+        || Las que el operador puede reabrir: no vacías, no vencidas, la más
+        reciente primero.
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=self._ttl_days)
+        result = await self._session.execute(
+            select(ConversationSessionRow)
+            .where(
+                ConversationSessionRow.updated_at >= cutoff,
+                func.jsonb_array_length(ConversationSessionRow.history) > 0,
+            )
+            .order_by(ConversationSessionRow.updated_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return [_to_domain(row) for row in result.scalars().all()]
+
+    async def rename(self, session_id: str, title: str) -> ConversationSession | None:
+        """Set the title, or ``None`` when the session is missing or expired.
+
+        || Pone el título, o ``None`` si la sesión no existe o venció.
+        """
+        conversation = await self.get(session_id)
+        if conversation is None:
+            return None
+        conversation.title = title
+        await self.save(conversation)
+        log.info("conversation_session_renamed", session_id=session_id)
+        return await self.get(session_id)
 
     async def delete(self, session_id: str) -> bool:
         """Drop a conversation. || Borra una conversación."""

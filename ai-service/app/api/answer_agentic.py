@@ -325,6 +325,7 @@ async def answer_agentic(
         values,
         written_question=body.question,
         max_turns=settings.CONVERSATION_MAX_TURNS,
+        title_max_chars=settings.CONVERSATION_TITLE_MAX_CHARS,
     )
     return _completed_response(thread_id, values)
 
@@ -424,6 +425,7 @@ async def _close_resumed_turn(session: AsyncSession, values: dict) -> None:
         values,
         written_question=values.get("query") or "",
         max_turns=settings.CONVERSATION_MAX_TURNS,
+        title_max_chars=settings.CONVERSATION_TITLE_MAX_CHARS,
     )
 
 

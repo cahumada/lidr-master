@@ -31,7 +31,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.foundation.persistence.database import Base, to_async_url, to_sync_url
-from app.generation.conversation.models import Anchor, ConversationFacts, Turn
+from app.generation.conversation.models import (
+    Anchor,
+    ConversationFacts,
+    HistoryTurn,
+    Turn,
+)
 from app.generation.conversation.store import ConversationSessionRow, SessionStore
 
 TEST_SCHEMA = "conversation_tests"
@@ -236,5 +241,94 @@ def test_purge_removes_only_what_expired(run_with_store):
 
         assert await store.purge_expired() == 1
         assert await store.get(fresh.session_id) is not None
+
+    run_with_store(scenario)
+
+
+def test_list_recent_skips_empty_and_expired_and_orders_newest_first(run_with_store):
+    async def scenario(store: SessionStore):
+        empty = await store.create()
+        older = await store.create()
+        older.append_history(
+            HistoryTurn(question="primera", resolved_question="primera", answer="a")
+        )
+        await store.save(older)
+        newer = await store.create()
+        newer.append_history(
+            HistoryTurn(question="segunda", resolved_question="segunda", answer="b")
+        )
+        await store.save(newer)
+        expired = await store.create()
+        expired.append_history(
+            HistoryTurn(question="vieja", resolved_question="vieja", answer="c")
+        )
+        await store.save(expired)
+        await _age(store, expired.session_id, TTL_DAYS + 1)
+
+        listed = await store.list_recent(limit=50, offset=0)
+        ids = [item.session_id for item in listed]
+
+        assert empty.session_id not in ids
+        assert expired.session_id not in ids
+        assert ids == [newer.session_id, older.session_id]
+
+        page = await store.list_recent(limit=1, offset=0)
+        assert [item.session_id for item in page] == [newer.session_id]
+
+    run_with_store(scenario)
+
+
+def test_rename_updates_the_title(run_with_store):
+    async def scenario(store: SessionStore):
+        conversation = await store.create()
+        conversation.append_history(
+            HistoryTurn(question="original", resolved_question="original", answer="a")
+        )
+        await store.save(conversation)
+
+        renamed = await store.rename(conversation.session_id, "nuevo nombre")
+        assert renamed is not None
+        assert renamed.title == "nuevo nombre"
+        assert (await store.get(conversation.session_id)).title == "nuevo nombre"
+
+    run_with_store(scenario)
+
+
+def test_rename_of_an_expired_session_is_absent(run_with_store):
+    async def scenario(store: SessionStore):
+        conversation = await store.create()
+        await _age(store, conversation.session_id, TTL_DAYS + 1)
+        assert await store.rename(conversation.session_id, "no") is None
+
+    run_with_store(scenario)
+
+
+def test_a_backfilled_row_exposes_history_on_get(run_with_store):
+    """The migration copies `turns` → `history`. get must read that copy.
+
+    || La migración copia `turns` → `history`. get tiene que leer esa copia.
+    """
+
+    async def scenario(store: SessionStore):
+        conversation = await store.create()
+        conversation.append_turn(
+            Turn(question="¿CA014?", resolved_question="¿CA014?", answer="preview"),
+            max_turns=4,
+        )
+        await store.save(conversation)
+
+        row = await store._session.get(ConversationSessionRow, conversation.session_id)
+        assert row is not None
+        row.history = list(row.turns)
+        row.title = (row.turns[0].get("question") or "")[:80]
+        await store._session.commit()
+        store._session.expire_all()
+
+        found = await store.get(conversation.session_id)
+        assert found is not None
+        assert found.title == "¿CA014?"
+        assert len(found.history) == 1
+        assert found.history[0].question == "¿CA014?"
+        assert found.history[0].citations == []
 
     run_with_store(scenario)

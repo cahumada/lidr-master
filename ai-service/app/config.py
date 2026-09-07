@@ -242,6 +242,12 @@ class Settings(BaseSettings):
     # con un 404 en medio de la conversación.
     CONVERSATION_SESSION_TTL_DAYS: int = Field(default=30, ge=1)
 
+    # Cap for the default title (first question) and for PATCH. No LLM: the
+    # operator already wrote the line the sidebar needs.
+    # || Tope del título default (primera pregunta) y del PATCH. Sin LLM: el
+    # operador ya escribió la línea que el sidebar necesita.
+    CONVERSATION_TITLE_MAX_CHARS: int = Field(default=80, ge=1, le=200)
+
     # --- Proveedores de generación || Generation providers -----------------
 
     # Claves por proveedor. Sin clave, el proveedor se reporta NO disponible y

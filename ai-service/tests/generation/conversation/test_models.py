@@ -7,8 +7,10 @@ from __future__ import annotations
 
 from app.generation.conversation.models import (
     Anchor,
+    CitationSnapshot,
     ConversationFacts,
     ConversationSession,
+    HistoryTurn,
     Turn,
 )
 
@@ -98,6 +100,74 @@ def test_the_window_drops_the_oldest_first():
         session.append_turn(_turn(index), max_turns=2)
 
     assert session.turns[-1].question == "pregunta 2"
+
+
+# --- history (the transcript the window does not touch) ----------------
+
+
+def _history_turn(index: int) -> HistoryTurn:
+    return HistoryTurn(
+        question=f"pregunta {index}",
+        resolved_question=f"pregunta {index}",
+        answer=f"respuesta {index} completa",
+    )
+
+
+def test_history_keeps_every_turn_while_the_window_trims():
+    """Five closed turns: the window forgets, the transcript does not.
+
+    || Cinco turnos cerrados: la ventana olvida, el transcript no.
+    """
+    session = ConversationSession()
+    for index in range(5):
+        session.append_turn(_turn(index), max_turns=4)
+        session.append_history(_history_turn(index))
+
+    assert len(session.turns) == 4
+    assert len(session.history) == 5
+    assert session.history[0].question == "pregunta 0"
+    assert session.history[-1].answer == "respuesta 4 completa"
+
+
+def test_the_title_sticks_to_the_first_question():
+    """A referential follow-up is a worse label. || Un seguimiento es peor etiqueta."""
+    session = ConversationSession()
+    session.append_history(
+        HistoryTurn(
+            question="  ¿Qué valida CA014 al dar de alta?  ",
+            resolved_question="¿Qué valida CA014 al dar de alta?",
+            answer="…",
+        )
+    )
+    session.append_history(
+        HistoryTurn(
+            question="¿y eso para siniestros?",
+            resolved_question="¿y CA014 para siniestros?",
+            answer="…",
+        )
+    )
+
+    assert session.title == "¿Qué valida CA014 al dar de alta?"
+
+
+def test_a_citation_without_document_id_is_not_a_snapshot():
+    """No invented provenance. || No se inventa procedencia."""
+    assert CitationSnapshot.from_hit({"text": "ruido", "score": 0.9}) is None
+    snapshot = CitationSnapshot.from_hit(
+        {
+            "document_id": "CA014",
+            "document_title": "Alta",
+            "section": "Validaciones",
+            "bullet_path": "1.1",
+            "content_hash": "abc",
+            "text": "este texto NO viaja",
+            "score": 0.9,
+        }
+    )
+    assert snapshot is not None
+    assert snapshot.document_id == "CA014"
+    assert snapshot.content_hash == "abc"
+    assert "text" not in snapshot.model_dump()
 
 
 # --- anchors -----------------------------------------------------------

@@ -1,6 +1,6 @@
 """The shapes a session keeps between turns.
 
-Three storage slots, and the difference between them is what each one costs
+Four storage slots, and the difference between them is what each one costs
 when it is lost:
 
 * ``facts`` — structured, small, and the only thing the resolver reads. They
@@ -11,13 +11,15 @@ when it is lost:
   touches them.
 * ``turns`` — the recent window. Losing one costs a repeated sentence, which
   is why this is the slot the budget trims first.
+* ``history`` — the durable transcript. The console rereads it; the
+  synthesizer never does. Losing one would drop provenance on reload, so the
+  window never touches it.
 
-|| Las formas que una sesión conserva entre turnos. Tres slots, y lo que los
+|| Las formas que una sesión conserva entre turnos. Cuatro slots, y lo que los
 distingue es cuánto cuesta perder cada uno: los ``facts`` son chicos y son lo
 único que lee el resolver; los ``anchors`` son restricciones que el usuario
-fijó a propósito y desalojarlos cambiaría en silencio lo que recupera el
-turno siguiente; los ``turns`` son la ventana reciente, y perder uno cuesta
-una frase repetida — por eso es lo primero que recorta el presupuesto.
+fijó a propósito; los ``turns`` son la ventana reciente; ``history`` es el
+transcript que la consola relee y el sintetizador no toca.
 """
 
 from __future__ import annotations
@@ -36,9 +38,30 @@ from pydantic import BaseModel, Field
 # sabe expresar sería una promesa que el pipeline no puede cumplir.
 AnchorKind = Literal["module_code", "window_type_name"]
 
+# Default title cap. The setting ``CONVERSATION_TITLE_MAX_CHARS`` mirrors this
+# so the PATCH contract and ``append_history`` stay on the same number; the
+# model does not import settings.
+# || Tope default del título. El setting ``CONVERSATION_TITLE_MAX_CHARS`` lo
+# espeja para que el PATCH y ``append_history`` usen el mismo número; el
+# modelo no importa settings.
+DEFAULT_TITLE_MAX_CHARS = 80
+
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def title_from_question(
+    question: str, *, max_chars: int = DEFAULT_TITLE_MAX_CHARS
+) -> str | None:
+    """Collapse whitespace and cut to ``max_chars``. Blank in → ``None``.
+
+    || Colapsa whitespace y corta a ``max_chars``. Vacío → ``None``.
+    """
+    collapsed = " ".join(question.split())
+    if not collapsed:
+        return None
+    return collapsed[:max_chars]
 
 
 class ConversationFacts(BaseModel):
@@ -125,6 +148,66 @@ class Turn(BaseModel):
     created_at: datetime = Field(default_factory=_utcnow)
 
 
+class CitationSnapshot(BaseModel):
+    """What a closed turn cited, without the retrieval payload.
+
+    Enough to verify the answer on reopen: which document, which section,
+    which row. Not the chunk ``text``, not the scores — those belong to the
+    retrieve that produced this turn, not to the record of what was cited.
+
+    || Lo que un turno cerrado citó, sin el payload de recuperación. Alcanza
+    para verificar la respuesta al reabrir: qué documento, qué sección, qué
+    fila. No el ``text`` del chunk ni los scores.
+    """
+
+    document_id: str
+    document_title: str | None = None
+    section: str | None = None
+    bullet_path: str | None = None
+    content_hash: str = ""
+
+    @classmethod
+    def from_hit(cls, hit: dict) -> CitationSnapshot | None:
+        """Build a snapshot, or ``None`` when there is no ``document_id``.
+
+        A citation without a document id is not provenance we can record.
+        Inventing one would be the silent loss this slot exists to prevent.
+
+        || Arma un snapshot, o ``None`` si no hay ``document_id``. Una cita
+        sin id no es procedencia que se pueda registrar.
+        """
+        document_id = hit.get("document_id")
+        if not document_id:
+            return None
+        return cls(
+            document_id=str(document_id),
+            document_title=hit.get("document_title"),
+            section=hit.get("section"),
+            bullet_path=hit.get("bullet_path"),
+            content_hash=str(hit.get("content_hash") or ""),
+        )
+
+
+class HistoryTurn(BaseModel):
+    """One closed exchange as the operator should see it again.
+
+    Distinct from :class:`Turn`: the answer is the full prose, and the
+    citations travel with it. This list is never trimmed by the memory
+    window.
+
+    || Un intercambio cerrado como el operador debería volver a verlo.
+    Distinto de :class:`Turn`: la respuesta es la prosa entera y las citas
+    viajan con ella. Esta lista no la recorta la ventana de memoria.
+    """
+
+    question: str
+    resolved_question: str
+    answer: str
+    citations: list[CitationSnapshot] = Field(default_factory=list)
+    grounded: bool = True
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
 class Anchor(BaseModel):
     """A scope constraint the user pinned explicitly.
 
@@ -143,16 +226,17 @@ class Anchor(BaseModel):
 
 
 class ConversationSession(BaseModel):
-    """A conversation: its facts, its pinned constraints and its recent turns.
+    """A conversation: its facts, its pinned constraints, its window and its transcript.
 
-    || Una conversación: sus hechos, sus restricciones fijadas y sus turnos
-    recientes.
+    || Una conversación: sus hechos, sus restricciones, su ventana y su transcript.
     """
 
     session_id: str = Field(default_factory=lambda: str(uuid4()))
+    title: str | None = None
     facts: ConversationFacts = Field(default_factory=ConversationFacts)
     anchors: list[Anchor] = Field(default_factory=list)
     turns: list[Turn] = Field(default_factory=list)
+    history: list[HistoryTurn] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_utcnow)
     updated_at: datetime = Field(default_factory=_utcnow)
 
@@ -173,6 +257,25 @@ class ConversationSession(BaseModel):
         self.turns.append(turn)
         if len(self.turns) > max_turns:
             del self.turns[: len(self.turns) - max_turns]
+        self.updated_at = _utcnow()
+
+    def append_history(
+        self, turn: HistoryTurn, *, title_max_chars: int = DEFAULT_TITLE_MAX_CHARS
+    ) -> None:
+        """Add a closed turn to the transcript. Never trims.
+
+        The first non-blank question seals ``title``. Later turns do not
+        overwrite it: a referential follow-up is a worse label than the
+        question that named the subject.
+
+        || Agrega un turno cerrado al transcript. Nunca recorta. La primera
+        pregunta no vacía sella ``title``; las siguientes no lo pisan.
+        """
+        self.history.append(turn)
+        if self.title is None:
+            sealed = title_from_question(turn.question, max_chars=title_max_chars)
+            if sealed is not None:
+                self.title = sealed
         self.updated_at = _utcnow()
 
     def pin(self, anchors: list[Anchor]) -> list[Anchor]:

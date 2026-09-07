@@ -45,7 +45,7 @@ app/
 │   └── prompts/             # templates versionados
 ├── generation/
 │   ├── rag/                 # chunking, embedding, store, retrieval, answer
-│   └── conversation/        # memoria de sesión (hechos, anchors, turnos)
+│   └── conversation/        # memoria (hechos, anchors, turnos) + history
 ├── domain/                  # grafo, perfiles, catálogo de agentes
 └── ingestion/               # pipeline batch y jobs de corpus
 ```
