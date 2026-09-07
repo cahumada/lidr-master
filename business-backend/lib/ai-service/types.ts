@@ -253,13 +253,49 @@ export interface SessionCreated {
   session_id: string;
 }
 
-/** Response of `GET /answer/session/{id}`. || Respuesta de `GET /answer/session/{id}`. */
+/**
+ * What a closed turn cited, without the retrieval payload.
+ * No `text`, no scores — those belong to the retrieve, not to the record.
+ * || Lo que un turno cerrado citó, sin el payload de recuperación.
+ */
+export interface CitationSnapshot {
+  document_id: string;
+  document_title: string | null;
+  section: string | null;
+  bullet_path: string | null;
+  content_hash: string;
+}
+
+/** One closed exchange as the operator should see it again. || Un intercambio cerrado. */
+export interface HistoryTurn {
+  question: string;
+  resolved_question: string;
+  answer: string;
+  citations: CitationSnapshot[];
+  grounded: boolean;
+  created_at: string;
+}
+
+/** One row of `GET /answer/sessions`. Tenant-wide. || Una fila del listado. */
+export interface SessionSummary {
+  session_id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+  turn_count: number;
+}
+
+/** Response of `GET /answer/session/{id}` and `PATCH /answer/session/{id}`. */
 export interface SessionView {
   session_id: string;
+  title: string | null;
   facts: ConversationFacts;
   anchors: ConversationAnchor[];
   turns: { question: string; resolved_question: string; answer: string }[];
+  history: HistoryTurn[];
   max_turns: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface RoutingRecord {

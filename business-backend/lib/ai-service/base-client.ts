@@ -176,6 +176,20 @@ export async function putJson<T>(
   return (await response.json()) as T;
 }
 
+export async function patchJson<T>(
+  path: string,
+  body: unknown,
+  timeoutMs?: number,
+): Promise<T> {
+  const response = await call(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    timeoutMs,
+  });
+  return (await response.json()) as T;
+}
+
 export async function deleteJson<T>(
   path: string,
   timeoutMs?: number,

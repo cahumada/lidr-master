@@ -52,7 +52,7 @@ export default async function ConsoleLayout({ children }: LayoutProps<"/">) {
   return (
     <SidebarProvider>
       <AppSidebar role={session.user.role} />
-      <SidebarInset className="overflow-hidden">
+      <SidebarInset className="h-svh overflow-hidden">
         <AppHeader
           role={session.user.role}
           name={session.user.name}

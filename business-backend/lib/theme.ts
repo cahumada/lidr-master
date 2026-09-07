@@ -20,6 +20,12 @@ export const THEME_STORAGE_KEY = "theme";
  *  || La clase de la que depende la variante `dark:` de Tailwind. */
 export const DARK_CLASS = "dark";
 
+/** Favicon for the dark theme (collapsed mark). || Favicon del tema oscuro. */
+export const FAVICON_DARK = "/brand/logotipo2.png";
+
+/** Favicon for the light theme (collapsed mark, negative). || Favicon del tema claro. */
+export const FAVICON_LIGHT = "/brand/logotipo2-negativo.png";
+
 const DARK_MEDIA_QUERY = "(prefers-color-scheme: dark)";
 
 /**
@@ -44,7 +50,9 @@ export const THEME_INIT_SCRIPT = `(function(){try{var s=localStorage.getItem(${J
   DARK_MEDIA_QUERY,
 )}).matches;document.documentElement.classList.toggle(${JSON.stringify(
   DARK_CLASS,
-)},d)}catch(e){}})()`;
+)},d);var href=(d?${JSON.stringify(FAVICON_DARK)}:${JSON.stringify(
+  FAVICON_LIGHT,
+)})+"?v="+(d?"dark":"light");document.querySelectorAll('link[rel="icon"],link[rel="shortcut icon"]').forEach(function(el){if(el.getAttribute("data-theme-icon")){el.href=href;return}el.media="not all"});if(!document.querySelector("link[data-theme-icon]")){var l=document.createElement("link");l.rel="icon";l.type="image/png";l.setAttribute("data-theme-icon","1");l.href=href;document.head.appendChild(l)}}catch(e){}})()`;
 
 /**
  * The explicit choice, or `null` when the user never made one and the system
@@ -81,8 +89,35 @@ export function resolveTheme(): Theme {
  *  || Pinta un tema. No lo persiste — ver `storeTheme`. Usa `classList` en
  *  `<html>`; ese elemento no debe tener `className` en el JSX del layout raíz
  *  o la hidratación de React resetea el atributo. */
+export function applyFavicon(theme: Theme): void {
+  const href = `${theme === "dark" ? FAVICON_DARK : FAVICON_LIGHT}?v=${theme}`;
+  let ours: HTMLLinkElement | null = null;
+  document
+    .querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="shortcut icon"]')
+    .forEach((node) => {
+      if (node.dataset.themeIcon) {
+        ours = node;
+        node.href = href;
+        return;
+      }
+      // Next owns these nodes. Removing them makes React crash on
+      // removeChild the next time the tree commits (e.g. renaming a session).
+      // || Next es dueño de estos nodos. Sacarlos hace que React explote
+      // en removeChild en el próximo commit (p. ej. al renombrar).
+      node.media = "not all";
+    });
+  if (ours) return;
+  const link = document.createElement("link");
+  link.rel = "icon";
+  link.type = "image/png";
+  link.setAttribute("data-theme-icon", "1");
+  link.href = href;
+  document.head.appendChild(link);
+}
+
 export function applyTheme(theme: Theme): void {
   document.documentElement.classList.toggle(DARK_CLASS, theme === "dark");
+  applyFavicon(theme);
 }
 
 /** Persists the explicit choice, so it survives a reload and beats the system.

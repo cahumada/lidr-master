@@ -1,9 +1,24 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { ArrowUp, Plus, SlidersHorizontal } from "lucide-react"
+import { useRouter } from "next/navigation"
+import {
+  ArrowUp,
+  Check,
+  History,
+  Loader2,
+  PanelLeft,
+  PanelLeftClose,
+  Pencil,
+  Plus,
+  RefreshCw,
+  SlidersHorizontal,
+  Trash2,
+  X,
+} from "lucide-react"
 
 import { AnswerMarkdown } from "./answer-markdown"
+import { LiveFlowPanel } from "./live-flow-panel"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -20,41 +35,37 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { useIsMobile } from "@/hooks/use-mobile"
 import type {
   AnswerAgenticCompleted,
   AnswerAgenticPaused,
   AnswerAgenticProgress,
   AnswerAgenticStart,
+  CitationSnapshot,
   ConversationAnchor,
   GraphActivityEntry,
+  HistoryTurn,
   RoutingRecord,
   NamedAgentProfile,
   SearchFacets,
-  SearchHit,
+  SessionSummary,
+  SessionView,
 } from "@/lib/ai-service/types"
 
 /**
  * Session chat over independent agentic runs. Each send is still a new
- * `thread_id` — a thread is ONE graph run — but the thread is now backed by a
- * service-side `session_id`, so the conversation survives a reload and a
- * referential follow-up can be resolved before retrieval.
+ * `thread_id` — a thread is ONE graph run. The durable transcript lives on
+ * the service (`history`); this screen lists and reopens it via
+ * `/answer?session=<id>`. A reload restores that id, not React state.
  * || Chat de sesión sobre corridas agenticas independientes. Cada envío sigue
- * siendo un `thread_id` nuevo —un thread es UNA corrida— pero ahora el hilo
- * está respaldado por un `session_id` del servicio, así la conversación
- * sobrevive una recarga y una pregunta de seguimiento referencial se puede
- * resolver antes de la recuperación.
+ * siendo un `thread_id` nuevo. El transcript vive en el servicio; esta
+ * pantalla lo lista y lo reabre con `/answer?session=<id>`. Un F5 restaura
+ * ese id, no el estado de React.
  */
 
-const AGENT_FLOW = [
-  { key: "query_planner", label: "Planificador de consulta" },
-  { key: "evidence_retriever", label: "Recuperación de evidencia" },
-  { key: "answer_synthesizer", label: "Síntesis de respuesta" },
-  { key: "citation_validator", label: "Validación de citas" },
-] as const
-
-const GATE_KEY = "answer_review_gate"
 const POLL_INTERVAL_MS = 1200
 
 const SUGGESTIONS = [
@@ -83,6 +94,15 @@ const TOGGLES = [
 
 type RetrievalFlags = { rerank: boolean; split: boolean; lexical: boolean }
 
+type CitationView = {
+  document_id: string
+  document_title?: string | null
+  section?: string | null
+  bullet_path?: string | null
+  content_hash: string
+  text?: string
+}
+
 type ChatTurn = {
   id: string
   question: string
@@ -92,6 +112,112 @@ type ChatTurn = {
   error: string | null
   elapsedMs: number | null
   pending: boolean
+  /** When the operator sent this question. || Cuándo se mandó esta pregunta. */
+  askedAt: number | null
+  /** Restored from `history`: no live flow, no invented chunk text. */
+  reopened?: boolean
+  snapshots?: CitationSnapshot[]
+}
+
+function historyToTurns(history: HistoryTurn[]): ChatTurn[] {
+  return history.map((item, index) => ({
+    id: `history-${item.created_at}-${index}`,
+    question: item.question,
+    activity: [],
+    completed: {
+      status: "completed",
+      thread_id: "reopened",
+      question: item.question,
+      answer: item.answer,
+      citations: [],
+      grounded: item.grounded,
+      confidence: null,
+      needs_human_review: false,
+      review_reasons: [],
+      routing_history: [],
+      resolved_question: item.resolved_question,
+      resolved_referents: [],
+      session_memory_used: true,
+      anchors_applied: [],
+      context_truncated: false,
+      dropped_hits: 0,
+      answer_truncated: false,
+    },
+    paused: null,
+    error: null,
+    elapsedMs: null,
+    pending: false,
+    askedAt: Date.parse(item.created_at) || null,
+    reopened: true,
+    snapshots: item.citations,
+  }))
+}
+
+const RELATIVE_TIME = new Intl.RelativeTimeFormat("es-AR", { numeric: "auto" })
+
+function formatTimeAgo(epochMs: number, now: number): string {
+  const deltaSec = Math.round((epochMs - now) / 1000)
+  const abs = Math.abs(deltaSec)
+  if (abs < 45) return "ahora"
+  if (abs < 90) return RELATIVE_TIME.format(Math.sign(deltaSec) || -1, "minute")
+  if (abs < 3600) return RELATIVE_TIME.format(Math.round(deltaSec / 60), "minute")
+  if (abs < 86400) return RELATIVE_TIME.format(Math.round(deltaSec / 3600), "hour")
+  if (abs < 86400 * 30) return RELATIVE_TIME.format(Math.round(deltaSec / 86400), "day")
+  return RELATIVE_TIME.format(Math.round(deltaSec / 86400 / 30), "month")
+}
+
+function formatAskedAt(epochMs: number): string {
+  return new Date(epochMs).toLocaleString("es-AR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  })
+}
+
+function formatSessionWhen(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ""
+  return date.toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })
+}
+
+function sessionHref(sessionId: string | null): string {
+  return sessionId ? `/answer?session=${encodeURIComponent(sessionId)}` : "/answer"
+}
+
+function UserTurnMeta({
+  askedAt,
+  now,
+  canRetry,
+  onRetry,
+}: {
+  askedAt: number | null
+  now: number
+  canRetry: boolean
+  onRetry: () => void
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      {askedAt !== null && (
+        <time
+          className="text-muted-foreground text-[11px]"
+          dateTime={new Date(askedAt).toISOString()}
+          title={formatAskedAt(askedAt)}
+        >
+          {formatTimeAgo(askedAt, now)}
+        </time>
+      )}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Reintentar esta pregunta"
+        title="Reintentar esta pregunta"
+        disabled={!canRetry}
+        onClick={onRetry}
+      >
+        <RefreshCw />
+      </Button>
+    </div>
+  )
 }
 
 function newTurnId(): string {
@@ -100,86 +226,6 @@ function newTurnId(): string {
 
 function elapsedSince(startedAt: number): number {
   return Math.round(Date.now() - startedAt)
-}
-
-function latestMessageByNode(activity: GraphActivityEntry[]): Record<string, string> {
-  const messages: Record<string, string> = {}
-  for (const entry of activity) {
-    if (entry.node === "orchestrator") continue
-    messages[entry.node] = entry.message
-  }
-  return messages
-}
-
-function AgentRow({
-  label,
-  message,
-  state,
-}: {
-  label: string
-  message?: string
-  state: "idle" | "running" | "done"
-}) {
-  const dotClass =
-    state === "done"
-      ? "bg-emerald-500"
-      : state === "running"
-        ? "bg-primary animate-pulse"
-        : "bg-muted-foreground/30"
-  return (
-    <li className="flex items-start gap-3 rounded-lg border p-2.5">
-      <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${dotClass}`} />
-      <div className="flex min-w-0 flex-col">
-        <span className="text-sm font-medium">{label}</span>
-        <span className="text-muted-foreground truncate text-xs">
-          {message ?? (state === "running" ? "…" : "esperando")}
-        </span>
-      </div>
-    </li>
-  )
-}
-
-function LiveFlowPanel({
-  activity,
-  running,
-}: {
-  activity: GraphActivityEntry[]
-  running: boolean
-}) {
-  const messages = latestMessageByNode(activity)
-  const runningIndex = running ? AGENT_FLOW.findIndex(({ key }) => !messages[key]) : -1
-  const allAgentsDone = runningIndex === -1
-
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-muted-foreground flex items-center gap-2 text-xs">
-        {running && <span className="bg-primary inline-block h-2 w-2 animate-pulse rounded-full" />}
-        El orquestador está trabajando
-      </p>
-      <ol className="flex flex-col gap-2">
-        {AGENT_FLOW.map(({ key, label }, index) => {
-          const message = messages[key]
-          const state: "idle" | "running" | "done" = message
-            ? "done"
-            : index === runningIndex
-              ? "running"
-              : "idle"
-          return <AgentRow key={key} label={label} message={message} state={state} />
-        })}
-        <AgentRow
-          label="Gate de revisión"
-          message={messages[GATE_KEY]}
-          state={
-            messages[GATE_KEY]
-              ? "done"
-              : running && allAgentsDone
-                ? "running"
-                : "idle"
-          }
-        />
-      </ol>
-    </div>
-  )
 }
 
 function MultiSelectFilter({
@@ -262,27 +308,32 @@ function RoutingTrace({ history }: { history: RoutingRecord[] }) {
   )
 }
 
-function CitationList({ hits }: { hits: SearchHit[] }) {
+function CitationList({ hits }: { hits: CitationView[] }) {
   if (hits.length === 0) {
     return <p className="text-muted-foreground text-sm">Sin evidencia recuperada en el corpus.</p>
   }
   return (
     <ol className="flex flex-col gap-3">
       {hits.map((hit, index) => (
-        <li key={hit.content_hash + index}>
+        <li key={(hit.content_hash || hit.document_id) + String(index)}>
           <Card>
             <CardContent className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary" className="font-mono text-xs">
                   {hit.document_id}
                 </Badge>
+                {hit.document_title && (
+                  <span className="text-sm">{hit.document_title}</span>
+                )}
                 {hit.section && (
                   <span className="text-muted-foreground text-xs">{hit.section}</span>
                 )}
               </div>
-              <p className="bg-muted/40 max-h-40 overflow-y-auto rounded-md p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-                {hit.text}
-              </p>
+              {hit.text ? (
+                <p className="bg-muted/40 max-h-40 overflow-y-auto rounded-md p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+                  {hit.text}
+                </p>
+              ) : null}
             </CardContent>
           </Card>
         </li>
@@ -542,6 +593,7 @@ function AssistantBody({
 
   if (turn.completed) {
     const result = turn.completed
+    const citations = turn.reopened ? (turn.snapshots ?? []) : result.citations
     return (
       <div className="flex flex-col gap-4">
         <div className="text-muted-foreground flex flex-wrap items-center gap-3 text-xs">
@@ -552,7 +604,9 @@ function AssistantBody({
             <span>confianza {Math.round(result.confidence * 100)}%</span>
           )}
           {turn.elapsedMs !== null && <span>{turn.elapsedMs} ms</span>}
-          <span className="font-mono">{result.thread_id.slice(0, 8)}…</span>
+          {!turn.reopened && (
+            <span className="font-mono">{result.thread_id.slice(0, 8)}…</span>
+          )}
         </div>
         {result.resolved_question &&
           result.resolved_question !== result.question && (
@@ -590,13 +644,13 @@ function AssistantBody({
         <AnswerMarkdown>{result.answer}</AnswerMarkdown>
         <details className="rounded-lg border">
           <summary className="text-muted-foreground cursor-pointer px-3 py-2 text-xs font-medium">
-            Evidencia recuperada ({result.citations.length})
+            Evidencia recuperada ({citations.length})
           </summary>
           <div className="border-t p-3">
-            <CitationList hits={result.citations} />
+            <CitationList hits={citations} />
           </div>
         </details>
-        <RoutingTrace history={result.routing_history} />
+        {!turn.reopened && <RoutingTrace history={result.routing_history} />}
       </div>
     )
   }
@@ -610,13 +664,239 @@ function AssistantBody({
   )
 }
 
+function ThreadList({
+  threads,
+  loading,
+  error,
+  activeId,
+  renameError,
+  editing,
+  titleDraft,
+  onTitleDraftChange,
+  onStartRename,
+  onCancelRename,
+  onConfirmRename,
+  renaming,
+  onSelect,
+  onAskDelete,
+  onCancelDelete,
+  onDelete,
+  confirmingId,
+  deletingId,
+  onCollapse,
+}: {
+  threads: SessionSummary[]
+  loading: boolean
+  error: string | null
+  activeId: string | null
+  renameError: string | null
+  editing: boolean
+  titleDraft: string
+  onTitleDraftChange: (value: string) => void
+  onStartRename: () => void
+  onCancelRename: () => void
+  onConfirmRename: () => void
+  renaming: boolean
+  onSelect: (id: string) => void
+  onAskDelete: (id: string) => void
+  onCancelDelete: () => void
+  onDelete: (id: string) => void
+  confirmingId: string | null
+  deletingId: string | null
+  onCollapse?: () => void
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-start gap-2 px-3 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">Conversaciones de este entorno</p>
+          <p className="text-muted-foreground mt-0.5 text-[11px] leading-relaxed">
+            Todos los operadores ven los mismos hilos. El servicio no aísla por
+            usuario.
+          </p>
+        </div>
+        {onCollapse && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-expanded
+            aria-label="Ocultar conversaciones"
+            title="Ocultar conversaciones"
+            onClick={onCollapse}
+          >
+            <PanelLeftClose />
+          </Button>
+        )}
+      </div>
+      {error && (
+        <Alert variant="destructive" className="mx-3 mb-2">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {renameError && (
+        <Alert variant="destructive" className="mx-3 mb-2">
+          <AlertDescription>{renameError}</AlertDescription>
+        </Alert>
+      )}
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex flex-col gap-1 px-2 pb-3">
+          {loading ? (
+            Array.from({ length: 4 }, (_, index) => (
+              <Skeleton key={index} className="h-14 w-full" />
+            ))
+          ) : threads.length === 0 && !error ? (
+            <p className="text-muted-foreground px-2 py-6 text-sm leading-relaxed">
+              Todavía no hay conversaciones en este entorno. La primera
+              pregunta crea un hilo.
+            </p>
+          ) : (
+            threads.map((thread) => {
+              const active = thread.session_id === activeId
+              const confirming = thread.session_id === confirmingId
+              const deleting = thread.session_id === deletingId
+              const listBusy = deletingId !== null || renaming
+              return (
+                <div
+                  key={thread.session_id}
+                  aria-busy={deleting}
+                  className={`flex items-start gap-1 rounded-lg border px-2 py-2 ${
+                    active ? "bg-muted/60 border-border" : "border-transparent"
+                  } ${deleting ? "opacity-70" : ""}`}
+                >
+                  {active && editing ? (
+                    <form
+                      className="flex min-w-0 flex-1 items-center gap-1"
+                      aria-busy={renaming}
+                      onSubmit={(event) => {
+                        event.preventDefault()
+                        if (!renaming) onConfirmRename()
+                      }}
+                    >
+                      <Input
+                        value={titleDraft}
+                        onChange={(event) => onTitleDraftChange(event.target.value)}
+                        aria-label="Título de la conversación"
+                        className="h-8 text-sm"
+                        autoFocus
+                        disabled={renaming}
+                      />
+                      <Button
+                        type="submit"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={renaming ? "Guardando título" : "Guardar título"}
+                        disabled={renaming}
+                      >
+                        {renaming ? <Loader2 className="animate-spin" /> : <Check />}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Cancelar"
+                        disabled={renaming}
+                        onClick={onCancelRename}
+                      >
+                        <X />
+                      </Button>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={listBusy}
+                      onClick={() => onSelect(thread.session_id)}
+                      className="flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-md px-1 py-0.5 text-left disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      <span className="w-full truncate text-sm font-medium">
+                        {thread.title?.trim() || "Sin título"}
+                      </span>
+                      <span className="text-muted-foreground text-[11px]">
+                        {formatSessionWhen(thread.updated_at)}
+                        {thread.turn_count > 0
+                          ? ` · ${thread.turn_count} ${thread.turn_count === 1 ? "turno" : "turnos"}`
+                          : ""}
+                      </span>
+                    </button>
+                  )}
+                  {active && !editing && !confirming && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Renombrar"
+                      disabled={listBusy}
+                      onClick={onStartRename}
+                    >
+                      <Pencil />
+                    </Button>
+                  )}
+                  {deleting ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled
+                      aria-label="Borrando conversación"
+                    >
+                      <Loader2 className="animate-spin" />
+                    </Button>
+                  ) : confirming ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        disabled={listBusy}
+                        onClick={() => onDelete(thread.session_id)}
+                      >
+                        <Trash2 />
+                        ¿Borrar?
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Cancelar borrado"
+                        disabled={listBusy}
+                        onClick={onCancelDelete}
+                      >
+                        <X />
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Borrar conversación"
+                      disabled={listBusy}
+                      onClick={() => onAskDelete(thread.session_id)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  )
+}
+
 export function AnswerConsole({
   initialFacets,
   profiles,
+  initialSessionId,
 }: {
   initialFacets: SearchFacets
   profiles: NamedAgentProfile[]
+  initialSessionId?: string | null
 }) {
+  const router = useRouter()
+  const isMobile = useIsMobile()
   const [question, setQuestion] = useState("")
   const [turns, setTurns] = useState<ChatTurn[]>([])
   const [limit, setLimit] = useState("10")
@@ -626,12 +906,25 @@ export function AnswerConsole({
   const [flags, setFlags] = useState<RetrievalFlags>({ rerank: true, split: true, lexical: false })
   const [reviewNote, setReviewNote] = useState("")
   const [busy, setBusy] = useState(false)
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(initialSessionId ?? null)
   const [anchors, setAnchors] = useState<ConversationAnchor[]>([])
+  const [threads, setThreads] = useState<SessionSummary[]>([])
+  const [listError, setListError] = useState<string | null>(null)
+  const [listLoading, setListLoading] = useState(true)
+  const [threadError, setThreadError] = useState<string | null>(null)
+  const [listOpen, setListOpen] = useState(false)
+  const [listCollapsed, setListCollapsed] = useState(false)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState("")
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [now, setNow] = useState(() => Date.now())
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const bottomRef = useRef<HTMLDivElement | null>(null)
+  const threadViewportRef = useRef<HTMLDivElement | null>(null)
   const startedAtRef = useRef(0)
-
+  const hydratedFromUrl = useRef<string | null>(null)
   useEffect(() => {
     return () => {
       if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current)
@@ -639,8 +932,217 @@ export function AnswerConsole({
   }, [])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+    const timer = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    const viewport = threadViewportRef.current
+    if (!viewport) return
+    viewport.scrollTop = viewport.scrollHeight
   }, [turns])
+
+  async function loadThreads() {
+    try {
+      const response = await fetch("/api/answer/sessions")
+      const body = (await response.json()) as SessionSummary[] & { error?: string }
+      if (!response.ok) {
+        setListError(body.error ?? "No se pudo cargar el historial.")
+        setThreads([])
+        return
+      }
+      setThreads(Array.isArray(body) ? body : [])
+      setListError(null)
+    } catch {
+      setListError("No se pudo contactar a la consola.")
+      setThreads([])
+    } finally {
+      setListLoading(false)
+    }
+  }
+
+  function stopPolling() {
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current)
+      pollTimeoutRef.current = null
+    }
+  }
+
+  function clearLocalThread() {
+    stopPolling()
+    setSessionId(null)
+    setAnchors([])
+    setTurns([])
+    setQuestion("")
+    setReviewNote("")
+    setBusy(false)
+    setEditingTitle(false)
+    setTitleDraft("")
+    setRenameError(null)
+  }
+
+  function newChat() {
+    hydratedFromUrl.current = null
+    setConfirmingDelete(null)
+    clearLocalThread()
+    setThreadError(null)
+    router.replace("/answer")
+    setListOpen(false)
+  }
+
+  async function openSession(id: string) {
+    stopPolling()
+    setBusy(true)
+    setThreadError(null)
+    setRenameError(null)
+    setEditingTitle(false)
+    try {
+      const response = await fetch(`/api/answer/session/${encodeURIComponent(id)}`)
+      const body = (await response.json()) as SessionView & { error?: string }
+      if (response.status === 404) {
+        hydratedFromUrl.current = null
+        setThreadError(body.error ?? "Esa conversación ya no está.")
+        clearLocalThread()
+        router.replace("/answer")
+        return
+      }
+      if (!response.ok) {
+        setThreadError(body.error ?? "No se pudo abrir la conversación.")
+        return
+      }
+      hydratedFromUrl.current = body.session_id
+      setSessionId(body.session_id)
+      setAnchors(body.anchors)
+      setTurns(historyToTurns(body.history))
+      setQuestion("")
+      setReviewNote("")
+      router.replace(sessionHref(body.session_id))
+      setListOpen(false)
+    } catch {
+      setThreadError("No se pudo contactar a la consola.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function deleteThread(id: string) {
+    if (deletingId) return
+    setDeletingId(id)
+    setListError(null)
+    try {
+      const response = await fetch(`/api/answer/session/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) {
+        const body = (await response.json()) as { error?: string }
+        setListError(body.error ?? "No se pudo borrar la conversación.")
+        return
+      }
+      setConfirmingDelete(null)
+      if (id === sessionId) {
+        newChat()
+      }
+      await loadThreads()
+    } catch {
+      setListError("No se pudo contactar a la consola.")
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  async function confirmRename() {
+    if (!sessionId || renaming) return
+    setRenaming(true)
+    setRenameError(null)
+    try {
+      const response = await fetch(`/api/answer/session/${encodeURIComponent(sessionId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: titleDraft }),
+      })
+      const body = (await response.json()) as SessionView & { error?: string }
+      if (!response.ok) {
+        setRenameError(body.error ?? "No se pudo renombrar.")
+        return
+      }
+      setEditingTitle(false)
+      setThreads((current) =>
+        current.map((thread) =>
+          thread.session_id === body.session_id
+            ? { ...thread, title: body.title }
+            : thread,
+        ),
+      )
+      await loadThreads()
+    } catch {
+      setRenameError("No se pudo contactar a la consola.")
+    } finally {
+      setRenaming(false)
+    }
+  }
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch("/api/answer/sessions", { signal: controller.signal })
+      .then(async (response) => {
+        const body = (await response.json()) as SessionSummary[] & { error?: string }
+        if (controller.signal.aborted) return
+        if (!response.ok) {
+          setListError(body.error ?? "No se pudo cargar el historial.")
+          setThreads([])
+          return
+        }
+        setThreads(Array.isArray(body) ? body : [])
+        setListError(null)
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        if (error instanceof DOMException && error.name === "AbortError") return
+        setListError("No se pudo contactar a la consola.")
+        setThreads([])
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setListLoading(false)
+      })
+    return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    if (!initialSessionId) return
+    if (hydratedFromUrl.current === initialSessionId) return
+    hydratedFromUrl.current = initialSessionId
+    const controller = new AbortController()
+    fetch(`/api/answer/session/${encodeURIComponent(initialSessionId)}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const body = (await response.json()) as SessionView & { error?: string }
+        if (controller.signal.aborted) return
+        if (response.status === 404) {
+          hydratedFromUrl.current = null
+          setThreadError(body.error ?? "Esa conversación ya no está.")
+          setSessionId(null)
+          setAnchors([])
+          setTurns([])
+          router.replace("/answer")
+          return
+        }
+        if (!response.ok) {
+          setThreadError(body.error ?? "No se pudo abrir la conversación.")
+          return
+        }
+        setSessionId(body.session_id)
+        setAnchors(body.anchors)
+        setTurns(historyToTurns(body.history))
+        setThreadError(null)
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        if (error instanceof DOMException && error.name === "AbortError") return
+        setThreadError("No se pudo contactar a la consola.")
+      })
+    return () => controller.abort()
+  }, [initialSessionId, router])
 
   function patchTurn(id: string, patch: Partial<ChatTurn>) {
     setTurns((current) =>
@@ -703,6 +1205,7 @@ export function AnswerConsole({
               answer_truncated: body.answer_truncated ?? false,
             },
           })
+          void loadThreads()
         } else if (body.status === "awaiting_human_review") {
           patchTurn(turnId, {
             pending: false,
@@ -766,6 +1269,7 @@ export function AnswerConsole({
         error: null,
         elapsedMs: null,
         pending: true,
+        askedAt: Date.now(),
       },
     ])
 
@@ -849,6 +1353,7 @@ export function AnswerConsole({
         pending: false,
         elapsedMs: elapsedSince(startedAt),
       })
+      void loadThreads()
     } catch {
       patchTurn(pausedTurn.id, {
         error: "No se pudo contactar a la consola.",
@@ -859,35 +1364,15 @@ export function AnswerConsole({
     }
   }
 
-  function resetThread() {
-    if (pollTimeoutRef.current) {
-      clearTimeout(pollTimeoutRef.current)
-      pollTimeoutRef.current = null
-    }
-    // The service-side session goes too. Leaving it alive would keep memory
-    // dangling off a thread the user declared finished.
-    // || La sesión del lado del servicio también se va. Dejarla viva sería
-    // dejar memoria colgada de un hilo que el usuario dio por terminado.
-    if (sessionId) {
-      void fetch(`/api/answer/session/${encodeURIComponent(sessionId)}`, {
-        method: "DELETE",
-      }).catch(() => undefined)
-    }
-    setSessionId(null)
-    setAnchors([])
-    setTurns([])
-    setQuestion("")
-    setReviewNote("")
-    setBusy(false)
-  }
-
   async function ensureSession(): Promise<string | null> {
     try {
       const response = await fetch("/api/answer/session", { method: "POST" })
       if (!response.ok) return null
       const body = (await response.json()) as { session_id?: string }
       if (!body.session_id) return null
+      hydratedFromUrl.current = body.session_id
       setSessionId(body.session_id)
+      router.replace(sessionHref(body.session_id))
       return body.session_id
     } catch {
       return null
@@ -921,23 +1406,125 @@ export function AnswerConsole({
   }
 
   const empty = turns.length === 0
+  const threadList = (
+    <ThreadList
+      threads={threads}
+      loading={listLoading}
+      error={listError}
+      activeId={sessionId}
+      renameError={renameError}
+      editing={editingTitle}
+      titleDraft={titleDraft}
+      onTitleDraftChange={setTitleDraft}
+      onStartRename={() => {
+        const active = threads.find((thread) => thread.session_id === sessionId)
+        setTitleDraft(active?.title ?? "")
+        setEditingTitle(true)
+        setRenameError(null)
+        setConfirmingDelete(null)
+      }}
+      onCancelRename={() => {
+        setEditingTitle(false)
+        setRenameError(null)
+      }}
+      renaming={renaming}
+      onConfirmRename={() => {
+        void confirmRename()
+      }}
+      onSelect={(id) => {
+        setConfirmingDelete(null)
+        void openSession(id)
+      }}
+      confirmingId={confirmingDelete}
+      deletingId={deletingId}
+      onAskDelete={(id) => {
+        setEditingTitle(false)
+        setConfirmingDelete(id)
+      }}
+      onCancelDelete={() => {
+        setConfirmingDelete(null)
+      }}
+      onDelete={(id) => {
+        void deleteThread(id)
+      }}
+      onCollapse={isMobile ? undefined : () => setListCollapsed(true)}
+    />
+  )
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-end gap-1 px-4 py-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={resetThread}
-          disabled={empty && !question}
+    <div className="flex h-full min-h-0 flex-1 overflow-hidden">
+      {!isMobile && (
+        <aside
+          className={`bg-background flex shrink-0 flex-col overflow-hidden border-r transition-[width] duration-200 ease-in-out ${
+            listCollapsed ? "w-12" : "w-72"
+          }`}
         >
-          <Plus />
-          Chat nuevo
-        </Button>
+          {listCollapsed ? (
+            <div className="flex justify-center pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-expanded={false}
+                aria-label="Mostrar conversaciones"
+                title="Mostrar conversaciones"
+                onClick={() => setListCollapsed(false)}
+              >
+                <PanelLeft />
+              </Button>
+            </div>
+          ) : (
+            threadList
+          )}
+        </aside>
+      )}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center gap-1 px-4 py-2">
+        {isMobile && (
+          <Sheet open={listOpen} onOpenChange={setListOpen}>
+            <SheetTrigger
+              render={
+                <Button variant="ghost" size="icon" aria-label="Conversaciones" />
+              }
+            >
+              <History />
+            </SheetTrigger>
+            <SheetContent side="left" className="p-0">
+              <SheetHeader className="sr-only">
+                <SheetTitle>Conversaciones de este entorno</SheetTitle>
+                <SheetDescription>
+                  Listado de hilos que se pueden reabrir.
+                </SheetDescription>
+              </SheetHeader>
+              {threadList}
+            </SheetContent>
+          </Sheet>
+        )}
+        <div className="ml-auto">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={newChat}
+            disabled={empty && !sessionId && !threadError && !question}
+          >
+            <Plus />
+            Chat nuevo
+          </Button>
+        </div>
       </div>
 
+      {threadError && (
+        <Alert variant="destructive" className="mx-4 mb-2 shrink-0">
+          <AlertDescription>{threadError}</AlertDescription>
+        </Alert>
+      )}
+
+      <ScrollArea
+        className="min-h-0 flex-1 overflow-hidden"
+        viewportRef={threadViewportRef}
+      >
       {empty ? (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4">
+        <div className="flex min-h-full flex-col items-center justify-center px-4">
           <div className="flex w-full max-w-2xl flex-col items-center gap-8">
             <div className="text-center">
               <h1 className="text-2xl font-semibold tracking-tight">
@@ -964,13 +1551,20 @@ export function AnswerConsole({
           </div>
         </div>
       ) : (
-        <ScrollArea className="min-h-0 flex-1">
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-4">
             {turns.map((turn) => (
               <article key={turn.id} className="flex flex-col gap-4">
                 <div className="flex justify-end">
-                  <div className="bg-primary text-primary-foreground max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
-                    {turn.question}
+                  <div className="flex max-w-[85%] flex-col items-end gap-1">
+                    <div className="bg-primary text-primary-foreground rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap">
+                      {turn.question}
+                    </div>
+                    <UserTurnMeta
+                      askedAt={turn.askedAt}
+                      now={now}
+                      canRetry={!busy && !turn.pending}
+                      onRetry={() => void ask(turn.question)}
+                    />
                   </div>
                 </div>
                 <div className="flex justify-start">
@@ -985,12 +1579,11 @@ export function AnswerConsole({
                 </div>
               </article>
             ))}
-            <div ref={bottomRef} />
           </div>
-        </ScrollArea>
       )}
+      </ScrollArea>
 
-      <div className="bg-background border-t px-4 py-3">
+      <div className="bg-background shrink-0 border-t px-4 py-3">
         {anchors.length > 0 && (
           <div className="mx-auto mb-2 flex w-full max-w-3xl flex-wrap items-center gap-2">
             <span className="text-muted-foreground text-xs">
@@ -1061,6 +1654,7 @@ export function AnswerConsole({
           recuerda los filtros, las transacciones nombradas y lo que citó la
           respuesta anterior.
         </p>
+      </div>
       </div>
     </div>
   )

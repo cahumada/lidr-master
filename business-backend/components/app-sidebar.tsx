@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
+import { BrandLogo } from "@/components/brand-logo"
 import { ThemeToggle } from "@/components/theme-toggle"
 import {
   Sidebar,
@@ -44,13 +45,9 @@ export function AppSidebar({ role }: { role: Role }) {
               isActive={pathname === "/"}
               tooltip="Inicio"
               size="lg"
+              className="[&_img]:max-h-7"
             >
-              <span className="flex flex-col leading-tight">
-                <span className="text-sm font-semibold tracking-tight">
-                  Visual Time
-                </span>
-                <span className="text-sidebar-foreground/70 text-xs">RAG</span>
-              </span>
+              <BrandLogo />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

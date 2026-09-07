@@ -49,13 +49,15 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // Everything except the auth endpoints, the two screens you reach without
-  // an account, and Next's own assets. `/api/auth/*` must stay open or
-  // signing in would require being signed in — and `/register` for the same
-  // reason, one step earlier.
-  // || Todo menos los endpoints de auth, las dos pantallas a las que se llega
-  // sin cuenta y los assets de Next. `/api/auth/*` tiene que quedar abierto o
-  // entrar exigiría haber entrado, y `/register` por lo mismo un paso antes.
+  // an account, Next's own assets, and static brand files. `/api/auth/*`
+  // must stay open or signing in would require being signed in — and
+  // `/register` for the same reason, one step earlier. `/brand/*` is the
+  // favicon: the optimizer fetching it without a cookie used to get the
+  // login HTML and report "isn't a valid image".
+  // || Todo menos auth, login/register, assets de Next y la marca estática.
+  // `/brand/*` es el favicon: el optimizer, sin cookie, recibía el HTML del
+  // login y decía que no era una imagen.
   matcher: [
-    "/((?!api/auth|login|register|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|login|register|_next/static|_next/image|favicon.ico|brand/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 }
