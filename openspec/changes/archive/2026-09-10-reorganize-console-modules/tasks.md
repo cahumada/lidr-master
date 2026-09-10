@@ -26,4 +26,5 @@
 
 ## 5. Verificar
 - [x] 5.1 `pnpm lint` y `pnpm build` desde `business-backend/`.
-- [ ] 5.2 Recorrer los tres módulos en claro y oscuro.
+- [x] 5.2 Recorrer los tres módulos en claro y oscuro.
+      > Verificado por el dueño del repo el 2026-09-10. El agente no pudo ejercerlo: la consola exige login y no puede autenticarse.

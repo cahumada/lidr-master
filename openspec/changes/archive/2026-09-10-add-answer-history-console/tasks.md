@@ -72,7 +72,7 @@ no toca `ai-service/`.
 ## 5. Verificar
 
 - [x] 5.1 `pnpm lint` y `pnpm build` desde `business-backend/`.
-- [ ] 5.2 En el browser, claro y oscuro:
+- [x] 5.2 En el browser, claro y oscuro:
       - un chat de ≥2 turnos, F5, el hilo vuelve con citas (sin
         inventar `text`);
       - chat nuevo deja el anterior en la lista;
@@ -80,6 +80,7 @@ no toca `ai-service/`.
       - rename y 404 de un id vencido.
       Si el servicio de historial no está desplegado, declarar
       qué no se pudo clickear y que la lista degradó.
+      > Verificado por el dueño del repo el 2026-09-10. El agente no pudo ejercerlo: la consola exige login y no puede autenticarse.
 - [x] 5.3 `python scripts/validate_specs.py` desde la raíz, sin
       errores. Sin cambios de `frontend-standards.md` ni
       `bff-standards.md` (salvo proponer `patchJson` en el

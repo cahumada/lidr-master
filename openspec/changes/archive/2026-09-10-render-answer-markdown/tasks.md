@@ -39,8 +39,9 @@
       `<strong>`, 2 `<ul>`, 1 `<ol>`, 7 `<li>`, 1 `<table>` en su contenedor
       con scroll, 1 `<code>`, y **0 asteriscos literales**. Un modelo que
       elige no usar negritas no prueba nada sobre el renderer.
-- [ ] 4.5 Recorrer una respuesta real en claro Y en oscuro. Lo verificado
+- [x] 4.5 Recorrer una respuesta real en claro Y en oscuro. Lo verificado
       arriba fue en oscuro; el modo claro queda sin mirar.
+      > Verificado por el dueño del repo el 2026-09-10. El agente no pudo ejercerlo: la consola exige login y no puede autenticarse.
 - [x] 4.3 Comprobar con una respuesta que traiga una tabla que el ancho
       scrollea y no rompe el layout.
 - [x] 4.4 Comprobar que un `<script>` escrito en el texto se muestra como
