@@ -46,7 +46,7 @@ Depende de `add-window-status-metadata` en el servicio (ya en
 ## 4. Verificar
 
 - [x] 4.1 `pnpm lint` y `pnpm build` desde `business-backend/`.
-- [ ] 4.2 En el browser (claro y oscuro): buscar una transacción
+- [x] 4.2 En el browser (claro y oscuro): buscar una transacción
       con `Acceso restringido` (p. ej. la del golden
       `U-MGSL006-acceso-restringido`) y ver el badge; buscar una
       vigente y **no** ver badge de estado; abrir `/answer` y
@@ -54,5 +54,6 @@ Depende de `add-window-status-metadata` en el servicio (ya en
       que no aparece un estado inventado; subir un `.md` en
       `/documents` de una transacción no vigente y ver el badge
       en la vista previa.
+      > Verificado por el dueño del repo el 2026-09-10. El agente no pudo ejercerlo: la consola exige login y no puede autenticarse.
 - [x] 4.3 `python scripts/validate_specs.py` desde la raíz, sin
       errores.
