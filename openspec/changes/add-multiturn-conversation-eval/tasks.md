@@ -147,7 +147,8 @@
 
 ## 4. Cierre
 - [x] 4.1 `uv run pytest` y `uv run ruff check .` en verde desde `ai-service/`.
-  Ruff limpio. Y la suite encontró algo que **no es de este change** y hay que
+  **911 passed, 0 failed** en la suite completa, y ruff limpio. Y la suite
+  encontró algo que **no es de este change** y hay que
   decirlo: 52 tests de `tests/api/` fallaban con `KeyError` afirmando contra un
   cuerpo de error, porque `add-service-authentication` puso
   `require_service_token` en todos los routers y el guard pasa solo cuando
