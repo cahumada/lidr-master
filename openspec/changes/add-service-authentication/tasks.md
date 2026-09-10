@@ -63,6 +63,15 @@
   de ser cierto y hay que corregirlo. **Proponer el parche y esperar
   aprobación** antes de editar el estándar.
 - [x] 5.4 `python scripts/validate_specs.py` sin errores desde la raíz.
+- [x] 5.5 `README.md` (**faltaba en el plan**, apareció preguntando si estaba
+  documentado): las dos variables en la tabla de despliegue, el párrafo con el
+  comando que las genera y el orden Vercel → Railway, y la sección de
+  limitaciones conocidas — que ahora declara que la auth corta el acceso
+  anónimo y no el gasto ni la atribución.
+      > El `Impact` del proposal nombraba los dos `.env.example` y
+      > `bff-standards.md`, y se salteaba el README. Un despliegue documentado
+      > sin la variable que lo hace arrancar es justo lo que no conviene dejar,
+      > y el README es artefacto obligatorio de la entrega.
 
 ## 6. Verificar y desplegar
 - [ ] 6.1 Contra el servicio local con `SERVICE_TOKEN` puesto: un `curl` sin
