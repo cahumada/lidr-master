@@ -29,17 +29,36 @@
       `@prisma/client` en **7.10.0 exacto**: el dist-tag `latest` apunta hoy a
       `8.0.0-rc.13`, así que un `pnpm add prisma` sin versión se trae un
       release candidate de otra major. Verificado contra el registro.
-- [ ] 1.2 **Smoke test del adapter contra Prisma 7, temprano.**
+- [x] 1.2 **Smoke test del adapter contra Prisma 7, temprano.**
       `@auth/prisma-adapter@2.11.3` declara
       `@prisma/client: >=2.26.0 || >=3 || >=4 || >=5 || >=6`: el `>=2.26.0` no
       tiene techo, así que 7.x instala sin conflicto, pero los mantenedores
       enumeran hasta la 6. «No está prohibido» no es «está soportado», y la 7
       cambió la superficie del cliente generado. Un login de Google que cree
       su fila alcanza; si falla, reportar antes de seguir.
-- [ ] 1.3 Resolver el pooling: los Route Handlers corren como funciones de
+      **Pasa, con datos reales.** Consultada la base de identidad el
+      2026-09-10: `Account` tiene 2 filas, las dos con `provider = google`,
+      y `User` tiene 2 filas (1 administradora, 0 deshabilitadas). Esas
+      filas las escribió `@auth/prisma-adapter@2.11.3` a través del cliente
+      generado por Prisma 7.10.0 — que es exactamente lo que este punto
+      dudaba. De paso queda confirmada la nota de 1.4: `Session` tiene **0
+      filas**, porque con `strategy = "jwt"` no se escribe una por login.
+- [x] 1.3 Resolver el pooling: los Route Handlers corren como funciones de
       Vercel y una conexión por invocación agota Postgres. Con Prisma eso son
       dos URLs — la pooled para el runtime y `directUrl` para las
       migraciones—, no una.
+      **Resuelto, y la forma cambió respecto de cómo está escrito el punto.**
+      Prisma 7 no toma una `datasourceUrl` sino un `adapter` de driver, así
+      que el pooling dejó de ser un parámetro de connection string y pasó a
+      ser configuración del `Pool` de `pg`: `lib/auth/prisma-client.ts` lo
+      arma con `max` (`AUTH_DATABASE_POOL_MAX`, default 5) e
+      `idleTimeoutMillis` de 10 s. La segunda URL sí existe y sigue siendo una
+      URL, porque las migraciones no pasan por el adapter:
+      `prisma7.config.ts` usa `AUTH_DATABASE_DIRECT_URL ?? AUTH_DATABASE_URL`.
+      Lo que **no** hay es un pooler intermedio tipo pgbouncer: Railway expone
+      TCP directo, así que hoy las dos variables apuntan al mismo host y el
+      techo de conexiones lo pone el `max` por instancia. Si algún día hay
+      pooler, la variable donde entra ya está.
 - [x] 1.4 Esquema en `prisma/schema.prisma` —no en `lib/auth/`, que con
       Prisma queda para el cliente, el hashing y la resolución de rol—:
       usuarios, cuentas, sesiones,
@@ -50,10 +69,21 @@
       `strategy = "jwt"` (`design.md` §2) la sesión vive en una cookie
       firmada y no se escribe una fila por login. Anotarlo en el esquema, o
       el próximo lector va a buscar ahí los logins y no va a encontrar nada.
-- [ ] 1.5 Migración inicial, con su comando documentado en el README de
-      `business-backend/`.
-- [ ] 1.6 `role` con default `usuario` **en la base**, no solo en el código:
+- [x] 1.5 Migración inicial, con su comando documentado en el README de
+      `business-backend/`. Dos migraciones aplicadas en la base de identidad
+      (`20260906181738` y `20260906210653_add_user_disabled_at`, verificadas
+      en `_prisma_migrations` el 2026-09-10). El comando quedó en
+      `business-backend/README.md` §Migraciones de identidad, con las tres
+      formas que hacen falta (`pnpm db:deploy`, `prisma migrate dev` y
+      `pnpm seed:admin`) y con la aclaración de que `db:deploy` **no** es un
+      paso del build: en Vercel se corre a mano, y el porqué está en el README
+      de la raíz.
+- [x] 1.6 `role` con default `usuario` **en la base**, no solo en el código:
       una fila insertada a mano no puede nacer administradora por olvido.
+      Verificado contra la base y no contra el esquema, que es el punto:
+      `information_schema.columns` devuelve `column_default =
+      'usuario'::"Role"` para `User.role`, y el SQL de la migración inicial
+      dice `"role" "Role" NOT NULL DEFAULT 'usuario'`.
 - [ ] 1.7 La identidad va en la base **`dw-insu`**, aparte dentro de la misma
       instancia de Postgres que el corpus (`design.md` §1b). El corpus vive en
       la base `railway` de esa instancia; `dw-insu` es nueva. Verificar que la
@@ -73,10 +103,18 @@
       que el que pedía `design.md` §1b; lo que falta es el nombre. Decidir:
       renombrar/crear `dw-insu` en esa instancia, o enmendar la decisión y el
       `design.md` para que digan «instancia aparte, base `railway`».
-- [ ] 1.8 **Sin columna `tenant_id` en usuarios** (`design.md` §7). El tenant
+- [x] 1.8 **Sin columna `tenant_id` en usuarios** (`design.md` §7). El tenant
       es un setting del despliegue hoy, y hacerlo por usuario exige antes
       autenticar `ai-service` — si no, se abre una fuga entre clientes que
       hoy no existe. No pre-construir la columna.
+      **Cumplido.** `User` tiene `id`, `name`, `email`, `emailVerified`,
+      `image`, `passwordHash`, `role`, `disabledAt`, `createdAt`, `updatedAt`
+      y las dos relaciones. Ninguna columna de tenant. Nota para quien lea
+      esto después de `add-service-authentication`: ese change cerró el
+      servicio con un token compartido, que era el prerrequisito que este
+      punto nombraba — pero un token compartido **no** identifica al usuario
+      ante el servicio, así que el tenant por usuario sigue necesitando su
+      propio diseño y esta columna sigue sin corresponder.
 
 ## 2. Auth.js
 
@@ -166,7 +204,15 @@
       sin `NEXT_PUBLIC_`. El repo es público.
 - [x] 5.2 Documentar en el README de `business-backend/` cómo se obtienen las
       credenciales de Google y qué URL de callback registrar.
-- [ ] 5.3 Anotar las variables que hay que cargar en Vercel. No van al repo.
+- [x] 5.3 Anotar las variables que hay que cargar en Vercel. No van al repo.
+      Están en la tabla de despliegue del README de la raíz, en la columna de
+      Vercel: `AI_SERVICE_URL`, `AI_SERVICE_TOKEN`, `AUTH_SECRET`, `AUTH_URL`,
+      `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_DATABASE_URL` y
+      `AUTH_DATABASE_DIRECT_URL` — con los dos pasos que no viven en el repo
+      (el redirect URI de Google y el alta de la primera cuenta) y con el
+      detalle de cada variable en `.env.example`. El README de
+      `business-backend/` repite las cuatro imprescindibles para arrancar en
+      local.
 
 ## 5b. Registro y administración de cuentas
 
@@ -300,22 +346,62 @@ porqué de la aprobación y el de las tres barandas no se deduce del código.
       **Hecho**: `lib/auth/guards.test.ts`, 10 casos.
 ## 6. Estándares (la enmienda va en este change)
 
-- [ ] 6.1 `bff-standards.md`: reemplazar «Acá no hay ORM…» en la intro por la
+Aplicadas el 2026-09-10. Un aviso para quien archive: la enmienda toca
+`base-standards.md` además de los tres archivos que enumeraba el plan, porque
+el runner de la tarea 7.1 dejó desactualizado el paso «Verificar» de ahí.
+
+- [x] 6.1 `bff-standards.md`: reemplazar «Acá no hay ORM…» en la intro por la
       excepción de identidad, acotada **por enumeración** (`design.md` §1).
-- [ ] 6.2 `bff-standards.md` §Rol del BFF: cuarta regla — todo Route Handler
-      es relay salvo el de autenticación.
-- [ ] 6.3 `bff-standards.md`: sección §Identidad nueva, después de
-      §Estructura.
-- [ ] 6.4 `bff-standards.md` §Seguridad: reemplazar «Auth: no hay…» por las
+      La intro ahora dice qué **no** hay (jobs propios, dominio de seguros) y
+      enumera las cinco entidades que sí: usuarios, cuentas de proveedor,
+      sesiones, tokens de verificación y rol. Con el argumento del `design.md`
+      escrito en el estándar mismo —por qué enumerada y no «persistencia de
+      identidad»—, porque es la parte que hace que la excepción no crezca.
+- [x] 6.2 `bff-standards.md` §Rol del BFF: cuarta regla — todo Route Handler
+      es relay salvo el de autenticación. El comentario de
+      `app/api/auth/[...nextauth]/route.ts` ya citaba esta regla como si
+      existiera (tarea 2.2): ahora existe.
+- [x] 6.3 `bff-standards.md`: sección §Identidad nueva, después de
+      §Estructura. Árbol de los siete archivos y cinco reglas: las dos
+      carpetas que no se importan entre sí, la variable propia
+      (`AUTH_DATABASE_URL`, nunca `DATABASE_URL`), el rol resuelto en el
+      servidor, la pertenencia al grupo `(admin)` como file system y no como
+      lista de paths, y que el filtro de la nav no autoriza.
+- [x] 6.4 `bff-standards.md` §Seguridad: reemplazar «Auth: no hay…» por las
       reglas reales, **incluida** la aclaración de que esto no protege a
-      `ai-service`.
-- [ ] 6.5 `bff-standards.md` §Tests: cerrar lo que el propio estándar dejó
-      abierto sobre el runner.
-- [ ] 6.6 `frontend-standards.md`: «no hay auth» deja de ser cierto en la
-      lista de «no introducirlos sin proposal».
-- [ ] 6.7 `app-routes.md`: filas de `/login`, del grupo `(console)` y del
+      `ai-service`. Hecho antes, con `add-service-authentication`, que es lo
+      que volvió falsa la segunda mitad: el servicio ya **no** está abierto,
+      así que el bullet dice cómo se lo cierra (token compartido, lo agrega el
+      cliente base, `AI_SERVICE_TOKEN` sin `NEXT_PUBLIC_`) en vez de advertir
+      que no lo estaba.
+- [x] 6.5 `bff-standards.md` §Tests: cerrar lo que el propio estándar dejó
+      abierto sobre el runner. La sección arranca con la respuesta —hay un
+      runner y cubre una carpeta— y cita la condición que el estándar había
+      puesto («si el BFF crece hasta tener lógica que no sea relay») para
+      mostrar que se cumplió. El «no agregar Jest por las dudas» queda en pie
+      para el próximo: ampliar el alcance pide proposal, igual que lo pidió
+      éste. Fila de Stack y bloque de comandos actualizados en el mismo paso.
+- [x] 6.6 `frontend-standards.md`: «no hay auth» deja de ser cierto en la
+      lista de «no introducirlos sin proposal». Sacado de la lista y
+      reemplazado por lo único que el frontend necesita saber, que son dos
+      límites y no APIs nuevas: ninguna pantalla decide si se puede entrar, y
+      el filtro de la nav es presentación. Además el árbol de `app/` ahí
+      estaba sin los grupos de ruta —lo que en `(admin)` es la autorización
+      misma—, así que se actualizó, y la regla de «una pantalla nueva» ahora
+      dice **en qué grupo va**, porque dejarla fuera de `(console)/` la
+      publica sin sesión.
+- [x] 6.7 `app-routes.md`: filas de `/login`, del grupo `(console)` y del
       handler de Auth.js; y sacar «la consola no tiene auth todavía» del
-      inventario de layouts.
+      inventario de layouts. Las páginas quedaron partidas en tres tablas por
+      quién las alcanza —`(auth)/`, `(console)/`, `(console)/(admin)/`— que es
+      la información que el inventario no tenía y ahora es la que importa. Los
+      cuatro layouts con lo que hace cada uno, `forbidden-screen.tsx` con su
+      403-que-es-200 dicho ahí, el handler de Auth.js en su propia sección
+      como la única excepción al relay, y una nota de que las mutaciones de
+      identidad son Server Actions para que nadie agregue un endpoint
+      paralelo. La nota «Sin auth / multi-tenant en la UI» era falsa en dos
+      mitades: auth ya hay y el servicio ya pide token; multi-tenant sigue sin
+      existir, y eso quedó separado.
 
 ## 7. Tests
 
@@ -330,7 +416,14 @@ porqué de la aprobación y el de las tres barandas no se deduce del código.
       `lib/auth/roles.test.ts`, 6 casos. Y `safe-redirect.test.ts`, que no
       estaba en el plan y encontró algo: el caso `/\host` estaba mal
       escrito en el propio test y pasaba por casualidad.
-- [ ] 7.4 Sumar el comando a CI junto a `pnpm lint` y `pnpm build`.
+- [x] 7.4 Sumar el comando a CI junto a `pnpm lint` y `pnpm build`. Paso
+      «Tests» en el job `business-backend` de `.github/workflows/ci.yml`,
+      entre lint y build, y el nombre del job pasó a «lint, tests & build»
+      para que el listado de checks no mienta. Sin base ni secretos: los
+      módulos de `lib/auth/` que se testean son puros a propósito, y eso queda
+      anotado en el YAML — 28 casos, verde en local. La misma propagación fue
+      a `base-standards.md` §Verificar, `bff-standards.md` §Workflow y
+      `frontend-standards.md`, que decían «`pnpm lint` y `pnpm build`».
 
 ## 8. Verificar
 
@@ -346,7 +439,10 @@ porqué de la aprobación y el de las tres barandas no se deduce del código.
 - [ ] 8.3 Sin sesión, cada página protegida redirige a `/login`, y después
       del login se vuelve al destino pedido.
 - [ ] 8.4 `/login` en claro y en oscuro, sin colores literales.
-- [ ] 8.5 `uv run python scripts/validate_specs.py` desde la raíz.
+- [x] 8.5 `uv run python scripts/validate_specs.py` desde la raíz.
+      **0 errores**: 19 specs, 4 docs de dominio, 3 changes en vuelo, 54
+      archivados. La única advertencia es de otro change
+      (`add-multiturn-conversation-eval`, sin deltas todavía) y no de éste.
 - [ ] 8.6 Declarar qué no se pudo ejercer. El flujo de Google necesita
       credenciales reales: si no las hay en el entorno, decirlo en vez de
       dar la tarea por verificada.
