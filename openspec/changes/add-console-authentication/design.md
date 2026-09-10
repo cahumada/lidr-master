@@ -44,6 +44,44 @@ Dos consecuencias que la enmienda hace explícitas:
 
 **Decisión:** misma **instancia** de Postgres, **base distinta**.
 
+> **Enmendado el 2026-09-10, después de verificar el despliegue.** Lo que se
+> implementó no es el nivel A sino uno más fuerte: la identidad quedó en **otra
+> instancia** de Postgres, no en otra base de la misma. `AUTH_DATABASE_URL`
+> apunta a `altaria.proxy.rlwy.net:37392/railway` y el corpus vive en
+> `altaria.proxy.rlwy.net:31812/railway` — mismo proxy de Railway, puertos
+> distintos. Confirmado consultando `pg_database` en la instancia de identidad:
+> tiene `postgres` y `railway`, y esa `railway` contiene exactamente `User`,
+> `Account`, `Session`, `VerificationToken` y `_prisma_migrations`, ninguna
+> tabla del corpus.
+>
+> **La decisión se enmienda en vez de corregir el despliegue**, y la razón es
+> que el objetivo se cumplió por una vía mejor. Todo lo que §1b quería —que un
+> `pg_dump` del corpus no pueda traer contraseñas, que alembic no vea estas
+> tablas, que restaurar el corpus no se lleve las cuentas— lo da una instancia
+> aparte con más margen que una base aparte. Crear `dw-insu` ahora solo
+> cambiaría un nombre: exigiría migrar las dos cuentas existentes, repuntar la
+> variable en local y en Vercel y volver a sembrar el admin, sin ganar ninguna
+> propiedad.
+>
+> **Lo que la enmienda sí cuesta**, y hay que decirlo: se pierde el ahorro que
+> motivaba el nivel A. Son dos instancias que provisionar, pagar, respaldar y
+> monitorear en lugar de una. Con el tamaño de esto —dos cuentas y cuatro
+> tablas— es un costo teórico, pero es el argumento del cuadro de abajo
+> yéndose, no un detalle.
+>
+> Entonces, con nombres reales, lo vigente es:
+>
+> ```
+> Postgres A de Railway (:31812)      Postgres B de Railway (:37392)
+> `-- railway  el corpus              `-- railway  la identidad
+> ```
+>
+> El resto de esta sección se deja **tal como se escribió**: el análisis de
+> por qué B y C cuestan más sigue siendo el que sostiene la decisión, y el
+> nivel elegido de hecho es todavía más lejano a B que el que se había
+> planeado. Lo único que ya no corresponde es el nombre `dw-insu` y el diagrama
+> de una sola instancia.
+
 Compartir no es binario, y la diferencia entre los niveles es lo que cuesta
 cada uno:
 

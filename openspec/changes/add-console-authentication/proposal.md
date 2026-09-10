@@ -38,6 +38,10 @@ FastAPI, esto vive entero en `business-backend/`.
 - **Auth.js (NextAuth v5) en `business-backend/`**, con dos proveedores:
   Google OAuth y credenciales (email + contraseña).
 - **Dos roles**: `usuario` y `administrador`, en el token de sesión.
+> **Enmendado**: el nombre `dw-insu` no es lo vigente. La identidad quedó en
+> otra **instancia** de Postgres, que aísla más que lo que este punto pedía.
+> Ver `design.md` §1b, donde está la enmienda y su costo.
+
 - **Base de identidad propia de la consola**: `dw-insu`, aparte **dentro de
   la misma instancia** de Postgres que el corpus —que vive en la base
   `railway`— (`design.md` §1b). El ahorro de operar un solo Postgres, sin que

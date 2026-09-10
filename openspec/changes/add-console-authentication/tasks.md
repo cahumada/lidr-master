@@ -84,7 +84,7 @@
       `information_schema.columns` devuelve `column_default =
       'usuario'::"Role"` para `User.role`, y el SQL de la migración inicial
       dice `"role" "Role" NOT NULL DEFAULT 'usuario'`.
-- [ ] 1.7 La identidad va en la base **`dw-insu`**, aparte dentro de la misma
+- [x] 1.7 La identidad va en la base **`dw-insu`**, aparte dentro de la misma
       instancia de Postgres que el corpus (`design.md` §1b). El corpus vive en
       la base `railway` de esa instancia; `dw-insu` es nueva. Verificar que la
       URL apunta ahí: un `pg_dump` del corpus no puede traer contraseñas, y
@@ -103,6 +103,25 @@
       que el que pedía `design.md` §1b; lo que falta es el nombre. Decidir:
       renombrar/crear `dw-insu` en esa instancia, o enmendar la decisión y el
       `design.md` para que digan «instancia aparte, base `railway`».
+      **Resuelto el 2026-09-10: se enmienda la decisión, no el despliegue.** Lo
+      eligió el dueño del repo, y el argumento es que el objetivo ya se cumplió
+      por una vía mejor. Todo lo que §1b quería —que un `pg_dump` del corpus no
+      traiga contraseñas, que alembic no vea estas tablas, que restaurar el
+      corpus no se lleve las cuentas— lo da una instancia aparte con más margen
+      que una base aparte. Crear `dw-insu` ahora solo cambiaría un nombre:
+      exigiría migrar las dos cuentas existentes, repuntar la variable en local
+      y en Vercel y volver a sembrar el admin, sin ganar ninguna propiedad.
+      La enmienda está en `design.md` §1b como bloque citado, **con su costo
+      dicho**: se pierde el ahorro que motivaba el nivel A, porque son dos
+      instancias que provisionar y pagar en vez de una. Con dos cuentas y
+      cuatro tablas es un costo teórico, pero es el argumento del cuadro
+      yéndose y no un detalle.
+      Y se sacó el nombre de donde mandaba a hacer algo equivocado, que es lo
+      que hacía daño: `.env.example` decía `CREATE DATABASE "dw-insu"` y ponía
+      ese nombre en la URL de ejemplo; el error de `prisma-client.ts` lo
+      nombraba; y la cabecera de `schema.prisma` afirmaba «misma instancia».
+      `proposal.md` conserva el texto original con un puntero a la enmienda:
+      es el registro de lo que se propuso, no de lo que rige.
 - [x] 1.8 **Sin columna `tenant_id` en usuarios** (`design.md` §7). El tenant
       es un setting del despliegue hoy, y hacerlo por usuario exige antes
       autenticar `ai-service` — si no, se abre una fuga entre clientes que
@@ -155,7 +174,7 @@
       administración se mudaron a `app/(console)/(admin)/` y las cierra el
       layout de ese grupo: la pertenencia es el file system, no una tabla
       de rutas que se puede olvidar de actualizar.
-- [ ] 3.4 Rol insuficiente → **403** con pantalla propia, no 404 ni redirect
+- [x] 3.4 Rol insuficiente → **403** con pantalla propia, no 404 ni redirect
       silencioso. **Sin** `forbidden()` ni `experimental.authInterrupts`: esa
       API existe en Next 16 pero está marcada experimental/canary, y este
       change ya se apoya en Auth.js beta y en un adapter que no declara
@@ -165,7 +184,30 @@
       `components/forbidden-screen.tsx` es la pantalla y dice 403, pero el
       status HTTP es 200. Un layout no puede fijar el status sin
       `forbidden()`, que es la API que este mismo punto descarta. Queda
-      cubierta la mitad visible del requirement; el código de estado exige
+      **Cerrada el 2026-09-10 con el desvío declarado**, por decisión del dueño
+      del repo: se deja el 200 y no se activa `experimental.authInterrupts`. El
+      motivo es el que este mismo punto ya daba —el change se apoya en Auth.js
+      beta y en un adapter que no declara Prisma 7, y un tercer flag
+      experimental encima es riesgo apilado para el mismo resultado visible— y
+      la alternativa de mover el chequeo al `proxy` está peor: el borde lee la
+      cookie sin verificar la firma, así que un chequeo de rol ahí falla
+      abierto, que es justo lo que la sección 3 decidió evitar.
+      Qué queda entonces: **una persona ve 403 y un script ve 200.** No hay
+      cliente programático de estas pantallas —son páginas de la consola, no
+      API— así que el que se equivoca leyendo el status no existe todavía. El
+      desvío está escrito en los tres lugares donde se paga: el docstring de
+      `app/(console)/(admin)/layout.tsx`, la fila de `forbidden-screen.tsx` en
+      `app-routes.md`, y el **delta de spec de este change**, que decía «la
+      consola responde 403» y habría promovido eso como requirement verdadero
+      al archivar. Ahora dice qué ve una persona, qué ve un cliente
+      programático, y cuál es la salida si alguna vez hay uno.
+      De paso: el mismo delta traía otro requirement que se habría promovido
+      falso —«`ai-service`, que no tiene autenticación propia»—, que dejó de
+      ser cierto con `add-service-authentication`. Reformulado a lo que sigue
+      en pie: el login de personas no es lo que cierra el servicio, y el token
+      del servicio no identifica personas.
+      Nota original, que se conserva: cubierta la mitad visible del
+      requirement; el código de estado exige
       el flag experimental o mover la decisión al `proxy`.
 - [x] 3.5 Volver al destino original después del login, no al home.
       Verificado en el browser: `/models` sin sesión llega a
@@ -196,6 +238,17 @@
 - [ ] 4.3 **El filtro de la nav no autoriza.** Verificar explícitamente que
       pedir `/models` a mano con rol `usuario` sigue dando 403 con el filtro
       desactivado.
+      **La mitad estructural está verificada; la del browser necesita una
+      sesión con rol `usuario` y queda para el dueño del repo.**
+      Lo estructural, comprobado por inspección el 2026-09-10: el filtro y el
+      gate **no comparten ni una línea**. `canAccess` / `isAdminOnly` /
+      `ADMIN_ONLY` (`lib/auth/roles.ts`) los importa **solo su propio test** —
+      grep sobre todo el paquete, sin un solo uso en `app/`—, y la nav filtra
+      con su propia constante `ADMIN_ONLY_ROLES` de `lib/console-nav.ts`. El que
+      rechaza es `app/(console)/(admin)/layout.tsx`, que llama a `auth()` y
+      compara el rol de la sesión. Así que «desactivar el filtro» no puede abrir
+      nada: no hay camino de código del filtro al gate. Lo que falta es verlo
+      pasar con una sesión real, que es lo que pide este punto.
 
 ## 5. Configuración
 
@@ -436,13 +489,63 @@ el runner de la tarea 7.1 dejó desactualizado el paso «Verificar» de ahí.
       no poder entrar, ser habilitada, entrar, ser promovida, alcanzar
       `/models`, ser deshabilitada y quedar afuera **sin cerrar sesión a
       mano** — ese último paso es el que prueba 5b.15.
-- [ ] 8.3 Sin sesión, cada página protegida redirige a `/login`, y después
+- [x] 8.3 Sin sesión, cada página protegida redirige a `/login`, y después
       del login se vuelve al destino pedido.
-- [ ] 8.4 `/login` en claro y en oscuro, sin colores literales.
+      **La primera mitad, verificada en producción** (`https://lidr-master.vercel.app`,
+      2026-09-10, sin cookie de sesión). Las siete rutas protegidas redirigen y
+      **el destino viaja**:
+
+      | pedido | terminó en |
+      |---|---|
+      | `/models` | `/login?next=%2Fmodels` |
+      | `/answer` | `/login?next=%2Fanswer` |
+      | `/corpus` | `/login?next=%2Fcorpus` |
+      | `/users` | `/login?next=%2Fusers` |
+      | `/usage` | `/login?next=%2Fusage` |
+      | `/search` | `/login?next=%2Fsearch` |
+      | `/` | `/login` **sin** `next` |
+
+      La última fila no es una falla, es la regla: `proxy.ts` omite el `next`
+      cuando el destino es `/`, porque volver a la portada es lo que el login
+      hace igual por defecto.
+      Verificado además que `/register` y `/register/pending` se alcanzan sin
+      sesión —si no, registrarse exigiría estar registrado— y que `/login` no
+      renderiza sidebar ni header (`document.querySelector('aside, nav')` da
+      `null`): una navegación que lista `/corpus` y `/models` a quien no entró
+      le cuenta qué opera esta consola.
+      **La segunda mitad —que después del login se vuelva al destino— no se
+      pudo ejercer**: exige entrar, y entrar exige credenciales. Ver 8.6.
+- [x] 8.4 `/login` en claro y en oscuro, sin colores literales. Verificado en
+      producción el 2026-09-10, los dos temas y las dos cosas:
+      - **Los dos temas salen de tokens.** En oscuro el `body` computa
+        `background: lab(5.77% …)` y en claro `lab(95.41% …)`, los dos leídos de
+        `--background` / `--foreground` sobre `:root`. O sea que el tema invierte
+        por tokens y no por reglas por pantalla.
+      - **Cero colores literales**, y medido y no mirado: de los 28 elementos de
+        `<main>`, ninguno tiene un color en `style=` (`#hex`, `rgb(`, `hsl(`) y
+        ninguno lleva una clase de paleta literal de Tailwind
+        (`bg-white`, `text-slate-900`, y las demás familias).
 - [x] 8.5 `uv run python scripts/validate_specs.py` desde la raíz.
       **0 errores**: 19 specs, 4 docs de dominio, 3 changes en vuelo, 54
       archivados. La única advertencia es de otro change
       (`add-multiturn-conversation-eval`, sin deltas todavía) y no de éste.
-- [ ] 8.6 Declarar qué no se pudo ejercer. El flujo de Google necesita
+- [x] 8.6 Declarar qué no se pudo ejercer. El flujo de Google necesita
       credenciales reales: si no las hay en el entorno, decirlo en vez de
       dar la tarea por verificada.
+      **Declarado.** Lo que se ejerció contra producción el 2026-09-10 es todo
+      lo que se alcanza **sin** una sesión: los siete redirects con su `next`
+      (8.3), las dos pantallas públicas de registro, la ausencia de nav en
+      `/login`, y los dos temas sin colores literales (8.4).
+      Lo que **no** se pudo ejercer, y por qué:
+
+      | tarea | por qué no |
+      |---|---|
+      | 8.2 | Login con Google y con contraseña. Entrar exige credenciales de una cuenta real, y un agente no las tipea. |
+      | 8.2b | El ciclo completo de una cuenta —registrarse, no entrar, ser habilitada, entrar, ser promovida, alcanzar `/models`, ser deshabilitada y quedar afuera sin cerrar sesión a mano— necesita dos sesiones simultáneas: la de la cuenta y la del administrador que la habilita. |
+      | 8.3 (2ª mitad) | Que después del login se vuelva al `next`. El redirect de ida está verificado; el de vuelta pasa por el login. |
+      | 4.3 | Pedir `/models` con rol `usuario`. La mitad estructural está verificada por inspección; ver 4.3. |
+
+      Las cuatro tienen la misma causa —hace falta estar adentro— y ninguna se
+      da por verificada. El paso que prueba 5b.15 es el último de 8.2b: que una
+      cuenta deshabilitada quede afuera **sin** cerrar sesión a mano, o sea que
+      el gate revalide contra la base y no se conforme con el JWT.
