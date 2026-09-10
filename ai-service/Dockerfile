@@ -44,6 +44,24 @@ RUN uv sync --frozen --no-dev
 ENV PORT=8000
 EXPOSE 8000
 
-# `sh -c` para que `$PORT` se expanda; en exec form quedaría literal.
-# || `sh -c` so `$PORT` expands; in exec form it would stay literal.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+# El arranque migra y RECIÉN DESPUÉS sirve. Copiar `alembic/` a la imagen y no
+# usarlo dejaba cada migración como un paso manual que nada recuerda, y la forma
+# que toma el olvido es un `UndefinedColumn` en la primera pregunta.
+#
+# Es seguro porque el servicio corre como UNA SOLA instancia en Railway —la
+# misma premisa del buffer en memoria de `app/domain/graph/activity.py`—, así
+# que no hay dos procesos compitiendo por el lock de migración. El día que haya
+# más de un worker, esto se mueve a un paso de release, no antes.
+#
+# El `&&` es lo importante: si la migración falla, el contenedor NO levanta.
+# Un servicio que responde con el esquema viejo miente, y Railway mantiene el
+# deploy anterior vivo en vez de promover este.
+#
+# `sh -c` además hace que `$PORT` se expanda; en exec form quedaría literal.
+#
+# || Startup migrates and only THEN serves. Safe because the service runs as a
+# SINGLE instance on Railway, so no two processes race for the migration lock.
+# The `&&` matters: if the migration fails the container does NOT come up, and
+# Railway keeps the previous deploy instead of promoting this one. `sh -c` also
+# makes `$PORT` expand; in exec form it would stay literal.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
