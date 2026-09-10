@@ -102,6 +102,14 @@ de procesos, las evaluaciones— y el [de la consola](business-backend/README.md
 
 ## Despliegue
 
+| | URL |
+|---|---|
+| Consola | https://lidr-master.vercel.app |
+| Servicio IA | https://api-service-ai-production.up.railway.app |
+
+La consola pide sesión; el servicio pide token en todo menos `/health`.
+Verificado el 2026-09-10.
+
 Cada proyecto va a su plataforma, y cada plataforma despliega desde GitHub por
 su propia integración. **No hay ningún job de CI que despliegue**: reproducirlo
 sería reimplementar en YAML lo que las dos ya hacen, con rollback incluido.
@@ -188,12 +196,14 @@ corpus generado. El repo trae el pipeline, no los datos.
   gasto ni la atribución: quien tenga el token puede llamar `POST /answer` sin
   tope, y el ledger atribuye cada llamada al portador —el BFF— y no a la persona
   que preguntó, porque el servicio no tiene identidad de usuario.
-- **Próximo paso más claro**: verificar el despliegue de punta a punta contra
-  la URL pública —los pasos que dependían del repo ya están (el build genera el
-  cliente Prisma, el contenedor migra al arrancar, el servicio exige token en
-  producción); lo que queda es confirmar que la consola carga, entra y responde
-  con citas— y archivar los `openspec/changes/` en curso una vez verificados en
-  producción.
+- **Despliegue de las plataformas**: el aislamiento por rutas está hecho en CI
+  (`dorny/paths-filter`) pero **no** en los dashboards, así que un commit que
+  toca un solo proyecto todavía puede producir un deploy del otro. Es
+  configuración de Railway (*Watch Paths*) y de Vercel (*Ignored Build Step*),
+  no código.
+- **Próximo paso más claro**: los tres `openspec/changes/` en curso —cerrar la
+  autenticación de la consola, la selección de corrida del mirror y el eval
+  multi-turno—. El despliegue ya está verificado de punta a punta.
 
 ## Fuente de verdad
 
