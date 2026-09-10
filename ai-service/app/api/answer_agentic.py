@@ -41,6 +41,7 @@ from app.domain.graph.runner import (
 from app.domain.graph.runner import (
     close_turn,
     completed_result,
+    effective_filters,
     initial_state,
     open_turn,
     run_agentic_background,
@@ -71,6 +72,29 @@ log = structlog.get_logger()
 _BACKGROUND_RUNS: set[asyncio.Task] = set()
 
 
+class EffectiveFilter(BaseModel):
+    """One retrieval filter in force, and where it came from.
+
+    Three sources can supply a filter and they do not carry the same weight,
+    so the value alone does not explain why the search was narrowed. A filter
+    applied without saying so is a defect, not a convenience.
+
+    || Un filtro de recuperación en vigor, y de dónde salió. Tres fuentes
+    pueden aportarlo y no pesan lo mismo, así que el valor solo no explica por
+    qué se recortó la búsqueda. Un filtro aplicado sin decirlo es un defecto,
+    no una comodidad.
+    """
+
+    field: Literal["module_code", "window_type_name"]
+    values: list[str]
+    source: Literal["request", "question", "anchor"] = Field(
+        description="`request` = the client asked for it; `question` = a heuristic read it out "
+        "of the question text; `anchor` = pinned in an earlier turn. "
+        "|| `request` = lo pidió el cliente; `question` = una heurística lo leyó del texto de la "
+        "pregunta; `anchor` = fijado en un turno anterior."
+    )
+
+
 class AnswerAgenticResponse(BaseModel):
     """Completed agentic answer. || Respuesta agentica completada."""
 
@@ -97,6 +121,11 @@ class AnswerAgenticResponse(BaseModel):
         default_factory=list,
         description="Pinned constraints this turn retrieved with. "
         "|| Restricciones fijadas con las que se recupero en este turno.",
+    )
+    effective_filters: list[EffectiveFilter] = Field(
+        default_factory=list,
+        description="Retrieval filters in force, with the source of each. "
+        "|| Filtros de recuperación en vigor, con la fuente de cada uno.",
     )
     answer: str
     citations: list[SearchHit]
@@ -142,6 +171,11 @@ class AnswerAgenticPausedResponse(BaseModel):
     resolved_referents: list[str] = Field(default_factory=list)
     session_memory_used: bool = False
     anchors_applied: list[dict] = Field(default_factory=list)
+    effective_filters: list[EffectiveFilter] = Field(
+        default_factory=list,
+        description="Retrieval filters in force, with the source of each. "
+        "|| Filtros de recuperación en vigor, con la fuente de cada uno.",
+    )
     context_truncated: bool = False
     dropped_hits: int = Field(default=0, ge=0)
     answer_truncated: bool = False
@@ -183,6 +217,11 @@ class AnswerAgenticProgress(BaseModel):
     resolved_referents: list[str] = Field(default_factory=list)
     session_memory_used: bool | None = None
     anchors_applied: list[dict] = Field(default_factory=list)
+    effective_filters: list[EffectiveFilter] = Field(
+        default_factory=list,
+        description="Retrieval filters in force, with the source of each. "
+        "|| Filtros de recuperación en vigor, con la fuente de cada uno.",
+    )
     answer: str | None = None
     citations: list[SearchHit] = Field(default_factory=list)
     grounded: bool | None = None
@@ -199,6 +238,19 @@ class AnswerAgenticProgress(BaseModel):
     )
 
 
+def _effective_filters(values: dict) -> list[EffectiveFilter]:
+    """The resolved filters with their source, from the graph state.
+
+    Shaped by ``runner.effective_filters`` so the synchronous body and the
+    background payload cannot disagree about the same field.
+
+    || Los filtros resueltos con su fuente, desde el estado del grafo. Los
+    arma ``runner.effective_filters`` para que el body sincrónico y el payload
+    de background no puedan discrepar sobre el mismo campo.
+    """
+    return [EffectiveFilter.model_validate(item) for item in effective_filters(values)]
+
+
 def _hits_from_state(values: dict) -> list[SearchHit]:
     return [SearchHit.model_validate(hit) for hit in (values.get("citations") or [])]
 
@@ -211,6 +263,7 @@ def _completed_response(thread_id: str, values: dict) -> AnswerAgenticResponse:
         resolved_referents=list(values.get("resolved_referents") or []),
         session_memory_used=bool(values.get("session_id")),
         anchors_applied=list(values.get("conversation_anchors") or []),
+        effective_filters=_effective_filters(values),
         answer=values.get("answer") or "",
         citations=_hits_from_state(values),
         grounded=bool(values.get("citations_valid", True)),
@@ -235,6 +288,7 @@ def _paused_response(thread_id: str, question: str, values: dict, reasons: list[
         resolved_referents=list(values.get("resolved_referents") or []),
         session_memory_used=bool(values.get("session_id")),
         anchors_applied=list(values.get("conversation_anchors") or []),
+        effective_filters=_effective_filters(values),
         review_reasons=reasons,
         confidence=values.get("confidence"),
         context_truncated=bool(values.get("context_truncated")),
@@ -526,6 +580,10 @@ async def answer_agentic_progress(thread_id: str):
         resolved_referents=result.get("resolved_referents") or [],
         session_memory_used=result.get("session_memory_used"),
         anchors_applied=result.get("anchors_applied") or [],
+        effective_filters=[
+            EffectiveFilter.model_validate(item)
+            for item in result.get("effective_filters") or []
+        ],
         answer=result.get("answer"),
         citations=[SearchHit.model_validate(hit) for hit in result.get("citations") or []],
         grounded=result.get("grounded"),

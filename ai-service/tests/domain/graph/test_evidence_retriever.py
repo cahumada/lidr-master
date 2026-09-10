@@ -128,3 +128,36 @@ def test_a_chunk_found_by_two_sub_queries_is_not_duplicated():
     )
 
     assert [hit["content_hash"] for hit in update["hits"]] == ["shared", "b1"]
+
+
+def test_resolved_filters_reach_the_retriever():
+    """The filter the state resolved has to arrive as a `SearchFilters`.
+
+    This is the second half of the chain the dropped-filters defect broke: the
+    planner resolves, and the retriever must narrow by what it resolved. A
+    filter that matches nothing has to produce nothing — which is why the
+    assertion is on what the retriever RECEIVED and not on how many hits came
+    back: filtering less returns MORE rows, and more rows read like a search
+    that worked.
+
+    || La segunda mitad de la cadena que rompía el defecto de los filtros
+    descartados. La aserción es sobre lo que RECIBIÓ el retriever y no sobre
+    cuántos hits volvieron: filtrar de menos devuelve MÁS filas, y más filas se
+    leen como una búsqueda que funcionó.
+    """
+    fake = FakeRetriever([])
+    state = {
+        "query": "que valida",
+        "sub_queries": ["que valida"],
+        "supervisor_steps": 2,
+        "filters": {"module_code": ["ZZZ"], "window_type_name": ["Menu"]},
+        "retrieval_options": {"limit": 5, "lexical": False, "split": False, "rerank": False},
+    }
+
+    update = asyncio.run(
+        evidence_retriever(state, {"configurable": {"retriever": fake, "reranker": None}})
+    )
+
+    assert fake.calls[0]["filters"].module_code == ["ZZZ"]
+    assert fake.calls[0]["filters"].window_type_name == ["Menu"]
+    assert update["hits"] == []

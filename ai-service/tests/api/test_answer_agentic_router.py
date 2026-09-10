@@ -128,3 +128,54 @@ def test_paused_run_returns_202():
         assert body["review_reasons"]
 
     test_app.dependency_overrides.clear()
+
+
+# --- filtros efectivos en el contrato HTTP -----------------------------
+
+
+def test_effective_filters_travel_with_their_source():
+    """What was applied, and why. A filter applied without saying so is a defect.
+
+    || Lo que se aplicó, y por qué. Un filtro aplicado sin decirlo es un defecto.
+    """
+
+    async def no_session():
+        yield None
+
+    snapshot = FakeSnapshot(
+        {
+            "query": "test",
+            "answer": "respuesta",
+            "citations": [],
+            "citations_valid": True,
+            "confidence": 0.9,
+            "routing_history": [],
+            "filters": {"module_code": ["CA"]},
+            "filter_sources": {"module_code": "request"},
+        }
+    )
+    test_app = _test_app(snapshot)
+    test_app.dependency_overrides[get_async_session] = no_session
+    test_app.dependency_overrides[get_embedder] = lambda: object()
+    test_app.dependency_overrides[get_reranker] = lambda: None
+
+    with TestClient(test_app) as test_client:
+        body = test_client.post(
+            "/answer/agentic", json={"question": "test", "module_code": ["CA"]}
+        ).json()
+
+    assert body["effective_filters"] == [
+        {"field": "module_code", "values": ["CA"], "source": "request"}
+    ]
+    test_app.dependency_overrides.clear()
+
+
+def test_without_filters_the_field_is_empty_not_absent(client):
+    """The no-filter path is the one every eval uses: it must not change shape.
+
+    || El camino sin filtros es el que usan todos los evals: no puede cambiar
+    de forma.
+    """
+    body = client.post("/answer/agentic", json={"question": "test"}).json()
+
+    assert body["effective_filters"] == []

@@ -132,7 +132,24 @@ class AnswerAgentState(TypedDict, total=False):
     conversation_anchors: list[dict]
     conversation_turns: list[dict]
     sub_queries: list[str]
+    # What the CLIENT asked to narrow by, before any resolution. Separate from
+    # `filters` on purpose: `filters` is the resolved outcome of three sources
+    # and only the planner writes it, so keeping the request's own values apart
+    # is what lets the precedence be decided in one place and audited.
+    # || Por qué pidió recortar EL CLIENTE, antes de resolver nada. Separado de
+    # `filters` a propósito: `filters` es el resultado resuelto de tres fuentes
+    # y solo lo escribe el planner, así que mantener aparte lo que vino del
+    # request es lo que permite decidir la precedencia en un solo lugar y
+    # auditarla.
+    request_filters: QueryFilters
     filters: QueryFilters
+    # Which source each effective filter came from: `request`, `question` or
+    # `anchor`. A filter applied without saying so is a defect, and with three
+    # possible sources knowing THAT it was filtered is not enough.
+    # || De qué fuente salió cada filtro efectivo. Un filtro aplicado sin
+    # decirlo es un defecto, y con tres fuentes posibles saber QUE se filtró no
+    # alcanza.
+    filter_sources: dict[str, str]
     retrieval_options: RetrievalOptions
     hits: list[dict]
     answer: str

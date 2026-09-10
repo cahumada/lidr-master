@@ -14,7 +14,7 @@ from app.config import get_settings
 from app.dependencies import get_activity_log, get_embedder, get_reranker
 from app.domain.graph.activity import describe_node
 from app.domain.profiles import synthesizer_runtime
-from app.domain.schemas import AnswerAgentState
+from app.domain.schemas import AnswerAgentState, QueryFilters
 from app.foundation.llm.wrapper import usage_payload
 from app.foundation.persistence.database import get_async_session_factory
 from app.foundation.persistence.usage import PURPOSE_SYNTHESIZER, llm_with_accounting
@@ -67,8 +67,6 @@ def thread_config(
     }
 
 
-
-
 def initial_state(
     body: AnswerRequest, conversation: ConversationSession | None = None
 ) -> AnswerAgentState:
@@ -82,10 +80,27 @@ def initial_state(
     se comporta igual que antes de que existieran las sesiones, que es lo que
     hace seguro dejar ``session_id`` opcional en el request.
     """
+    # The filters the client asked for. Seeded here and resolved by the
+    # planner, which is the one node that sees all three sources; the retriever
+    # reads only the resolved `filters` and knows nothing about the policy.
+    # A field the client did not send is NOT seeded: absent means "no narrowing
+    # asked for", which is not the same as an empty list.
+    # || Los filtros que pidió el cliente. Se siembran acá y los resuelve el
+    # planner, que es el único nodo que ve las tres fuentes; el retriever lee
+    # solo los `filters` resueltos y no conoce la política. Un campo que el
+    # cliente no mandó NO se siembra: ausente significa «no pidió recorte», que
+    # no es lo mismo que una lista vacía.
+    request_filters: QueryFilters = {}
+    if body.module_code:
+        request_filters["module_code"] = list(body.module_code)
+    if body.window_type_name:
+        request_filters["window_type_name"] = list(body.window_type_name)
+
     state: AnswerAgentState = {
         "query": body.question,
         "resolved_question": body.question,
         "resolved_referents": [],
+        "request_filters": request_filters,
         "retrieval_options": {
             "limit": body.limit,
             "max_per_document": body.max_per_document,
@@ -221,6 +236,30 @@ async def close_turn(
     )
 
 
+_FILTER_FIELDS = ("module_code", "window_type_name")
+
+
+def effective_filters(values: dict) -> list[dict]:
+    """The resolved retrieval filters with the source of each one.
+
+    One implementation for both the synchronous responses and the background
+    payloads: two would drift, and this is the field whose whole point is
+    saying WHY the search was narrowed.
+
+    || Los filtros de recuperación resueltos con la fuente de cada uno. Una
+    sola implementación para las respuestas sincrónicas y para los payloads de
+    background: dos se desincronizarían, y justamente este campo existe para
+    decir POR QUÉ se recortó la búsqueda.
+    """
+    resolved = values.get("filters") or {}
+    sources = values.get("filter_sources") or {}
+    return [
+        {"field": field, "values": list(resolved[field]), "source": sources.get(field, "question")}
+        for field in _FILTER_FIELDS
+        if resolved.get(field)
+    ]
+
+
 def completed_result(values: dict, fallback_question: str) -> dict:
     """Shape a completed run's values into the progress/response payload.
 
@@ -234,6 +273,7 @@ def completed_result(values: dict, fallback_question: str) -> dict:
         "resolved_referents": list(values.get("resolved_referents") or []),
         "session_memory_used": bool(values.get("session_id")),
         "anchors_applied": list(values.get("conversation_anchors") or []),
+        "effective_filters": effective_filters(values),
         "answer": values.get("answer") or "",
         "citations": list(values.get("citations") or []),
         "grounded": bool(values.get("citations_valid", True)),
@@ -261,6 +301,7 @@ def paused_result(values: dict, fallback_question: str, reasons: list[str]) -> d
         "resolved_referents": list(values.get("resolved_referents") or []),
         "session_memory_used": bool(values.get("session_id")),
         "anchors_applied": list(values.get("conversation_anchors") or []),
+        "effective_filters": effective_filters(values),
         "answer": values.get("answer"),
         "citations": list(values.get("citations") or []),
         "review_reasons": reasons,
