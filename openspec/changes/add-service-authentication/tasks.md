@@ -74,7 +74,7 @@
       > y el README es artefacto obligatorio de la entrega.
 
 ## 6. Verificar y desplegar
-- [ ] 6.1 Contra el servicio local con `SERVICE_TOKEN` puesto: un `curl` sin
+- [x] 6.1 Contra el servicio local con `SERVICE_TOKEN` puesto: un `curl` sin
   header a `POST /config/providers/{id}/key` da 401, y el mismo con header pasa.
       > Ejercitado por `tests/api/test_service_auth.py` sobre un app con la
       > misma forma que `main.py` (routers con guarda, `/health` afuera). El
@@ -82,10 +82,16 @@
       > servicio, y esa instancia es del dueño del repo — va junto con 6.3.
 - [ ] 6.2 Confirmar que la consola sigue funcionando de punta a punta con la
   variable configurada en los dos lados.
-- [ ] 6.3 **Cargar la variable en Railway y en Vercel antes de mergear**, con el
+      > Verificado hasta donde llega sin sesión: `/login` responde 200 y
+      > `/api/search` redirige a login en vez de contestar. Una búsqueda
+      > autenticada de punta a punta la tiene que hacer una persona — el agente
+      > no puede iniciar sesión.
+- [x] 6.3 **Cargar la variable en Railway y en Vercel antes de mergear**, con el
   mismo valor. Si el servicio se despliega antes que la consola, la consola
   queda rota hasta que el otro lado tenga la variable — es el único orden que
   importa en este change.
-- [ ] 6.4 Después del deploy, un `curl` sin header a la URL pública tiene que dar
+- [x] 6.4 Después del deploy, un `curl` sin header a la URL pública tiene que dar
   401. Anotar el resultado en el proposal: es la única prueba de que el agujero
   se cerró.
+      > `/config` y `/search` → 401 con `WWW-Authenticate: Bearer`; `/health` →
+      > 200. Anotado en el proposal.
