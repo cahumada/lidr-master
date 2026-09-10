@@ -183,6 +183,15 @@ class ChunkMetadata(BaseModel):
         "masiva, con o sin encabezado. El nombre y no el código: `6` no le dice nada a "
         "nadie. Ausente cuando el export no lo declara.",
     )
+    window_status: str | None = Field(
+        default=None,
+        description="Declared record status from `TABLE26` via `SSTATREGT`: Activo, En "
+        "proceso de instalación or Acceso restringido. The declared name, not a derived "
+        "boolean. Absent when the tree does not resolve it. "
+        "|| Estado declarado del registro según `TABLE26` vía `SSTATREGT`: Activo, En "
+        "proceso de instalación o Acceso restringido. El nombre declarado, no un booleano "
+        "derivado. Ausente cuando el árbol no lo resuelve.",
+    )
     doc_version: str = Field(
         default="unversioned",
         description="Documentation set version, e.g. 'DW Funtionals 2026.1'. "
@@ -592,6 +601,11 @@ class SearchHit(BaseModel):
         "|| 'content' responde algo; 'index' es un nodo de navegación -- un breadcrumb de "
         "una línea, no una respuesta. Se expone porque ahora influye en el orden.",
     )
+    window_status: str | None = Field(
+        default=None,
+        description="Declared record status from `TABLE26` when the tree resolved it. "
+        "|| Estado declarado del registro según `TABLE26` cuando el árbol lo resolvió.",
+    )
     text: str = Field(description="The chunk text. || El texto del chunk.")
     score: float = Field(description="Fused RRF score. || Puntaje RRF fusionado.")
     branches: list[str] = Field(
@@ -692,6 +706,7 @@ def search_hits_from_chunks(chunks: list) -> list[SearchHit]:
             bullet_path=chunk.bullet_path,
             module_code=chunk.module_code,
             document_kind=chunk.document_kind,
+            window_status=getattr(chunk, "window_status", None),
             text=chunk.text,
             score=chunk.score,
             branches=chunk.branches,

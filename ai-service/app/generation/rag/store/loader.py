@@ -71,6 +71,7 @@ COPY_COLUMNS = (
     "submodule_code",
     "submodule_name",
     "window_type_name",
+    "window_status",
 )
 
 
@@ -134,6 +135,7 @@ def iter_rows(
                     metadata.get("submodule_code"),
                     metadata.get("submodule_name"),
                     metadata.get("window_type_name"),
+                    metadata.get("window_status"),
                 )
             )
     return module, rows, without_vector
@@ -153,7 +155,7 @@ CREATE TEMPORARY TABLE chunks_staging (
     chunk_type text, section text, bullet_path text, field text,
     transaction_type text, document_kind text,
     module_code text, module_name text, submodule_code text, submodule_name text,
-    window_type_name text
+    window_type_name text, window_status text
 ) ON COMMIT DROP
 """
 
@@ -204,6 +206,7 @@ _METADATA_COLUMNS = (
     "submodule_code",
     "submodule_name",
     "window_type_name",
+    "window_status",
 )
 
 # The embedding is NOT refreshed: it is tied to the text, and the text is what

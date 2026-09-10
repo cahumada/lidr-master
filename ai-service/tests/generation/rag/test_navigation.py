@@ -10,9 +10,11 @@ import pytest
 
 from app.generation.rag.chunking.functional_spec import FunctionalSpecChunker
 from app.generation.rag.navigation import (
+    WINDOW_STATUSES,
     NavigationTree,
     get_navigation_tree,
     load_navigation_tree,
+    load_navigation_tree_from_mirror,
 )
 from app.generation.rag.taxonomy import classify_transaction_type
 
@@ -187,3 +189,96 @@ def test_the_window_type_travels_by_name_not_by_code(tree):
     """`6` tells nobody anything; the chunk gets embedded for a model to read."""
     assert tree.window_type_name("MENU") == "Menu"
     assert tree.window_type_name("NO_EXISTE") is None
+
+
+# --- Window record status ----------------------------------------------------
+
+
+def test_window_status_resolves_the_declared_catalog_name():
+    tree = NavigationTree(
+        [
+            ("CA001", "MENU", "Pólizas", "1", "", "1"),
+            ("CA002", "MENU", "Otra", "1", "", "3"),
+        ]
+    )
+
+    assert tree.window_status("CA001") == WINDOW_STATUSES["1"]
+    assert tree.locate("CA002").window_status == "Acceso restringido"
+
+
+def test_status_four_is_normalized_to_three_and_counted():
+    tree = NavigationTree([("X001", "MENU", "Ejemplo", "1", "", "4")])
+
+    assert tree.window_status("X001") == "Acceso restringido"
+    assert tree.status_normalized_from_4 == 1
+
+
+def test_an_unknown_status_stays_unresolved():
+    tree = NavigationTree([("X001", "MENU", "Ejemplo", "1", "", "9")])
+
+    assert tree.window_status("X001") is None
+    assert tree.locate("X001").window_status is None
+
+
+def test_a_row_without_the_status_column_leaves_status_unresolved():
+    tree = NavigationTree([("CA001", "MENU", "Pólizas", "1")])
+
+    assert tree.window_status("CA001") is None
+
+
+class _FakeMirrorCursor:
+    def __init__(self, *, count: int, rows: list[tuple] | None = None) -> None:
+        self._count = count
+        self._rows = rows or []
+        self._step = 0
+
+    def execute(self, _sql, _params=()) -> None:
+        self._step += 1
+
+    def fetchone(self):
+        return (self._count,)
+
+    def fetchall(self):
+        return self._rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+
+class _FakeMirrorConnection:
+    def __init__(self, cursor: _FakeMirrorCursor) -> None:
+        self._cursor = cursor
+
+    def cursor(self):
+        return self._cursor
+
+
+def test_mirror_loader_builds_a_tree_from_windows_rows():
+    cursor = _FakeMirrorCursor(
+        count=1,
+        rows=[("CA001", "MENU", "Pólizas", "1", "Corto", "3")],
+    )
+    tree = load_navigation_tree_from_mirror(
+        _FakeMirrorConnection(cursor),
+        tenant="life_seguros",
+        env="PROD",
+        run_id="20260909_214921",
+    )
+
+    assert len(tree) == 1
+    assert tree.window_status("CA001") == "Acceso restringido"
+
+
+def test_mirror_loader_fails_when_the_run_has_no_windows_rows():
+    cursor = _FakeMirrorCursor(count=0)
+
+    with pytest.raises(RuntimeError, match="No WINDOWS rows"):
+        load_navigation_tree_from_mirror(
+            _FakeMirrorConnection(cursor),
+            tenant="life_seguros",
+            env="PROD",
+            run_id="missing_run",
+        )

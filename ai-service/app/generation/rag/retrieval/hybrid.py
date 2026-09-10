@@ -240,6 +240,7 @@ class RetrievedChunk:
     document_kind: str | None
     text: str
     score: float
+    window_status: str | None = None
     # Which branches found it. A chunk found by two is a different kind of
     # answer than one found by one, and the reader should be able to tell.
     # || Qué ramas lo encontraron. Un chunk que encontraron dos es otra clase de
@@ -508,6 +509,7 @@ class HybridRetriever:
                     bullet_path=row.bullet_path,
                     module_code=row.module_code,
                     document_kind=row.document_kind,
+                    window_status=row.window_status,
                     text=row.text,
                     score=item.score,
                     branches=item.branches,

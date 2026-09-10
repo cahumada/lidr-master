@@ -184,6 +184,41 @@ def test_a_budget_of_zero_is_rejected_at_startup():
         Settings(ANSWER_MAX_CONTEXT_TOKENS=-1)
 
 
+def _baseline_block(**overrides) -> str:
+    return render_hit_block(1, _hit(**overrides))
+
+
+def test_active_or_unresolved_status_renders_like_before_this_change():
+    baseline = _baseline_block()
+
+    assert render_hit_block(1, _hit(window_status="Activo")) == baseline
+    assert render_hit_block(1, _hit(window_status=None)) == baseline
+
+
+def test_a_restricted_status_adds_the_declared_warning_line():
+    block = render_hit_block(1, _hit(window_status="Acceso restringido"))
+
+    assert "Estado de la ventana (declarado): Acceso restringido" in block
+    assert "baja" not in block.lower()
+
+
+def test_fit_to_budget_counts_the_warning_line():
+    active = _hit(content_hash="active", window_status="Activo")
+    restricted = _hit(
+        content_hash="restricted",
+        window_status="Acceso restringido",
+        text=active.text,
+    )
+    budget = _cost(1, active) + 1
+
+    active_budgeted = fit_to_budget([active], budget)
+    restricted_budgeted = fit_to_budget([restricted], budget)
+
+    assert active_budgeted.kept == [active]
+    assert restricted_budgeted.kept == []
+    assert restricted_budgeted.dropped == [restricted]
+
+
 def test_a_hit_found_by_two_sub_queries_enters_once():
     shared = _hit(content_hash="shared")
     left = [shared, _hit(content_hash="a1")]
