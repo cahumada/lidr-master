@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { WindowStatusBadge } from "@/components/window-status-badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -339,6 +340,7 @@ function Hit({ hit, position }: { hit: SearchHit; position: number }) {
               {hit.module_code}
             </Badge>
           )}
+          <WindowStatusBadge windowStatus={hit.window_status} />
           <span className="text-muted-foreground ml-auto text-xs tabular-nums">
             {hit.score.toFixed(4)}
           </span>

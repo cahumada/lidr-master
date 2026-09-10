@@ -31,6 +31,11 @@ export interface SearchHit {
   section: string | null;
   bullet_path: string | null;
   module_code: string | null;
+  /**
+   * Declared record status from `TABLE26` when the tree resolved it.
+   * || Estado declarado del registro según `TABLE26` cuando el árbol lo resolvió.
+   */
+  window_status: string | null;
   text: string;
   /** Fused RRF score. || Puntaje RRF fusionado. */
   score: number;
@@ -98,6 +103,15 @@ export interface ChunkMetadata {
   submodule_name: string | null;
   tenant_id: string;
   window_type_name: string | null;
+  /**
+   * Declared record status from `TABLE26` via `SSTATREGT`: Activo, En
+   * proceso de instalación or Acceso restringido. The declared name, not a
+   * derived boolean. Absent when the tree does not resolve it.
+   * || Estado declarado del registro según `TABLE26` vía `SSTATREGT`: Activo,
+   * En proceso de instalación o Acceso restringido. El nombre declarado, no
+   * un booleano derivado. Ausente cuando el árbol no lo resuelve.
+   */
+  window_status: string | null;
   doc_version: string;
   content_hash: string;
   field: string | null;

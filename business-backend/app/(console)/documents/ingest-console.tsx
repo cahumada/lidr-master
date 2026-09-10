@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { WindowStatusBadge } from "@/components/window-status-badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -120,6 +121,15 @@ function Stats({ result }: { result: IngestResponse }) {
   );
 }
 
+function declaredWindowStatus(document: ChunkedDocument): string | null {
+  for (const chunk of document.chunks) {
+    if (chunk.metadata.window_status) {
+      return chunk.metadata.window_status;
+    }
+  }
+  return null;
+}
+
 /**
  * A source file can carry several transactions, each its own document -- so the
  * result is a list, not one document.
@@ -133,6 +143,7 @@ function DocumentChunks({ document }: { document: ChunkedDocument }) {
         <Badge variant="secondary" className="font-mono text-xs">
           {document.document_id}
         </Badge>
+        <WindowStatusBadge windowStatus={declaredWindowStatus(document)} />
         <span className="text-sm font-medium">{document.document_title}</span>
         <Badge variant="outline" className="text-xs">
           {document.transaction_type}

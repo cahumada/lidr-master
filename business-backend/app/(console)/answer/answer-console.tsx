@@ -19,6 +19,7 @@ import {
 
 import { AnswerMarkdown } from "./answer-markdown"
 import { LiveFlowPanel } from "./live-flow-panel"
+import { WindowStatusBadge } from "@/components/window-status-badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -102,6 +103,7 @@ type CitationView = {
   bullet_path?: string | null
   content_hash: string
   text?: string
+  window_status?: string | null
 }
 
 type ChatTurn = {
@@ -328,6 +330,7 @@ function CitationList({ hits }: { hits: CitationView[] }) {
                 {hit.document_title && (
                   <span className="text-sm">{hit.document_title}</span>
                 )}
+                <WindowStatusBadge windowStatus={hit.window_status} />
                 {hit.section && (
                   <span className="text-muted-foreground text-xs">{hit.section}</span>
                 )}
