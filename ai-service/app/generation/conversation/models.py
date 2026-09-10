@@ -36,7 +36,17 @@ from pydantic import BaseModel, Field
 # || Lo que un anchor puede fijar. A propósito, los dos filtros que el
 # retriever ya entiende: un anchor que nombrara algo que `SearchFilters` no
 # sabe expresar sería una promesa que el pipeline no puede cumplir.
-AnchorKind = Literal["module_code", "window_type_name"]
+# `module_code` is LEGACY and read-only: no producer emits it any more, but
+# sessions stored before the vocabulary fix carry anchors with that kind and
+# they have to keep loading. Dropping it from the Literal would make every one
+# of those sessions raise on read — a live session is data, not a schema we get
+# to redefine underneath it. It expires with the session TTL.
+# || `module_code` es LEGADO y de solo lectura: ningún productor lo emite ya,
+# pero las sesiones guardadas antes del arreglo de vocabulario tienen anchors
+# con ese kind y tienen que seguir cargando. Sacarlo del Literal haría que cada
+# una de esas sesiones explote al leerse — una sesión viva es un dato, no un
+# schema que podamos redefinir por debajo. Se va con el TTL de la sesión.
+AnchorKind = Literal["transaction_prefix", "window_type_name", "module_code"]
 
 # Default title cap. The setting ``CONVERSATION_TITLE_MAX_CHARS`` mirrors this
 # so the PATCH contract and ``append_history`` stay on the same number; the

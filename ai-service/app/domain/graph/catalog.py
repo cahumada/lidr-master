@@ -186,8 +186,9 @@ AGENT_SPECS: tuple[AgentSpec, ...] = (
                 "Tres subconsultas: `decompose()` encuentra tres cláusulas coordinadas, "
                 "cada una con su propio interrogativo, y le pega a cada una el contexto "
                 "(«Si un lote de cobranza PAC…») para que no pierda las entidades. Y "
-                "`filters` vacío: ningún token tiene forma de transacción — `PAC` son "
-                "letras sin dígito, así que no propone `module_code`."
+                "`filters` vacío: el planner no deriva filtros del texto de la pregunta "
+                "—solo resuelve los que pidió el cliente y los que fijó la sesión—, y "
+                "esta corrida no tiene ninguno de los dos."
             ),
             detail=EXAMPLE_SUB_QUERIES,
         ),

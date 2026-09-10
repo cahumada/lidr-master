@@ -23,7 +23,7 @@ def _session(*, turns: int = 0, anchors: int = 0, facts: bool = True) -> Convers
         else ConversationFacts()
     )
     session.anchors = [
-        Anchor(kind="module_code", value=f"M{index}", source_question="solo módulo")
+        Anchor(kind="transaction_prefix", value=f"M{index}", source_question="solo módulo")
         for index in range(anchors)
     ]
     session.turns = [

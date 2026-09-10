@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import re
 from time import perf_counter
 
 import structlog
@@ -18,25 +17,28 @@ from app.generation.rag.retrieval.decomposition import decompose
 
 log = structlog.get_logger()
 
-_TRANSACTION_PREFIX = re.compile(r"^([A-Za-z]{2,4})\d", re.IGNORECASE)
-
-
-def _suggest_filters(query: str) -> QueryFilters:
-    """Heuristic filter hints from transaction-shaped tokens in the query.
-
-    || Pistas heurísticas de filtros a partir de tokens con forma de transacción.
-    """
-    filters: QueryFilters = {}
-    module_codes: list[str] = []
-    for token in re.split(r"[\s,;:()\[\]¿?¡!\"']+", query):
-        match = _TRANSACTION_PREFIX.match(token.strip("."))
-        if match:
-            code = match.group(1).upper()
-            if code not in module_codes:
-                module_codes.append(code)
-    if module_codes:
-        filters["module_code"] = module_codes
-    return filters
+# The filter heuristic that used to live here is GONE, and it is worth saying
+# why so nobody rebuilds it: it read a transaction-shaped token out of the
+# question and used its prefix as a `module_code` (`CA014` -> "CA"). The corpus
+# stores the `WINDOWS` module-node code there -- `DMECAR`, `DMECLI`, … -- so it
+# narrowed to a module that does not exist and the question came back with zero
+# evidence. Measured: "¿Qué valida CA014?" returned 0 citations, the same
+# question without the code returned 5.
+#
+# It cannot be fixed by translating the prefix either: of 71 prefixes in the
+# corpus, `OPL` spans five modules and `MA` four, so any mapping would have to
+# pick one and drop the tail. And it was never needed -- `retrieval`'s
+# exact-match branch already finds a named transaction by `document_id`.
+#
+# || La heurística de filtros que vivía acá SE FUE, y vale decir por qué para
+# que nadie la reconstruya: usaba el prefijo de un código de transacción como
+# `module_code` (`CA014` -> «CA»), y ahí el corpus guarda el código del nodo
+# módulo de `WINDOWS` (`DMECAR`, `DMECLI`, …). Recortaba a un módulo inexistente
+# y la pregunta volvía sin evidencia. Medido: «¿Qué valida CA014?» devolvía 0
+# citas y la misma pregunta sin el código devolvía 5. Tampoco se arregla
+# traduciendo el prefijo: de 71 prefijos, `OPL` cae en cinco módulos y `MA` en
+# cuatro. Y nunca hizo falta: la rama de coincidencia exacta de `retrieval` ya
+# encuentra una transacción nombrada por su `document_id`.
 
 
 async def query_planner(state: AnswerAgentState) -> dict:
@@ -61,7 +63,7 @@ async def query_planner(state: AnswerAgentState) -> dict:
     sub_queries = decompose(resolved.text)
     if not sub_queries:
         sub_queries = [resolved.text]
-    filters, sources = _resolve_filters(state, _suggest_filters(resolved.text))
+    filters, sources = _resolve_filters(state)
 
     contribution = record_model_action(
         "query_planner",
@@ -119,34 +121,25 @@ def _facts_of(state: AnswerAgentState) -> ConversationFacts | None:
     return ConversationFacts.model_validate(raw)
 
 
-def _resolve_filters(
-    state: AnswerAgentState, suggested: QueryFilters
-) -> tuple[QueryFilters, dict[str, str]]:
-    """Resolve the three filter sources into one, and say where each came from.
+def _resolve_filters(state: AnswerAgentState) -> tuple[QueryFilters, dict[str, str]]:
+    """Resolve the two filter sources into one, and say where each came from.
 
-    Precedence, per FIELD and not per block: ``request`` → ``question`` →
-    ``anchor``. So a request that carries `module_code` and no
-    `window_type_name` does not erase a window type the question or an anchor
-    contributed.
+    Precedence, per FIELD and not per block: ``request`` → ``anchor``. So a
+    request that carries `module_code` and no `window_type_name` does not erase
+    a window type an anchor contributed.
 
-    Why that order: of the three, the middle one is the only one that is not a
-    statement of intent — it is a heuristic reading transaction-shaped tokens
-    out of prose. A control the operator set for this turn beats that
-    inference, which still beats a constraint pinned in an earlier turn: a
-    filter the question itself names should not be blocked by a pin, because
-    the anchor is a default, not a cage.
+    Why that order: what the operator chose for THIS turn beats what they
+    pinned in an earlier one — the anchor is a default, not a cage.
 
-    || Resuelve las tres fuentes de filtros en una, y dice de dónde salió cada
-    valor. Precedencia, por CAMPO y no por bloque: ``request`` → ``question``
-    → ``anchor``. Así un request que trae `module_code` y no
-    `window_type_name` no borra el tipo de ventana que aportó la pregunta o un
-    anchor.
+    There is no third source derived from the question's text any more; the
+    comment above this function says why.
 
-    Por qué ese orden: de las tres, la del medio es la única que NO es una
-    declaración de intención — es una heurística que lee tokens con forma de
-    transacción de un texto en prosa. Un control que el operador eligió para
-    este turno le gana a esa inferencia, que sigue ganándole a una restricción
-    fijada en un turno anterior: el anchor es un default, no una jaula.
+    || Resuelve las dos fuentes de filtros en una, y dice de dónde salió cada
+    valor. Precedencia, por CAMPO y no por bloque: ``request`` → ``anchor``.
+    Lo que el operador eligió para ESTE turno le gana a lo que fijó en uno
+    anterior: el anchor es un default, no una jaula. Ya no hay una tercera
+    fuente derivada del texto de la pregunta; el comentario de arriba dice por
+    qué.
     """
     pinned: dict[str, list[str]] = {}
     for anchor in state.get("conversation_anchors") or []:
@@ -156,11 +149,11 @@ def _resolve_filters(
             pinned[kind].append(value)
 
     requested = state.get("request_filters") or {}
-    by_precedence = (("request", requested), ("question", suggested), ("anchor", pinned))
+    by_precedence = (("request", requested), ("anchor", pinned))
 
     resolved: QueryFilters = {}
     sources: dict[str, str] = {}
-    for field in ("module_code", "window_type_name"):
+    for field in ("module_code", "window_type_name", "transaction_prefix"):
         for source, candidate in by_precedence:
             values = candidate.get(field)
             if values:

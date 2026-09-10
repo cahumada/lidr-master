@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.domain.graph.agents.query_planner import _suggest_filters
 from app.domain.graph.build import AGENT_NODES, build_answer_graph
 from app.domain.graph.catalog import (
     AGENT_KEYS,
@@ -140,11 +139,23 @@ class TestTheWorkedExampleCannotDrift:
         assert list(EXAMPLE_SUB_QUERIES) == decompose(EXAMPLE_QUESTION)
 
     def test_the_planner_example_claims_no_filters(self):
-        # The example text says the heuristic proposes no `module_code` for
-        # this question. That claim is only true while the heuristic agrees.
-        # || El texto del ejemplo dice que la heurística no propone
-        # `module_code`; solo es cierto mientras la heurística coincida.
-        assert _suggest_filters(EXAMPLE_QUESTION) == {}
+        # The example says `filters` comes out empty. It now tests the NODE and
+        # not a private helper: the heuristic that read filters out of the
+        # question text is gone, so the guarantee is structural — with no
+        # request filters and no anchors there is nothing to resolve.
+        # || El ejemplo dice que `filters` sale vacío. Ahora se prueba el NODO y
+        # no un helper privado: la heurística que leía filtros del texto de la
+        # pregunta se fue, así que la garantía es estructural — sin filtros del
+        # request y sin anchors no hay nada que resolver.
+        import asyncio
+
+        from app.domain.graph.agents.query_planner import query_planner
+
+        update = asyncio.run(
+            query_planner({"query": EXAMPLE_QUESTION, "supervisor_steps": 1})
+        )
+
+        assert update["filters"] == {}
 
     def test_the_example_question_is_the_annotated_golden_one(self):
         # Its value is that a person asked it and a person annotated it. A

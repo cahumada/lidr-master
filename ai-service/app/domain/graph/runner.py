@@ -236,7 +236,7 @@ async def close_turn(
     )
 
 
-_FILTER_FIELDS = ("module_code", "window_type_name")
+_FILTER_FIELDS = ("module_code", "window_type_name", "transaction_prefix")
 
 
 def effective_filters(values: dict) -> list[dict]:

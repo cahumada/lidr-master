@@ -51,6 +51,13 @@ class QueryFilters(TypedDict, total=False):
 
     module_code: list[str]
     window_type_name: list[str]
+    # What a person means by "módulo CA": transactions whose code starts with
+    # that prefix. A separate dimension from `module_code` on purpose — see
+    # `SearchFilters.transaction_prefix`.
+    # || Lo que una persona quiere decir con «módulo CA»: transacciones cuyo
+    # código empieza con ese prefijo. Dimensión aparte de `module_code` a
+    # propósito.
+    transaction_prefix: list[str]
 
 
 class RetrievalOptions(TypedDict, total=False):

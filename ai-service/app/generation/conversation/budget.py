@@ -73,8 +73,21 @@ def _facts_lines(session: ConversationSession) -> list[str]:
     return lines
 
 
+# What the operator sees for each pinned dimension. `transaction_prefix` is
+# NOT called "módulo": the label has to say what the filter actually does, or
+# the answer would report a narrowing by module that is not happening.
+# || Lo que ve el operador por cada dimensión fijada. `transaction_prefix` NO
+# se llama «módulo»: la etiqueta tiene que decir qué hace el filtro, o la
+# respuesta reportaría un recorte por módulo que no está ocurriendo.
+_ANCHOR_LABELS = {
+    "transaction_prefix": "transacciones que empiezan con",
+    "window_type_name": "tipo de ventana",
+    "module_code": "módulo",
+}
+
+
 def _anchor_line(kind: str, value: str) -> str:
-    label = "módulo" if kind == "module_code" else "tipo de ventana"
+    label = _ANCHOR_LABELS.get(kind, kind)
     return f"- El usuario fijó {label}: {value}"
 
 
