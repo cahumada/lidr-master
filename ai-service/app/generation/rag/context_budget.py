@@ -45,9 +45,12 @@ from dataclasses import dataclass
 import structlog
 
 from app.generation.rag.chunking.base import count_tokens
+from app.generation.rag.navigation import WINDOW_STATUSES
 from app.generation.rag.schemas import SearchHit
 
 log = structlog.get_logger()
+
+_ACTIVE_WINDOW_STATUS = WINDOW_STATUSES["1"]
 
 
 def render_hit_block(index: int, hit: SearchHit) -> str:
@@ -72,6 +75,8 @@ def render_hit_block(index: int, hit: SearchHit) -> str:
         lines.append(f"Documento: {hit.document_title}")
     if hit.bullet_path:
         lines.append(f"Ruta: {hit.bullet_path}")
+    if hit.window_status and hit.window_status != _ACTIVE_WINDOW_STATUS:
+        lines.append(f"Estado de la ventana (declarado): {hit.window_status}")
     lines.append(hit.text)
     return "\n".join(lines)
 

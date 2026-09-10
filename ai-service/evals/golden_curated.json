@@ -609,6 +609,21 @@
         "question_is_realistic": true,
         "annotation_is_correct": true
       }
+    },
+    {
+      "id": "U-MGSL006-acceso-restringido",
+      "module": "maintenance",
+      "type": "user_question",
+      "question": "¿Qué cuadros del margen de solvencia expone la transacción MGSL006 y qué campos calcula?",
+      "relevant_document_ids": [
+        "MGSL006"
+      ],
+      "distractor_document_ids": [],
+      "provenance": "Regresión de add-window-status-metadata: MGSL006 tiene SSTATREGT=3 (Acceso restringido) en la corrida 20260909_214921. El documento existe en el corpus pero la ventana no está contemplada por el sistema fuente.",
+      "review": {
+        "question_is_realistic": true,
+        "annotation_is_correct": true
+      }
     }
   ],
   "known_annotation_notes": {

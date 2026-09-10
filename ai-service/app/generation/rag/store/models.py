@@ -158,6 +158,11 @@ class ChunkRow(Base):
     # puntual, secuencia o masiva, con o sin encabezado. Un filtro, no una
     # lectura.
     window_type_name: Mapped[str | None] = mapped_column(String(48))
+    # Declared record status from `TABLE26` (`SSTATREGT`). Not indexed: no filter
+    # in this change.
+    # || Estado declarado del registro según `TABLE26` (`SSTATREGT`). Sin índice:
+    # no hay filtro en este change.
+    window_status: Mapped[str | None] = mapped_column(String(48))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

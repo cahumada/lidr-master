@@ -19,7 +19,26 @@ from functools import lru_cache
 from app.config import get_settings
 from app.generation.rag.chunking.functional_spec import FunctionalSpecChunker
 from app.generation.rag.embedding.embedder import OpenAIEmbedder
-from app.generation.rag.navigation import get_navigation_tree
+from app.generation.rag.navigation import (
+    get_navigation_tree,
+    load_navigation_tree_from_database_url,
+)
+
+
+def resolve_navigation_tree():
+    """The WINDOWS tree for this deployment: mirror when configured, CSV otherwise.
+
+    || El árbol WINDOWS de este despliegue: mirror cuando está configurado, CSV si no.
+    """
+    settings = get_settings()
+    if settings.BUSINESS_DB_RUN_ID:
+        return load_navigation_tree_from_database_url(
+            settings.DATABASE_URL,
+            tenant=settings.TENANT_ID,
+            env=settings.BUSINESS_DB_ENV,
+            run_id=settings.BUSINESS_DB_RUN_ID,
+        )
+    return get_navigation_tree(settings.WINDOWS_TREE_PATH)
 
 
 @lru_cache
@@ -33,7 +52,7 @@ def get_functional_spec_chunker() -> FunctionalSpecChunker:
         narrative_token_cap=settings.NARRATIVE_CHUNK_TOKEN_CAP,
         index_doc_min_links=settings.INDEX_DOC_MIN_LINKS,
         index_doc_min_link_density=settings.INDEX_DOC_MIN_LINK_DENSITY,
-        navigation_tree=get_navigation_tree(settings.WINDOWS_TREE_PATH),
+        navigation_tree=resolve_navigation_tree(),
         tenant_id=settings.TENANT_ID,
         doc_version=settings.DOC_VERSION,
     )

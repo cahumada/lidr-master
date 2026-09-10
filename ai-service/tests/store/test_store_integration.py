@@ -70,6 +70,7 @@ def make_row(tenant: str, body: str, *, index: int, **overrides) -> tuple:
         "submodule_code": None,
         "submodule_name": None,
         "window_type_name": "Masivo con encabezado",
+        "window_status": None,
     }
     values.update(overrides)
     return tuple(values[c] for c in COPY_COLUMNS)
@@ -108,6 +109,45 @@ def test_loading_twice_adds_no_rows_the_second_time(clean_tables, tenant):
 
     load(clean_tables, rows)
     assert count(clean_tables, tenant) == 5
+
+
+def test_window_status_persists_and_returns_in_search_hits(clean_tables, tenant):
+    from app.foundation.persistence.database import to_async_url
+    from app.generation.rag.store.repository import ChunkRepository, SearchFilters
+
+    load(
+        clean_tables,
+        [
+            make_row(
+                tenant,
+                "regla restringida",
+                index=0,
+                document_id="CAL1156",
+                window_status="Acceso restringido",
+            )
+        ],
+    )
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from tests.store.conftest import TEST_SCHEMA
+
+    async def run():
+        engine = create_async_engine(
+            to_async_url(str(clean_tables.url.render_as_string(hide_password=False))),
+            connect_args={"server_settings": {"search_path": f"{TEST_SCHEMA},public"}},
+        )
+        try:
+            async with async_sessionmaker(bind=engine, expire_on_commit=False)() as session:
+                await session.execute(text("SET hnsw.iterative_scan = strict_order"))
+                repository = ChunkRepository(session)
+                vector = list(HashEmbedder(DIMS).embed(["regla restringida"])[0])
+                hits = await repository.search(vector, SearchFilters(tenant, "v1"), limit=1)
+                return hits[0].window_status
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(run()) == "Acceso restringido"
 
 
 def test_a_metadata_only_change_reaches_an_existing_row(clean_tables, tenant):

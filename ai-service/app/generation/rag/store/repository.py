@@ -75,6 +75,7 @@ class SearchHit:
     document_kind: str | None
     text: str
     distance: float
+    window_status: str | None = None
 
     @property
     def similarity(self) -> float:
@@ -106,6 +107,7 @@ class RankedHit:
     document_kind: str | None
     text: str
     score: float
+    window_status: str | None = None
 
 
 def _apply(statement: Select, filters: SearchFilters) -> Select:
@@ -179,6 +181,7 @@ _SELECTED = (
     # acá para que la fusión lo vea antes de la hidratación, no solo como un
     # filtro duro que nadie activa por default.
     ChunkRow.document_kind,
+    ChunkRow.window_status,
     ChunkRow.text,
 )
 
@@ -314,6 +317,7 @@ class ChunkRepository:
                 bullet_path=row.bullet_path,
                 module_code=row.module_code,
                 document_kind=row.document_kind,
+                window_status=row.window_status,
                 text=row.text,
                 distance=float(row.distance),
             )
@@ -415,6 +419,7 @@ def _ranked(row) -> RankedHit:
         bullet_path=row.bullet_path,
         module_code=row.module_code,
         document_kind=row.document_kind,
+        window_status=row.window_status,
         text=row.text,
         score=float(row.score),
     )

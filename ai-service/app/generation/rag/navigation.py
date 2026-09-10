@@ -42,8 +42,10 @@ precondición para trocear.
 from __future__ import annotations
 
 import csv
+from collections import Counter
 from functools import lru_cache
 from pathlib import Path
+from typing import Protocol
 
 import structlog
 from pydantic import BaseModel, Field
@@ -80,6 +82,22 @@ WINDOW_TYPES = {
 # falla en 21, incluidos 16 menús vacíos que llamaba transacciones ejecutables.
 MENU_WINDOW_TYPE = "8"
 
+# Window record status from `TABLE26` (`SSTATREGT` on `WINDOWS`). The operational
+# rule that only `1` is served lives in code, not in this catalog.
+# || Estado del registro de ventana según `TABLE26` (`SSTATREGT` en `WINDOWS`).
+# La regla operativa de que solo se contempla el `1` vive en código, no en este
+# catálogo.
+WINDOW_STATUSES = {
+    "1": "Activo",
+    "2": "En proceso de instalación",
+    "3": "Acceso restringido",
+}
+ACTIVE_WINDOW_STATUS = "1"
+
+
+class _MirrorConnection(Protocol):
+    def cursor(self): ...
+
 
 class NavigationLocation(BaseModel):
     """Where a code sits in the menu tree.
@@ -112,8 +130,15 @@ class NavigationLocation(BaseModel):
         default=None,
         description="How the transaction is operated: puntual, secuencia or masiva, with or "
         "without a header. Absent when the export does not declare it. "
-        "|| Cómo se opera la transacción: puntual, secuencia o masiva, con o sin encabezado. "
+        "|| Cómo se opera la transacción: puntual, secuencia or masiva, con o sin encabezado. "
         "Ausente cuando el export no lo declara.",
+    )
+    window_status: str | None = Field(
+        default=None,
+        description="Declared record status from `TABLE26` via `SSTATREGT`: Activo, En proceso "
+        "de instalación or Acceso restringido. Absent when the tree does not declare it. "
+        "|| Estado declarado del registro según `TABLE26` vía `SSTATREGT`: Activo, En proceso "
+        "de instalación o Acceso restringido. Ausente cuando el árbol no lo declara.",
     )
 
 
@@ -127,19 +152,32 @@ class NavigationTree:
         self._parent: dict[str, str | None] = {}
         self._description: dict[str, str] = {}
         self._window_type: dict[str, str] = {}
+        self._window_status_code: dict[str, str] = {}
+        self.status_normalized_from_4 = 0
+        self.status_counts: Counter[str] = Counter()
         for row in rows:
             # Rows are (code, parent, description) or, from a newer export,
-            # (code, parent, description, window_type, short_description). The
-            # short form still loads: an older CSV keeps working and simply
-            # leaves the type unresolved.
+            # (code, parent, description, window_type, short_description) or,
+            # from the mirror, with `SSTATREGT` as a sixth field. Shorter rows
+            # still load: an older CSV keeps working and simply leaves the extra
+            # fields unresolved.
             # || Las filas son (código, padre, descripción) o, de un export más
-            # nuevo, con tipo de ventana y descripción corta. La forma corta
-            # sigue cargando: un CSV viejo funciona y deja el tipo sin resolver.
+            # nuevo, con tipo de ventana y descripción corta, o del mirror con
+            # `SSTATREGT` como sexto campo. Las filas más cortas siguen
+            # cargando: un CSV viejo funciona y deja los campos extra sin resolver.
             code, parent_code, description = row[0], row[1], row[2]
             self._parent[code] = parent_code or None
             self._description[code] = description
             if len(row) > 3 and row[3]:
                 self._window_type[code] = str(row[3]).strip()
+            if len(row) > 5 and row[5]:
+                status_code = str(row[5]).strip()
+                if status_code == "4":
+                    self.status_normalized_from_4 += 1
+                    status_code = "3"
+                if status_code in WINDOW_STATUSES:
+                    self._window_status_code[code] = status_code
+                    self.status_counts[WINDOW_STATUSES[status_code]] += 1
         # A code that is its OWN parent does not have children in any useful
         # sense. `MA6835` is exactly that -- a self-loop in the export, and one
         # of the two cycles the process map detects -- and counting it as a
@@ -229,6 +267,19 @@ class NavigationTree:
         declared = self._window_type.get(code)
         return WINDOW_TYPES.get(declared) if declared else None
 
+    def window_status(self, code: str) -> str | None:
+        """The declared record status, by name.
+
+        Unknown codes and values outside `WINDOW_STATUSES` (after normalizing `4`
+        at load time) read as unresolved.
+
+        || El estado declarado del registro, por nombre. Códigos desconocidos y
+        valores fuera de `WINDOW_STATUSES` (después de normalizar el `4` al
+        cargar) leen como no resueltos.
+        """
+        declared = self._window_status_code.get(code)
+        return WINDOW_STATUSES.get(declared) if declared else None
+
     def is_menu_node(self, code: str) -> bool:
         """Whether ``code`` is a menu folder rather than an executable transaction.
 
@@ -269,7 +320,9 @@ class NavigationTree:
         is_menu_node = self.is_menu_node(code)
         if chain[0] != ROOT_CODE:
             return NavigationLocation(
-                is_menu_node=is_menu_node, window_type_name=self.window_type_name(code)
+                is_menu_node=is_menu_node,
+                window_type_name=self.window_type_name(code),
+                window_status=self.window_status(code),
             )
 
         # chain = [MENU, module, ...intermediates..., code]. Depth runs 1..6 in
@@ -288,7 +341,21 @@ class NavigationTree:
             navigation_path=" > ".join(chain),
             is_menu_node=is_menu_node,
             window_type_name=self.window_type_name(code),
+            window_status=self.window_status(code),
         )
+
+
+def _log_navigation_tree_loaded(*, source: str, tree: NavigationTree, **extra) -> None:
+    log.info(
+        "navigation_tree_loaded",
+        source=source,
+        codes=len(tree),
+        with_window_type=sum(1 for code in tree.codes() if tree.window_type(code)),
+        with_window_status=sum(1 for code in tree.codes() if tree.window_status(code)),
+        status_counts=dict(tree.status_counts),
+        status_normalized_from_4=tree.status_normalized_from_4,
+        **extra,
+    )
 
 
 def load_navigation_tree(path: Path) -> NavigationTree | None:
@@ -325,13 +392,115 @@ def load_navigation_tree(path: Path) -> NavigationTree | None:
             )
 
     tree = NavigationTree(rows)
-    log.info(
-        "navigation_tree_loaded",
-        path=str(path),
-        codes=len(tree),
-        with_window_type=sum(1 for code in tree.codes() if tree.window_type(code)),
+    _log_navigation_tree_loaded(source="csv", tree=tree, path=str(path))
+    return tree
+
+
+def load_navigation_tree_from_mirror(
+    connection: _MirrorConnection,
+    *,
+    tenant: str,
+    env: str,
+    run_id: str,
+) -> NavigationTree:
+    """Build the tree from `visualtime.business_data`, read-only.
+
+    Fails hard when ``run_id`` has no `WINDOWS` rows: an empty tree would read
+    as "nothing resolves" and hide a configuration mistake.
+
+    || Arma el árbol desde `visualtime.business_data`, solo lectura. Falla fuerte
+    cuando ``run_id`` no tiene filas de `WINDOWS`: un árbol vacío se leería como
+    "nada resuelve" y escondería un error de configuración.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT count(1)
+            FROM visualtime.business_data
+            WHERE table_name = 'WINDOWS'
+              AND tenant = %s
+              AND env = %s
+              AND run_id = %s
+            """,
+            (tenant, env, run_id),
+        )
+        row_count = cursor.fetchone()[0]
+        if row_count == 0:
+            raise RuntimeError(
+                f"No WINDOWS rows for tenant={tenant!r}, env={env!r}, run_id={run_id!r}. "
+                "An empty navigation tree would silently resolve no status. "
+                "|| No hay filas de WINDOWS para tenant/env/run_id. Un árbol vacío "
+                "resolvería ningún estado en silencio."
+            )
+
+        cursor.execute(
+            """
+            SELECT
+                trim(both from row->>'SCODISPL') AS code,
+                nullif(trim(both from row->>'SCODMEN'), '') AS parent_code,
+                trim(both from row->>'SDESCRIPT') AS description,
+                nullif(trim(both from row->>'NWINDOWTY'), '') AS window_type,
+                nullif(trim(both from row->>'SSHORT_DES'), '') AS short_description,
+                nullif(trim(both from row->>'SSTATREGT'), '') AS window_status
+            FROM visualtime.business_data
+            WHERE table_name = 'WINDOWS'
+              AND tenant = %s
+              AND env = %s
+              AND run_id = %s
+            ORDER BY code
+            """,
+            (tenant, env, run_id),
+        )
+        fetched = cursor.fetchall()
+
+    rows: list[tuple] = []
+    for code, parent_code, description, window_type, short_description, window_status in fetched:
+        if not code:
+            continue
+        rows.append(
+            (
+                code,
+                parent_code,
+                description or "",
+                window_type or "",
+                short_description or "",
+                window_status or "",
+            )
+        )
+
+    tree = NavigationTree(rows)
+    _log_navigation_tree_loaded(
+        source="mirror",
+        tree=tree,
+        tenant=tenant,
+        env=env,
+        run_id=run_id,
+        rows=row_count,
     )
     return tree
+
+
+def load_navigation_tree_from_database_url(
+    database_url: str,
+    *,
+    tenant: str,
+    env: str,
+    run_id: str,
+) -> NavigationTree:
+    """Convenience wrapper around :func:`load_navigation_tree_from_mirror`.
+
+    || Atajo alrededor de :func:`load_navigation_tree_from_mirror`.
+    """
+    import psycopg
+
+    url = database_url.replace("postgresql+psycopg://", "postgresql://")
+    with psycopg.connect(url) as connection:
+        return load_navigation_tree_from_mirror(
+            connection,
+            tenant=tenant,
+            env=env,
+            run_id=run_id,
+        )
 
 
 @lru_cache

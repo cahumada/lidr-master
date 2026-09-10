@@ -55,6 +55,15 @@ class Settings(BaseSettings):
     # OPCIONAL: si el archivo falta, todos los breadcrumb quedan sin resolver.
     WINDOWS_TREE_PATH: Path = Path("data/windows_tree.csv")
 
+    # Which mirror run supplies the WINDOWS tree when status matters. Set
+    # explicitly — never "the latest run". Empty falls back to `WINDOWS_TREE_PATH`,
+    # where status stays unresolved because the CSV has no `SSTATREGT` column.
+    # || Qué corrida del mirror alimenta el árbol WINDOWS cuando importa el
+    # estado. Se elige explícitamente — nunca "la corrida más reciente". Vacío
+    # cae al CSV, donde el estado queda sin resolver porque no trae `SSTATREGT`.
+    BUSINESS_DB_ENV: str = "PROD"
+    BUSINESS_DB_RUN_ID: str = ""
+
     # Where the source markdown lives. `None` means the rebuild endpoint has
     # nothing to chunk and says so, instead of guessing a path.
     #

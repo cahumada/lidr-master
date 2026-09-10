@@ -1461,6 +1461,7 @@ class FunctionalSpecChunker:
             chunk.metadata.submodule_code = location.submodule_code
             chunk.metadata.submodule_name = location.submodule_name
             chunk.metadata.window_type_name = location.window_type_name
+            chunk.metadata.window_status = location.window_status
             # Set explicitly even though the model defaults to it. The default
             # would be the WRONG value for a future chunker of another format,
             # and a silent wrong value in the row's identity is worse than a
