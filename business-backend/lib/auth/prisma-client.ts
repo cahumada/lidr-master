@@ -41,8 +41,10 @@ function createClient(): PrismaClient {
     // || Fallar acá y no en la primera consulta: una consola que arranca y
     // recién falla en el login es más difícil de diagnosticar.
     throw new Error(
-      "Falta AUTH_DATABASE_URL. Es la base de identidad (`dw-insu`), NO la del " +
-        "corpus. || AUTH_DATABASE_URL is missing. It is the identity database.",
+      "Falta AUTH_DATABASE_URL. Es la base de identidad, NO la del corpus " +
+        "(esa es `DATABASE_URL`, y apuntar acá a ella dejaría que Prisma migre " +
+        "tablas que no son suyas). || AUTH_DATABASE_URL is missing. It is the " +
+        "identity database, not the corpus one.",
     )
   }
 

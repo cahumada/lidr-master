@@ -1,8 +1,10 @@
 // Identidad de la consola: quién entra y con qué rol. Nada más.
 //
-// Vive en la base `dw-insu`, aparte de la del corpus (`railway`) dentro de la
-// misma instancia de Postgres. Alembic no ve estas tablas y un `pg_dump` del
-// corpus no se lleva hashes de contraseña.
+// Vive en su propia base, aparte de la del corpus: alembic no ve estas tablas
+// y un `pg_dump` del corpus no se lleva hashes de contraseña. En el despliegue
+// actual es además otra instancia de Postgres — `design.md` §1b había planeado
+// otra base de la misma instancia y quedó enmendado, porque lo que se
+// implementó aísla más.
 //
 // La lista de modelos es cerrada a propósito: usuarios, cuentas, sesiones y
 // tokens de verificación. Cualquier otra tabla es dominio, y el dominio vive

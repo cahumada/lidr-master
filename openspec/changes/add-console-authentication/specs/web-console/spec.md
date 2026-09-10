@@ -49,15 +49,29 @@ Las pantallas que **escriben configuración o destruyen datos** —`/agents`,
 El resto —`/`, `/answer`, `/search`, `/documents`— SHALL estar disponible
 para cualquier sesión activa.
 
-Un rol insuficiente SHALL recibir **403**, no 404 ni una redirección
-silenciosa: ocultar que la pantalla existe no detiene a quien ya sabe que
-existe, y confunde a quien legítimamente necesita el permiso.
+Un rol insuficiente SHALL recibir una **pantalla de 403**, no un 404 ni una
+redirección silenciosa: ocultar que la pantalla existe no detiene a quien ya
+sabe que existe, y confunde a quien legítimamente necesita el permiso.
+
+**El status HTTP de esa respuesta es 200, y esto lo declara a propósito.** Un
+layout de Next no puede fijar el status sin `forbidden()`, que exige el flag
+`experimental.authInterrupts`; el change que introdujo esto ya se apoyaba en
+Auth.js beta y en un adapter que no declara Prisma 7, y un tercer flag
+experimental encima es riesgo apilado para el mismo resultado visible. Mover el
+chequeo al `proxy` para poder devolver el status es peor: el borde lee la cookie
+sin verificar su firma, así que un chequeo de rol ahí falla **abierto**.
+
+O sea: una persona ve 403 y un cliente programático ve 200. Se acepta porque
+estas rutas son pantallas de la consola y no API — no hay cliente programático
+de ellas—. Si alguna vez lo hay, esto es el requirement que hay que reabrir, y
+la salida es el flag.
 
 #### Scenario: usuario en una pantalla de administrador
 
 - **WHEN** una sesión con rol `usuario` pide `/models`
-- **THEN** la consola responde 403 con una pantalla que lo explica
-- **AND** NO responde 404
+- **THEN** la consola muestra la pantalla de 403, que explica qué pasó
+- **AND** NO responde 404 ni redirige en silencio
+- **AND** el status HTTP es 200, por la razón declarada arriba
 
 #### Scenario: administrador en la misma pantalla
 
@@ -187,24 +201,36 @@ grupo protegido.
 
 - **WHEN** una sesión con rol `usuario` navega a mano a una pantalla de
   administrador, sin pasar por el sidebar
-- **THEN** recibe 403 igual
+- **THEN** recibe la pantalla de 403 igual — el filtro de la nav no autoriza
 
-### Requirement: El login de la consola NO protege al servicio
+### Requirement: El login de la consola NO es lo que protege al servicio
 
 La consola SHALL autenticar a quien la usa, y eso NO SHALL presentarse como
-protección de `ai-service`, que no tiene autenticación propia y se despliega
-con URL pública. Quien conozca esa URL sigue alcanzando el servicio sin pasar
-por la consola.
+protección de `ai-service`: son dos puertas distintas y se cierran por separado.
 
-Esta limitación SHALL quedar escrita en el estándar del BFF, para que un
-lector futuro no deduzca de la existencia del login que los endpoints están
-cerrados.
+**Reformulado el 2026-09-10.** Este requirement decía «`ai-service`, que no
+tiene autenticación propia y se despliega con URL pública», y eso dejó de ser
+cierto: `add-service-authentication` cerró el servicio con un token compartido
+que el cliente base agrega en cada llamada, y con `APP_ENV=production` el
+servicio no arranca sin el suyo. Promoverlo tal cual habría metido una
+afirmación falsa en `openspec/specs/`.
 
-#### Scenario: el estándar dice qué queda abierto
+Lo que sí sigue en pie, y es lo que este requirement existe para que nadie
+deduzca al revés: **el login de personas no es lo que cierra el servicio, y el
+token del servicio no identifica personas.** Quien tenga el token alcanza
+`ai-service` sin pasar por la consola y sin ser nadie en particular; el ledger
+de uso atribuye la llamada al portador —el BFF— y no a quien preguntó.
+
+El estándar del BFF SHALL distinguir las dos, para que un lector futuro no
+deduzca de la existencia del login que los endpoints están cerrados, ni del
+token que hay identidad de usuario en el servicio.
+
+#### Scenario: el estándar distingue las dos puertas
 
 - **WHEN** alguien lee la sección de seguridad del estándar del BFF
-- **THEN** encuentra dicho que autenticar la consola no autentica el servicio
-- **AND** que hacerlo es un change aparte
+- **THEN** encuentra la autenticación de personas y la del servicio como dos
+  bullets separados, cada uno con su mecanismo
+- **AND** encuentra dicho que cerrar el servicio no le da identidad de usuario
 
 ## MODIFIED Requirements
 
