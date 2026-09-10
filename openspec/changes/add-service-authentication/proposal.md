@@ -88,3 +88,33 @@ Fuera de alcance:
 - `business-backend/.env.example` — la variable del lado del BFF.
 - `openspec/standards/bff-standards.md` — la sección de seguridad dice hoy que
   autenticar la consola no autentica el servicio; con este change eso cambia.
+
+## Verificado en producción (2026-09-10)
+
+Contra `https://api-service-ai-production.up.railway.app`, sin ningún header:
+
+| endpoint | status |
+|---|---:|
+| `GET /health` | **200** — abierto, el healthcheck sigue funcionando |
+| `GET /config` | **401** |
+| `GET /search?q=poliza` | **401** |
+
+El 401 llega con `WWW-Authenticate: Bearer` y el cuerpo es
+`{"detail":"Service token required. || Se requiere el token del servicio."}` —
+sin decir si el token faltaba o estaba mal.
+
+Y del lado de la consola (`https://lidr-master.vercel.app`), sin sesión:
+
+| ruta | status |
+|---|---:|
+| `/` | 307 → `/login` |
+| `/login` | 200 |
+| `/api/search?q=poliza` | **307 → `/login`** |
+
+Que la ruta del BFF redirija en lugar de responder confirma de paso lo que
+`add-console-authentication` exige: la autorización vive en el servidor, no en
+la navegación. Los dos niveles quedaron cerrados — la consola pide sesión, el
+servicio pide token.
+
+**Lo que no se pudo ejercer:** una búsqueda autenticada de punta a punta desde
+la consola. Requiere iniciar sesión, y el agente no puede autenticarse.

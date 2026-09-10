@@ -25,10 +25,11 @@ aspiraciones pendientes:
   entorno no hay claves de esos dos proveedores. Es la razón por la que
   `add-multi-provider-llm` y `add-dynamic-providers` siguen en curso, aunque su
   código esté escrito.
-- **El servicio no tiene autenticación**, así que el endpoint que escribe
-  credenciales lo puede llamar cualquiera que lo alcance (escribir, no leer).
-  Autenticar el servicio es su propio change y debería preceder a exponerlo en
-  internet.
+- **El endpoint que escribe credenciales exige el token del servicio**, como
+  todos los demás (ver `service-authentication`). Lo que queda: el token no
+  distingue personas, así que cualquiera que lo tenga puede escribir una
+  credencial. Antes el límite era «cualquiera que alcance la URL»; ahora es
+  «cualquiera que tenga el token».
 
 ## Requirements
 
@@ -144,6 +145,7 @@ structural: with no request filters and no anchors there is nothing to resolve.
 - **WHEN** the planner resolves any filter for the example question
 - **THEN** the catalog test fails, because the example text states that
   `filters` comes out empty
+
 ### Requirement: Named profiles per configurable agent
 The service SHALL persist zero or more named profiles per configurable
 agent. Each profile SHALL have a `name` unique among that agent's
