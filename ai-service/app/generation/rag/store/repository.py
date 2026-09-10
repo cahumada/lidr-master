@@ -59,6 +59,17 @@ class SearchFilters:
     # || "the mass-with-header or point-without-header transactions" as a
     # filter, not a read -- hence the list.
     window_type_name: list[str] | None = None
+    # The dimension a PERSON means by "módulo CA": the transactions whose code
+    # starts with that prefix. It is NOT `module_code` -- the corpus stores the
+    # `WINDOWS` module-node code there (`DMECAR`, `DMECLI`, …) and mapping one
+    # onto the other is not a function: of 71 prefixes, `OPL` spans five modules
+    # and `MA` four, so picking the dominant one would drop the tail. Keeping
+    # both dimensions means neither has to guess.
+    # || La dimensión que una PERSONA quiere decir con «módulo CA»: las
+    # transacciones cuyo código empieza con ese prefijo. NO es `module_code` --
+    # ahí el corpus guarda el código del nodo módulo de `WINDOWS` y el mapeo
+    # entre los dos no es una función. Con las dos dimensiones, ninguna adivina.
+    transaction_prefix: list[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +163,21 @@ def _apply(statement: Select, filters: SearchFilters) -> Select:
     for column, values in in_.items():
         if values:
             statement = statement.where(column.in_(values))
+    # OR of prefixes, same reading as the `IN` above: an empty list is "no
+    # filter". `LIKE 'CA%'` and not a regex, so the existing index on
+    # `document_id` can still be used for the anchored pattern.
+    # || OR de prefijos, con la misma lectura que el `IN` de arriba: lista
+    # vacía es «sin filtro». `LIKE 'CA%'` y no una regex, así el índice sobre
+    # `document_id` sigue sirviendo para el patrón anclado.
+    if filters.transaction_prefix:
+        statement = statement.where(
+            or_(
+                *(
+                    ChunkRow.document_id.ilike(f"{prefix}%")
+                    for prefix in filters.transaction_prefix
+                )
+            )
+        )
     return statement
 
 

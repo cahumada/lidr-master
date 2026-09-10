@@ -27,7 +27,10 @@ from app.generation.conversation.anchors import detect_anchors
 def test_a_scoping_phrase_with_a_module_pins_it(question):
     anchors = detect_anchors(question)
 
-    assert [(a.kind, a.value) for a in anchors] == [("module_code", "CA")]
+    # `transaction_prefix` y no `module_code`: «módulo CA» quiere decir las
+    # transacciones que empiezan con CA, y el `module_code` del corpus es
+    # `DMECAR`. Fijarlo como `module_code` vaciaba todos los turnos siguientes.
+    assert [(a.kind, a.value) for a in anchors] == [("transaction_prefix", "CA")]
 
 
 def test_the_pinning_question_is_recorded():

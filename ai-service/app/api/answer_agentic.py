@@ -85,7 +85,7 @@ class EffectiveFilter(BaseModel):
     no una comodidad.
     """
 
-    field: Literal["module_code", "window_type_name"]
+    field: Literal["module_code", "window_type_name", "transaction_prefix"]
     values: list[str]
     source: Literal["request", "question", "anchor"] = Field(
         description="`request` = the client asked for it; `question` = a heuristic read it out "

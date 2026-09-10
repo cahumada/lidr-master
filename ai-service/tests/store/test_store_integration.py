@@ -654,3 +654,53 @@ def test_an_edge_keeps_the_sentence_that_justified_it(clean_tables, tenant):
             text("SELECT evidence FROM process_map_edges WHERE tenant_id = :t"), {"t": tenant}
         ).scalar_one()
     assert "requiere que previamente" in evidence
+
+
+def test_a_transaction_prefix_filter_narrows_by_document_id(clean_tables, tenant):
+    """The dimension a person means by "módulo CA": codes starting with CA.
+
+    It is NOT `module_code` — the corpus stores the `WINDOWS` module-node code
+    there (`DMECAR`, …), and a prefix cannot be mapped onto it without
+    guessing. This test is the reason the dimension exists: pinning "CA" as a
+    `module_code` matched nothing and emptied every later turn.
+
+    || La dimensión que una persona quiere decir con «módulo CA»: los códigos
+    que empiezan con CA. NO es `module_code`. Fijar «CA» como `module_code` no
+    matcheaba nada y vaciaba todos los turnos siguientes.
+    """
+    from app.foundation.persistence.database import to_async_url
+    from app.generation.rag.store.repository import ChunkRepository, SearchFilters
+
+    load(
+        clean_tables,
+        [
+            make_row(tenant, "regla ca", index=0, document_id="CA014", module_code="DMECAR"),
+            make_row(tenant, "regla cac", index=1, document_id="CAC011", module_code="DMECOB"),
+            make_row(tenant, "regla df", index=2, document_id="DF009", module_code="DMECAR"),
+        ],
+    )
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from tests.store.conftest import TEST_SCHEMA
+
+    async def run(**kwargs):
+        engine = create_async_engine(
+            to_async_url(str(clean_tables.url.render_as_string(hide_password=False))),
+            connect_args={"server_settings": {"search_path": f"{TEST_SCHEMA},public"}},
+        )
+        try:
+            async with async_sessionmaker(bind=engine, expire_on_commit=False)() as session:
+                await session.execute(text("SET hnsw.iterative_scan = strict_order"))
+                return await ChunkRepository(session).count(
+                    SearchFilters(tenant, "v1", **kwargs)
+                )
+        finally:
+            await engine.dispose()
+
+    # `CA%` toma las dos transacciones CA aunque estén en módulos distintos:
+    # es exactamente lo que el mapeo prefijo → módulo no puede hacer.
+    assert asyncio.run(run(transaction_prefix=["CA"])) == 2
+    # Y no toca la dimensión de módulo.
+    assert asyncio.run(run(module_code=["DMECAR"])) == 2
+    assert asyncio.run(run(transaction_prefix=["ZZ"])) == 0

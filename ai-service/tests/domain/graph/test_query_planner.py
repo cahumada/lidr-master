@@ -19,10 +19,18 @@ def test_decompose_splits_compound_questions():
     assert len(update["sub_queries"]) >= 2
 
 
-def test_transaction_code_suggests_module_filter():
+def test_naming_a_transaction_does_not_filter_by_module():
+    """El test que fijaba el bug, invertido.
+
+    Antes afirmaba `module_code == ["CA"]`, y ese filtro recortaba a un módulo
+    que el corpus no tiene (`DMECAR`, `DMECLI`, …): la pregunta volvía con cero
+    evidencia. La transacción la encuentra la rama de coincidencia exacta por
+    `document_id`, sin filtro de módulo.
+    """
     state = {"query": "¿Qué valida CA014?", "supervisor_steps": 1}
     update = asyncio.run(query_planner(state))
-    assert update["filters"].get("module_code") == ["CA"]
+    assert update["filters"] == {}
+    assert update["filter_sources"] == {}
 
 
 # --- with a conversation session ---------------------------------------
@@ -91,26 +99,6 @@ def test_a_pinned_filter_applies_when_the_question_names_none():
     assert update["filters"].get("module_code") == ["CA"]
 
 
-def test_the_question_wins_over_a_pinned_filter():
-    """An anchor is a default, not a cage. || Un anchor es un default, no una jaula."""
-    state = {
-        "query": "¿qué valida DF002?",
-        "supervisor_steps": 1,
-        "conversation_anchors": [
-            {"kind": "module_code", "value": "CA", "source_question": "solo módulo CA"}
-        ],
-    }
-
-    update = asyncio.run(query_planner(state))
-
-    assert update["filters"].get("module_code") == ["DF"]
-
-
-# --- filter precedence: request → question → anchor --------------------
-# El defecto que estos tests fijan: `initial_state` no sembraba los filtros
-# del request, así que el endpoint agéntico los aceptaba y los descartaba.
-
-
 def test_request_filter_reaches_the_resolved_filters():
     """The bug in one line: what the client asked for has to survive.
 
@@ -126,40 +114,6 @@ def test_request_filter_reaches_the_resolved_filters():
 
     assert update["filters"]["module_code"] == ["CA"]
     assert update["filter_sources"]["module_code"] == "request"
-
-
-def test_request_beats_a_code_named_in_the_question():
-    """A control the operator set beats a heuristic reading of prose.
-
-    || Un control que puso el operador le gana a leer la prosa con heurística.
-    """
-    state = {
-        "query": "¿Qué valida CA014?",
-        "supervisor_steps": 1,
-        "request_filters": {"module_code": ["DF"]},
-    }
-
-    update = asyncio.run(query_planner(state))
-
-    assert update["filters"]["module_code"] == ["DF"]
-    assert update["filter_sources"]["module_code"] == "request"
-
-
-def test_the_question_still_beats_an_anchor():
-    """The rule that already existed does not get inverted.
-
-    || La regla que ya existía no se invierte.
-    """
-    state = {
-        "query": "¿Qué valida CA014?",
-        "supervisor_steps": 1,
-        "conversation_anchors": [{"kind": "module_code", "value": "DF"}],
-    }
-
-    update = asyncio.run(query_planner(state))
-
-    assert update["filters"]["module_code"] == ["CA"]
-    assert update["filter_sources"]["module_code"] == "question"
 
 
 def test_an_anchor_applies_when_nothing_else_does():
@@ -218,3 +172,35 @@ def test_the_audit_trail_names_the_source():
 
     summary = update["agent_contributions"][0]["summary"]
     assert "module_code=['CA'] (request)" in summary
+
+
+def test_a_pinned_prefix_reaches_the_filters():
+    """«solo módulo CA» recorta por prefijo de transacción, no por module_code.
+
+    El defecto que esto fija: como `module_code` no matcheaba nada, un anchor
+    fijado en el primer turno dejaba sin evidencia todos los siguientes.
+    """
+    state = {
+        "query": "¿Qué validaciones hay?",
+        "supervisor_steps": 1,
+        "conversation_anchors": [{"kind": "transaction_prefix", "value": "CA"}],
+    }
+
+    update = asyncio.run(query_planner(state))
+
+    assert update["filters"] == {"transaction_prefix": ["CA"]}
+    assert update["filter_sources"] == {"transaction_prefix": "anchor"}
+
+
+def test_the_request_still_wins_over_a_pin():
+    state = {
+        "query": "¿Qué validaciones hay?",
+        "supervisor_steps": 1,
+        "request_filters": {"module_code": ["DMECAR"]},
+        "conversation_anchors": [{"kind": "module_code", "value": "DMECLI"}],
+    }
+
+    update = asyncio.run(query_planner(state))
+
+    assert update["filters"]["module_code"] == ["DMECAR"]
+    assert update["filter_sources"]["module_code"] == "request"

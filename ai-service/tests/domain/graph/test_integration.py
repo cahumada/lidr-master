@@ -193,7 +193,14 @@ def test_three_turns_of_one_conversation(monkeypatch):
         assert all("CA014" in query for query in retriever.queries)
 
         third = await _turn(3, "de acá en adelante, solo módulo CA: ¿qué reporta?")
-        assert third["filters"].get("module_code") == ["CA"]
-        assert [(a.kind, a.value) for a in conversation.anchors] == [("module_code", "CA")]
+        # `transaction_prefix` y no `module_code`: «módulo CA» significa las
+        # transacciones que empiezan con CA, y el `module_code` del corpus es
+        # `DMECAR`. Fijarlo como `module_code` dejaba este tercer turno —y
+        # todos los siguientes— sin evidencia.
+        assert third["filters"].get("transaction_prefix") == ["CA"]
+        assert third["filter_sources"] == {"transaction_prefix": "anchor"}
+        assert [(a.kind, a.value) for a in conversation.anchors] == [
+            ("transaction_prefix", "CA")
+        ]
 
     asyncio.run(_run())

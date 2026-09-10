@@ -57,6 +57,17 @@ _SCOPING_PHRASE = re.compile(
     re.IGNORECASE,
 )
 
+# "módulo CA" pins a TRANSACTION PREFIX, not a `module_code`. The word means
+# two things: for a person the module of `CA014` is «CA», for the corpus its
+# `module_code` is `DMECAR` — the `WINDOWS` module node the breadcrumb came
+# from. Pinning "CA" as a `module_code` matched nothing and silently emptied
+# every later turn of the conversation, which is worse than not pinning at
+# all, because the user did ask for it.
+# || «módulo CA» fija un PREFIJO DE TRANSACCIÓN, no un `module_code`. La
+# palabra significa dos cosas: para una persona el módulo de `CA014` es «CA»
+# y para el corpus su `module_code` es `DMECAR`. Fijar «CA» como `module_code`
+# no matcheaba nada y vaciaba en silencio todos los turnos siguientes, que es
+# peor que no fijar nada porque el usuario sí lo pidió.
 _MODULE = re.compile(r"\bm[óo]dulo\s+([A-Za-z]{2,4})\b", re.IGNORECASE)
 _WINDOW_TYPE = re.compile(
     r"\bventanas?\s+(?:de\s+)?tipo\s+[\"'«]?([\wáéíóúñ ]{2,40}?)[\"'»]?(?:[.,;]|$)",
@@ -83,7 +94,7 @@ def detect_anchors(question: str) -> list[Anchor]:
     for match in _MODULE.finditer(question):
         anchors.append(
             Anchor(
-                kind="module_code",
+                kind="transaction_prefix",
                 value=match.group(1).upper(),
                 source_question=question,
             )

@@ -31,6 +31,7 @@ def _filters_from_state(state: AnswerAgentState) -> SearchFilters:
         settings.DOC_VERSION,
         module_code=hints.get("module_code"),
         window_type_name=hints.get("window_type_name"),
+        transaction_prefix=hints.get("transaction_prefix"),
     )
 
 

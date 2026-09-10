@@ -82,6 +82,10 @@ Fuera de alcance:
   anchor de módulo se resuelve por prefijo de transacción, y un valor
   irresoluble se reporta en vez de aplicarse.
 - `conversation-memory`: qué fija un anchor de módulo y contra qué se aplica.
+- `agent-profiles`: el guard del ejemplo del planner nombraba
+  `_suggest_filters()`, que deja de existir. Aparecido al implementar: el test
+  del catálogo falló al quitar la heurística, que es exactamente lo que ese
+  requirement existe para que pase.
 
 ## Impact
 
@@ -96,3 +100,55 @@ Fuera de alcance:
 - `ai-service/tests/` — tests, incluida la reproducción medida.
 - `openspec/specs/retrieval/spec.md` — solo si el filtro nuevo cambia lo que esa
   spec afirma sobre el recorte previo al ranking.
+
+## Alcance que apareció al implementar
+
+Dos cosas que el plan no había anticipado, las dos porque un test las destapó
+—que es como debía ser:
+
+- **El ejemplo trabajado del catálogo.** `test_catalog.py` importaba
+  `_suggest_filters` para verificar que el ejemplo no reclama filtros. Al
+  quitar la heurística el import se rompió, y el guard pasó a correr el **nodo**
+  en lugar de un helper privado. El texto del ejemplo también cambió: decía que
+  `filters` sale vacío «porque ningún token tiene forma de transacción», y ahora
+  sale vacío porque el planner ya no deriva filtros del texto.
+- **La etiqueta del anchor en el bloque de memoria.** `_anchor_line` mapeaba
+  `kind` a «módulo» o «tipo de ventana»; con el `kind` nuevo habría dicho «tipo
+  de ventana» para un prefijo. Ahora hay una tabla de etiquetas y
+  `transaction_prefix` se lee «transacciones que empiezan con» — la etiqueta
+  tiene que decir qué hace el filtro, o la respuesta reportaría un recorte por
+  módulo que no está ocurriendo.
+
+## Verificado (2026-09-10)
+
+Contra el servicio local, las dos reproducciones del `Why`:
+
+| pregunta | filtro efectivo | citas antes | citas después |
+|---|---|---:|---:|
+| `¿Qué valida CA014?` | ninguno | **0** | **5**, incluida `CA014` |
+| `¿Qué validaciones tiene el tratamiento de pólizas?` | ninguno | 5 | 5 |
+
+El primer caso vuelve con `CA006`, `CA014`, `CA028`, `CA035`: la rama de
+coincidencia exacta encuentra la transacción nombrada sin necesidad de ningún
+filtro de módulo, que es exactamente el argumento por el que la heurística se
+fue en lugar de arreglarse.
+
+**El anchor, en una conversación de dos turnos:**
+
+| turno | filtro efectivo | citas |
+|---|---|---|
+| «De acá en adelante, solo módulo CA. ¿Qué validaciones hay?» | `transaction_prefix=["CA"]` (`anchor`) | 5, todas `CA*` |
+| «¿Y qué efecto tiene?» | `transaction_prefix=["CA"]` (`anchor`) | 5, todas `CA*` |
+
+Antes del cambio los dos turnos devolvían cero: el anchor fijaba
+`module_code="CA"` y ese valor no existe en el corpus. Y la respuesta ahora
+reporta el anchor por su dimensión real, no como «módulo».
+
+### Compatibilidad con sesiones ya guardadas
+
+`AnchorKind` conserva `module_code` como valor **de solo lectura**: ningún
+productor lo emite más, pero las sesiones guardadas antes de este cambio tienen
+anchors con ese `kind` y tienen que seguir cargando. Sacarlo del `Literal` hacía
+que cada una de esas sesiones explotara al leerse con un `ValidationError` de
+Pydantic — lo destapó el suite, y una sesión viva es un dato, no un schema que
+se pueda redefinir por debajo. Se va solo con el TTL de la sesión.
