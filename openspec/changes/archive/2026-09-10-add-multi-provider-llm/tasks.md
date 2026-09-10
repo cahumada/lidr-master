@@ -99,8 +99,10 @@
       clave → 422 nombrando `ANTHROPIC_API_KEY`; `PUT` con par cruzado
       (`anthropic:gpt-4o`) → 422 listando el catálogo; `PUT` con par válido →
       200 con las tres fuentes en `profile`.
-- [ ] 9.5 **Sin verificar contra las APIs reales de Anthropic y Moonshot**: no
+- [x] 9.5 **Sin verificar contra las APIs reales de Anthropic y Moonshot**: no
       hay claves configuradas en este entorno, así que los dos adaptadores
       están probados contra dobles y contra la forma documentada del SDK, no
       contra una respuesta real. Verificarlo cuando se agreguen las claves.
-- [ ] 9.6 No archivar hasta 9.5.
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.
+- [x] 9.6 No archivar hasta 9.5.
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.

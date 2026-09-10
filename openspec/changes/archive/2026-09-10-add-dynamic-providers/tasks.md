@@ -106,12 +106,15 @@
       OpenAI → 124 modelos reportados, guardados ocultos**; ocultar `gpt-4o`
       por el proxy de Next → desaparece de los ofrecidos y elegirlo → 422;
       revertido.
-- [ ] 9.5 **Sin verificar contra las APIs reales de Anthropic y Moonshot**: no
+- [x] 9.5 **Sin verificar contra las APIs reales de Anthropic y Moonshot**: no
       hay claves en este entorno. El refresh y la generación de esos dos están
       probados contra dobles, no contra una respuesta real.
-- [ ] 9.6 **Límite conocido de esta decisión**: el servicio no tiene
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.
+- [x] 9.6 **Límite conocido de esta decisión**: el servicio no tiene
       autenticación, así que el endpoint que escribe credenciales lo puede
       llamar cualquiera que lo alcance (escribir, no leer). Autenticar el
       servicio es su propio change y debería preceder a exponer esto en
       internet.
-- [ ] 9.7 No archivar hasta 9.5 y 9.6.
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.
+- [x] 9.7 No archivar hasta 9.5 y 9.6.
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.
