@@ -225,26 +225,34 @@ through its runnable config and SHALL NOT read the profile store.
 - **THEN** the endpoint responds 422 and does not invoke the graph
 
 ### Requirement: Los filtros del request DEBEN llegar al grafo, y su precedencia DEBE estar declarada
+
 `AnswerRequest` lleva `module_code` y `window_type_name`, y los endpoints
 agénticos DEBEN honrarlos: el estado semilla los transporta y el retriever los
 aplica. Aceptarlos y descartarlos es el comportamiento silencioso que este
 servicio no permite — y aceptarlos en un endpoint y no en otro, con el mismo
 contrato, es peor todavía.
 
-Hay **tres** fuentes posibles para un filtro y la precedencia es
-`request → pregunta → anchor`. La del medio es la única que no es una
-declaración de intención: es una heurística que extrae códigos con forma de
-transacción del texto de la pregunta. Un control que el operador eligió para
-este turno le gana a esa inferencia, que a su vez sigue ganándole al filtro
-fijado en un turno anterior — el anchor es un default, no una jaula.
+Hay **dos** fuentes de filtros y la precedencia es `request → anchor`: lo que el
+operador eligió para este turno le gana al que fijó en un turno anterior, porque
+el anchor es un default y no una jaula.
+
+**Ya no existe una tercera fuente derivada del texto de la pregunta.** Emitía un
+prefijo de transacción (`CA014` → `"CA"`) como si fuera un `module_code`, y los
+`module_code` del corpus son los del nodo módulo de `WINDOWS` (`DMECAR`,
+`DMECLI`, …): recortaba a un módulo inexistente y dejaba la pregunta sin
+evidencia. La rama de coincidencia exacta de `retrieval` ya encuentra una
+transacción nombrada por su `document_id`, así que ese filtro solo podía restar.
 
 La resolución ocurre en **un solo nodo** (el planner). El retriever lee los
 filtros ya resueltos y no conoce la política, que es lo que mantiene a
 `search_corpus` en el mismo camino que `/search`.
 
 Se resuelve **por campo**: un request que trae `module_code` y no
-`window_type_name` no borra el tipo de ventana que la pregunta o un anchor
-aportaron.
+`window_type_name` no borra el tipo de ventana que un anchor aportó.
+
+Y ningún valor se aplica fuera de su vocabulario: el de `module_code` son los
+códigos que sirve `GET /search/facets`. Un valor irresoluble no se filtra y se
+registra — un filtro que nadie puede ver es el defecto que esta regla cierra.
 
 #### Scenario: El filtro del request recorta la búsqueda
 - **WHEN** una corrida agéntica recibe `module_code` en el body
@@ -252,15 +260,14 @@ aportaron.
 - **AND** un valor que no corresponde a ningún módulo del corpus devuelve cero
   hits, en lugar de resultados sin recortar
 
-#### Scenario: El request le gana a la heurística de la pregunta
-- **WHEN** el body pide un módulo y el texto de la pregunta nombra una
-  transacción de otro
-- **THEN** se aplica el del body
+#### Scenario: Nombrar una transacción no recorta por módulo
+- **WHEN** la pregunta nombra una transacción y el body no trae filtros
+- **THEN** no se aplica ningún filtro de módulo
+- **AND** la transacción se encuentra por la rama de coincidencia exacta
 
-#### Scenario: La pregunta le gana al anchor
-- **WHEN** hay un anchor de módulo fijado y la pregunta nombra explícitamente
-  una transacción de otro módulo, sin filtro en el body
-- **THEN** se aplica el de la pregunta
+#### Scenario: El request le gana al anchor
+- **WHEN** el body pide un módulo y hay otro fijado en un turno anterior
+- **THEN** se aplica el del body
 
 #### Scenario: Un request parcial no borra las otras fuentes
 - **WHEN** el body trae `module_code` y no `window_type_name`, y un anchor
@@ -268,15 +275,13 @@ aportaron.
 - **THEN** el módulo sale del body y el tipo de ventana del anchor
 
 #### Scenario: Sin filtros en el request nada cambia
-- **WHEN** el body no trae ninguno de los dos campos
-- **THEN** los filtros efectivos son los que el planner ya producía
-- **AND** el comportamiento es idéntico al anterior a este cambio
+- **WHEN** el body no trae ninguno de los dos campos y no hay anchors
+- **THEN** no se aplica ningún filtro
 
 #### Scenario: Paridad entre los dos endpoints
 - **WHEN** la misma pregunta con el mismo filtro se manda por `POST /answer` y
   por `POST /answer/agentic`
-- **THEN** las dos recortan al mismo conjunto de documentos
-
+- **THEN** las dos recortan al mismo módulo
 ### Requirement: Los filtros efectivos DEBEN reportarse con su origen
 Un filtro aplicado sin decirlo es un defecto, no una comodidad — y con tres
 fuentes posibles, saber que se filtró no alcanza: hay que poder ver por qué.
@@ -300,3 +305,5 @@ contribución del planner en `agent_contributions` registra lo mismo.
 - **THEN** su fila de `agent_contributions` dice de dónde salió cada valor
 
 <!-- Promovido de: fix-dropped-agentic-filters -->
+
+<!-- Promovido de: fix-module-filter-vocabulary -->

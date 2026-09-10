@@ -109,10 +109,14 @@ sería reimplementar en YAML lo que las dos ya hacen, con rollback incluido.
 | | Railway (`ai-service/`) | Vercel (`business-backend/`) |
 |---|---|---|
 | root directory | `ai-service` | `business-backend` |
-| build | `ai-service/Dockerfile` | Next.js |
+| build | `ai-service/Dockerfile` | Next.js (`pnpm build`, que corre `prisma generate`) |
 | healthcheck | `/health` | — |
-| variables | `DATABASE_URL`, `OPENAI_API_KEY`, `TENANT_ID`, `DOC_VERSION`, `CORPUS_ROOT`, `SERVICE_TOKEN` | `AI_SERVICE_URL`, `AI_SERVICE_TOKEN` |
+| migraciones | `alembic upgrade head` al arrancar el contenedor | `pnpm db:deploy`, a mano |
+| variables | `DATABASE_URL`, `OPENAI_API_KEY`, `TENANT_ID`, `DOC_VERSION`, `CORPUS_ROOT`, `SERVICE_TOKEN` | `AI_SERVICE_URL`, `AI_SERVICE_TOKEN`, `AUTH_SECRET`, `AUTH_URL`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_DATABASE_URL`, `AUTH_DATABASE_DIRECT_URL` |
 | no redesplegar de más | *Watch Paths* = `ai-service/**` | *Ignored Build Step* que sale si el commit no toca `business-backend/` |
+
+El detalle de cada variable —qué rompe si falta— está en los dos
+`.env.example`, que son el lugar donde vive esa explicación.
 
 `AI_SERVICE_URL` es la URL pública del servicio en Railway, y es **privada**:
 sin prefijo `NEXT_PUBLIC_`, porque el browser nunca la tiene que poder leer.
@@ -133,6 +137,27 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 servicio todavía abierto se ignora, así que ese orden no tiene ventana de caída;
 al revés, la consola queda con 401 hasta que Vercel termine de desplegar.
 `/health` no lleva token —es el healthcheck— y es el único endpoint abierto.
+
+**Las migraciones no se aplican igual en los dos lados, y es a propósito.** El
+servicio migra al arrancar: su deploy es uno por push que toca `ai-service/` y
+corre como una sola instancia, así que no hay dos procesos compitiendo por el
+lock. La consola no tiene ninguna de las dos propiedades —Vercel construye en
+cada commit—, así que `prisma migrate deploy` es un acto deliberado
+(`pnpm db:deploy` contra `AUTH_DATABASE_DIRECT_URL`) y no un paso del build que
+falla el deploy entero cuando la base está un segundo inalcanzable.
+
+### Dos pasos que no viven en el repo
+
+Sin ellos el despliegue queda arriba y nadie puede entrar:
+
+1. **El redirect URI de Google.** En Google Cloud Console, agregar
+   `https://<tu-app>.vercel.app/api/auth/callback/google` a los URI autorizados
+   —exacto, la ruta es de Auth.js— y el origen `https://<tu-app>.vercel.app`.
+   `AUTH_URL` tiene que ser esa misma URL: detrás del proxy de Vercel, sin ella
+   los callbacks se arman contra el host interno y Google los rechaza.
+2. **El alta del primer usuario.** La consola **no auto-provisiona**: un login
+   de Google con un email que no está en la base se rechaza. `pnpm seed:admin`
+   crea la fila.
 
 `.github/workflows/ci.yml` prueba cada proyecto solo cuando cambian sus rutas,
 y valida el formato de las specs siempre.
@@ -163,10 +188,12 @@ corpus generado. El repo trae el pipeline, no los datos.
   gasto ni la atribución: quien tenga el token puede llamar `POST /answer` sin
   tope, y el ledger atribuye cada llamada al portador —el BFF— y no a la persona
   que preguntó, porque el servicio no tiene identidad de usuario.
-- **Próximo paso más claro**: cerrar el despliegue continuo de las dos
-  plataformas (hoy documentado, pendiente de verificar de punta a punta). La
-  promoción de los `openspec/changes/` a `openspec/specs/` ya se hizo: quedan 5
-  en curso y ninguno esperando una capability.
+- **Próximo paso más claro**: verificar el despliegue de punta a punta contra
+  la URL pública —los pasos que dependían del repo ya están (el build genera el
+  cliente Prisma, el contenedor migra al arrancar, el servicio exige token en
+  producción); lo que queda es confirmar que la consola carga, entra y responde
+  con citas— y archivar los `openspec/changes/` en curso una vez verificados en
+  producción.
 
 ## Fuente de verdad
 
