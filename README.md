@@ -179,9 +179,14 @@ corpus generado. El repo trae el pipeline, no los datos.
 ## Limitaciones conocidas y próximos pasos
 
 - **Recuperación**: la mejor configuración medida encuentra ~45% de los
-  documentos relevantes que podría encontrar (`p@10` sobre un golden set
-  todavía `PENDING_REVIEW` — ver
-  [`ai-service/evals/COMO_LEER.md`](ai-service/evals/COMO_LEER.md)).
+  documentos relevantes que podría encontrar (`p@10`). El golden set está
+  **parcialmente revisado**: 35 de sus 65 preguntas tienen la anotación
+  confirmada por una persona, y las 30 restantes están listadas con su
+  evidencia en
+  [`ai-service/evals/REVISION_PENDIENTE.md`](ai-service/evals/REVISION_PENDIENTE.md).
+  Hasta que se cierren, el 45% es una medición sobre un conjunto a medio
+  auditar — ver
+  [`ai-service/evals/COMO_LEER.md`](ai-service/evals/COMO_LEER.md).
 - **Generación**: sin streaming ni versiones de prompt más allá de `v1`; el
   guardrail de citas *marca* `grounded=false`, no reintenta solo.
 - **Agentes**: sin persistencia ni escritura — por eso no hay `sandbox.py` ni
