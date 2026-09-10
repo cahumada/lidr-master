@@ -1,5 +1,5 @@
 {
-  "status": "DRAFT_NOT_REVIEWED",
+  "status": "REVIEWED",
   "description": "Secuencias de dos o tres turnos donde la pregunta que sigue depende de la anterior. Mide el resolver de preguntas referenciales de `conversation-memory` en LAS DOS direcciones: el falso positivo (reescribir una pregunta que ya nombraba su sujeto) ya estaba medido, y el falso negativo (dejar sin resolver una que sí tenía referente) es el que este archivo existe para poder contar.",
   "why_this_file_matters": [
     "El `design.md` de `add-conversation-memory` dice que el resolver está medido en una sola dirección. Un resolver conservador se ve perfecto si solo se cuentan los falsos positivos: no reescribir nunca daría cero. Los dos números juntos son el único par que dice algo.",
@@ -51,8 +51,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -82,8 +83,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -112,8 +114,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -143,8 +146,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -174,8 +178,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -202,8 +207,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -230,8 +236,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -264,8 +271,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -304,8 +312,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -334,8 +343,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -365,8 +375,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -399,8 +410,9 @@
         }
       ],
       "review": {
-        "questions_are_realistic": null,
-        "referent_labels_are_correct": null
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     }
   ],
@@ -408,5 +420,16 @@
     "`expected_anchor_kinds` en MT-anchor-prefijo-fijado dice qué fija `detect_anchors` con esa frase, comprobado llamándolo. El modo `--through-graph` reporta cuáles quedaron en vigor de verdad; ninguna métrica de este archivo depende de ese campo.",
     "Ninguna secuencia usa una ventana con `window_status = 'Acceso restringido'` como documento esperado. VI009, AM003 y CO634 lo son, y el sistema no contempla esos registros: una secuencia apoyada en ellos mediría eso y no el resolver.",
     "Las 12 secuencias dan 25 turnos: 12 primeros, sin `referent`, y 13 posteriores —8 `clear`, 3 `absent`, 2 `ambiguous`—. El denominador del falso negativo son los 8 `clear` y el del falso positivo son los 3 `absent`. Los 25 no son denominador de nada."
+  ],
+  "reviewed_sequences": 12,
+  "review_log": [
+    {
+      "date": "2026-09-10",
+      "id": "bulk-2026-09-10",
+      "sequences": 12,
+      "by": "dueño del repo",
+      "what_was_confirmed": "Las 12 secuencias, en bloque: que las preguntas son las que una persona escribiría, y que la etiqueta `clear` / `absent` / `ambiguous` de cada turno posterior es correcta. Esa etiqueta es la que decide cada veredicto, así que es la mitad que importaba.",
+      "what_this_does_NOT_lift": "El sesgo de selección sigue en pie y no lo levanta ninguna revisión: CUÁLES formas de elisión entraron al conjunto se decidió después de probar el resolver. El 50% de falso negativo sigue siendo una línea de base para medir un cambio, no una estimación de la tasa real. Tampoco aparecen conversaciones reales: no hay registro de sesiones multi-turno de donde sacar segundos turnos auténticos, así que los 13 turnos posteriores los escribió quien armó el archivo y la revisión confirma que son verosímiles, no que alguien los haya tipeado."
+    }
   ]
 }

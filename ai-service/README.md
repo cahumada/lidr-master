@@ -309,10 +309,19 @@ anterior (`clear`), se sostiene sola (`absent`) o admite más de un referente
 defendible (`ambiguous`, que se reporta aparte y no cuenta de ningún lado).
 
 Método, veredictos y números en
-[`evals/MULTITURN_EVAL.md`](evals/MULTITURN_EVAL.md). El conjunto arranca en
-`DRAFT_NOT_REVIEWED` y el reporte lo repite: la etiqueta que decide cada
-veredicto es un juicio humano, así que hasta que alguien lo confirme los
-números miden el criterio de quien escribió el archivo.
+[`evals/MULTITURN_EVAL.md`](evals/MULTITURN_EVAL.md). El conjunto está
+**`REVIEWED`**: las 12 secuencias tienen sus dos casillas confirmadas, con su
+`review_log`. Eso levanta la reserva sobre las **etiquetas** y no sobre la
+**selección**: cuáles formas de elidir el sujeto entraron al conjunto se
+decidió después de probar el resolver, así que el 50% de falso negativo es una
+línea de base contra la cual medir un cambio, no una estimación de la tasa
+real. El reporte lo dice en «Lo que estos números NO dicen».
+
+En una frase: el resolver deja sin resolver **4 de 8** preguntas con referente
+claro y reescribe **1 de 3** que se sostenían solas; y las reescrituras que
+hace nombran el referente correcto aisladas (**4/4**) pero le agregan uno de
+más cuando corren por el grafo (**0/4**), porque el turno anterior cita diez
+documentos y toma los dos primeros.
 
 ## Agentes y orquestación
 

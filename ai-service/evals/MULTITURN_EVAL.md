@@ -186,7 +186,7 @@ una sola pieza. Los dos juntos ubican la falla; ninguno solo lo hace.
 
 Corrida: modo `resolver`, 11 turnos puntuados (8 `clear`, 3 `absent`) y 2 `ambiguous` fuera de la métrica.
 
-**SIN REVISAR.** El golden set está en `DRAFT_NOT_REVIEWED`: 12 de 12 secuencias tienen alguna casilla de `review` sin confirmar. La anotación que decide cada veredicto es **el juicio humano de si una pregunta depende de la anterior**, así que hasta que alguien la confirme estos números miden el criterio de quien escribió el archivo.
+El golden set está **revisado**: las dos casillas de `review` de cada secuencia están confirmadas por una persona.
 
 | métrica | valor | qué mide |
 |---|---:|---|
@@ -219,7 +219,9 @@ Corrida: modo `resolver`, 11 turnos puntuados (8 `clear`, 3 `absent`) y 2 `ambig
 
 Corrida: modo `through-graph`, 11 turnos puntuados (8 `clear`, 3 `absent`) y 2 `ambiguous` fuera de la métrica.
 
-**SIN REVISAR.** El golden set está en `DRAFT_NOT_REVIEWED`: 12 de 12 secuencias tienen alguna casilla de `review` sin confirmar. La anotación que decide cada veredicto es **el juicio humano de si una pregunta depende de la anterior**, así que hasta que alguien la confirme estos números miden el criterio de quien escribió el archivo.
+El golden set está **revisado**: las dos casillas de `review` de cada secuencia están confirmadas por una persona.
+
+Esta tabla es la corrida del **2026-09-10**, anterior a esa confirmación. No se volvió a correr al confirmar porque la revisión no tocó ninguna anotación —solo las casillas— así que ningún veredicto cambia; lo único que se actualizó a mano es esta línea. La próxima corrida con `--through-graph` la regenera igual.
 
 | métrica | valor | qué mide |
 |---|---:|---|

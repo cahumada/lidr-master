@@ -169,10 +169,19 @@ def test_the_golden_set_keeps_its_shape():
         assert len(turns) >= 2, f"{sequence['id']}: una secuencia de un turno no es multi-turno"
         assert "referent" not in turns[0], f"{sequence['id']}: el primer turno no tiene referente"
         assert [turn["n"] for turn in turns] == list(range(1, len(turns) + 1))
-        assert set(sequence["review"]) == {
+        # Las dos casillas son obligatorias; `confirmed_in` aparece cuando
+        # alguien las confirmó y apunta a una entrada de `review_log`.
+        review = sequence["review"]
+        assert {"questions_are_realistic", "referent_labels_are_correct"} <= set(review)
+        assert set(review) <= {
             "questions_are_realistic",
             "referent_labels_are_correct",
+            "confirmed_in",
         }
+        if review.get("confirmed_in"):
+            assert review["confirmed_in"] in {
+                entry["id"] for entry in golden.get("review_log", [])
+            }, f"{sequence['id']}: `confirmed_in` no apunta a ninguna entrada de review_log"
 
         for turn in turns[1:]:
             label = turn["referent"]

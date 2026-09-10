@@ -198,7 +198,11 @@ corpus generado. El repo trae el pipeline, no los datos.
   posesivo, el sujeto omitido, un demostrativo con sustantivo, un pronombre de
   objeto—. El conjunto es chico y sus casos se eligieron después de probar el
   resolver, así que ese 50% **no** es la tasa real: fija un antes contra el cual
-  medir un cambio. Ver
+  medir un cambio — y eso no lo levanta la revisión del conjunto, que confirma
+  las etiquetas y no la selección. Además, las reescrituras que sí hace nombran
+  el referente correcto aisladas (4/4) y le agregan uno de más cuando corren por
+  el grafo (0/4), porque el turno anterior cita diez documentos y toma los dos
+  primeros. Ver
   [`ai-service/evals/MULTITURN_EVAL.md`](ai-service/evals/MULTITURN_EVAL.md).
 - **Agentes**: sin persistencia ni escritura — por eso no hay `sandbox.py` ni
   un agente de competencia entre estimadores como en el curso, que sí
@@ -219,10 +223,8 @@ corpus generado. El repo trae el pipeline, no los datos.
   no código.
 - **Próximo paso más claro**: los `openspec/changes/` en curso —cerrar la
   autenticación de la consola y la selección de corrida del mirror—. El eval
-  multi-turno ya está implementado y corrido; lo que le falta es la **revisión
-  humana** de su golden set, que es la que habilita a publicar sus números como
-  algo más que un punto de partida. El despliegue ya está verificado de punta a
-  punta.
+  multi-turno está implementado, corrido y con su golden set revisado. El
+  despliegue ya está verificado de punta a punta.
 
 ## Fuente de verdad
 

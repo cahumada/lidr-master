@@ -30,16 +30,25 @@
   y que cada etiqueta venga con su `why`. Sin esa guarda, borrar un `referent`
   saca ese turno de la métrica sin que nada avise y el número **mejora por
   haber medido menos**.
-- [ ] 1.3 Revisión humana del set antes de reportar cualquier número — la misma
+- [x] 1.3 Revisión humana del set antes de reportar cualquier número — la misma
   regla que la spec de `retrieval` fija para el golden de recuperación.
-  **Pendiente, y es del dueño del repo.** El archivo está en
-  `DRAFT_NOT_REVIEWED` con las dos casillas de `review` en `null` en las 12
-  secuencias, y el reporte lo repite arriba de la tabla. Lo que hay que
-  confirmar por secuencia son dos cosas: que las preguntas son las que una
-  persona escribiría, y —la que hace todo el trabajo— que la etiqueta
-  `clear` / `absent` / `ambiguous` es correcta. Esa etiqueta es un juicio
-  humano sobre si una pregunta depende de la anterior; hasta que alguien la
-  confirme, los números miden el criterio de quien escribió el archivo.
+  **Confirmado el 2026-09-10 por el dueño del repo**, las 12 secuencias en
+  bloque: que las preguntas son las que una persona escribiría, y —la que hace
+  todo el trabajo— que la etiqueta `clear` / `absent` / `ambiguous` de cada
+  turno posterior es correcta. El archivo pasó a `REVIEWED`, cada `review`
+  lleva `confirmed_in: bulk-2026-09-10` y hay un `review_log` con qué se
+  confirmó. Un test verifica que ese `confirmed_in` apunte a una entrada real
+  del log, para que la confirmación no pueda quedar apuntando a nada.
+  **Lo que la revisión NO levanta, y está escrito en el `review_log`**: el
+  sesgo de selección. Cuáles formas de elisión entraron al conjunto se decidió
+  después de probar el resolver, así que el 50% sigue siendo una línea de base
+  para medir un cambio y no una estimación de la tasa real. Y sigue sin haber
+  conversaciones reales detrás: la revisión confirma que los 13 turnos
+  posteriores son verosímiles, no que alguien los haya tipeado.
+  El banner del reporte cambió solo: `_review_state` lo deriva del archivo en
+  cada corrida. La tabla del modo grafo se dejó con los números del 2026-09-10
+  —la revisión no tocó ninguna anotación, así que ningún veredicto cambia— y de
+  esa sección se actualizó a mano solo esa línea, dicho ahí mismo.
 
 ## 2. La medición
 - [x] 2.1 Falso negativo del resolver: preguntas con referente real que quedaron
@@ -128,7 +137,10 @@
 
 ## 5. Lo que esta medición destapó y NO se arregla acá
 
-- [ ] 5.1 **El resolver nombra referentes de más porque la fuente los trae de
+Sin casillas a propósito: no son tareas de este change, son lo que la medición
+encontró y el insumo del próximo. Este checklist no queda incompleto por ellas.
+
+- **5.1 El resolver nombra referentes de más porque la fuente los trae de
   más.** Medido: 0 de 4 reescrituras correctas por el grafo, las cuatro
   `partial_referent`, porque `facts_from_turn` guarda los diez documentos que
   citó el turno anterior y el resolver toma los dos primeros. Arreglarlo es una
@@ -138,7 +150,7 @@
   propio change, con esta medición como línea de base: hoy 4/4 aislado y 0/4 por
   el grafo, y un arreglo tiene que subir el segundo sin bajar el primero ni
   mover las dos direcciones.
-- [ ] 5.2 **Las cuatro formas de elisión que el resolver no marca.** Un
+- **5.2 Las cuatro formas de elisión que el resolver no marca.** Un
   posesivo (`sus`), el sujeto omitido del todo, un demostrativo con sustantivo
   (`esa pantalla`) y un pronombre de objeto (`la`). Tampoco se arregla acá, y
   hay una razón: la guarda que deja pasar `esa pantalla` es la que evitó 3
