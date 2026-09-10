@@ -69,6 +69,29 @@ function baseUrl(): string {
 }
 
 /**
+ * The service's shared token, when there is one.
+ * || El token compartido del servicio, si hay uno.
+ *
+ * No `NEXT_PUBLIC_` prefix: that prefix is exactly the mechanism that would
+ * ship the secret to the browser. This module is `server-only`, so the
+ * guarantee is structural — the same reason `AI_SERVICE_URL` lives here.
+ *
+ * Not configured means no header, and never an invented value: the service can
+ * be deliberately open in development, and it says so in its own startup log.
+ *
+ * || Sin prefijo `NEXT_PUBLIC_`: ese prefijo es justamente el mecanismo que
+ * mandaría el secreto al browser. Este módulo es `server-only`, así que la
+ * garantía es estructural — la misma razón por la que `AI_SERVICE_URL` vive
+ * acá. Sin configurar significa sin header, y nunca un valor inventado: el
+ * servicio puede estar abierto a propósito en desarrollo, y lo dice en su
+ * propio log de arranque.
+ */
+function authHeader(): Record<string, string> {
+  const token = process.env.AI_SERVICE_TOKEN?.trim();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
  * FastAPI puts its message in `detail`, which is a string for an `HTTPException`
  * and a list of objects for a validation error. Both are flattened to a line a
  * human can read.
@@ -110,6 +133,13 @@ async function call(
   try {
     response = await fetch(`${baseUrl()}${path}`, {
       ...rest,
+      // The token goes HERE and nowhere else: this is the only place the
+      // console does `fetch` against the service, so one line covers every
+      // call and no screen or Route Handler ever handles the secret.
+      // || El token va ACÁ y en ningún otro lado: es el único lugar donde la
+      // consola hace `fetch` contra el servicio, así una línea cubre todas las
+      // llamadas y ninguna pantalla ni Route Handler toca el secreto.
+      headers: { ...authHeader(), ...(rest.headers ?? {}) },
       signal,
       // Never cached: every one of these is either a live query or a mutation.
       // || Nunca cacheado: cada uno de estos es una consulta viva o una mutación.
