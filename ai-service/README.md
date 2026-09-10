@@ -268,18 +268,51 @@ uv run python scripts/eval_retrieval.py      # precision@k y latencia por config
 uv run python scripts/eval_retrieval_proxy.py --limit 60   # proxy rápido, para iterar
 ```
 
-30 preguntas enfocadas en pólizas, siniestros, cobranzas y diseñador, con 130
+65 preguntas enfocadas en pólizas, siniestros, cobranzas y diseñador, con 215
 documentos relevantes anotados y 85 distractores deliberados. Cada pregunta lleva
-en `provenance` el criterio verificable del que salió, y está
-**`PENDING_REVIEW`**: un golden set derivado por el mismo sistema que se evalúa
-contra él compara configuraciones, no mide calidad.
+en `provenance` el criterio verificable del que salió.
+
+El archivo está **`REVIEWED`**: las 65 tienen sus dos casillas confirmadas por
+alguien que conoce el negocio —35 de a una y 30 en bloque, con su `review_log`—.
+Eso levanta la reserva sobre las **anotaciones** y no sobre las **preguntas**:
+las derivó el corpus, así que el conjunto sigue midiendo qué tan bien se
+recupera lo que el propio sistema propuso como relevante. Las preguntas
+escritas por una persona están en `golden_curated.json`.
 
 **[`evals/COMO_LEER.md`](evals/COMO_LEER.md) explica cada término** —
 `precision@k`, techo, distractores, ramas, tope por documento, RRF — sobre una
 pregunta real y con los resultados que dio.
 
-En una frase: la mejor configuración encuentra alrededor del **45% de los
-documentos relevantes que podría encontrar**.
+En una frase: la mejor configuración —`+split +rerank modelo`— llega a
+`precision@10 = 0,171` sobre un techo de `0,243`, o sea **el 71% de lo
+alcanzable**. El techo no es 1,0 porque una pregunta con 3 documentos
+relevantes y k=10 no puede pasar de 0,30, y por eso el porcentaje del techo es
+la columna que se lee y no el puntaje crudo.
+
+## Evaluación multi-turno — las dos direcciones del resolver
+
+```bash
+uv run python scripts/eval_multiturn.py                  # modo resolver: sin base, sin LLM
+uv run python scripts/eval_multiturn.py --through-graph  # por los endpoints reales
+```
+
+El resolver de preguntas referenciales estaba medido **en una sola dirección**:
+se sabía que no reescribe una pregunta que nombra su propio sujeto —el falso
+positivo— y no se sabía cuántas preguntas con referente real dejaba sin
+resolver. La asimetría lo favorece: un resolver que no reescribe nunca saca cero
+en falsos positivos, así que ese número solo no distingue un resolver
+conservador de uno roto.
+
+`evals/golden_multiturn.json` son 12 secuencias y 25 turnos, con la anotación
+que hace el trabajo: si esa pregunta, leída por una persona, depende del turno
+anterior (`clear`), se sostiene sola (`absent`) o admite más de un referente
+defendible (`ambiguous`, que se reporta aparte y no cuenta de ningún lado).
+
+Método, veredictos y números en
+[`evals/MULTITURN_EVAL.md`](evals/MULTITURN_EVAL.md). El conjunto arranca en
+`DRAFT_NOT_REVIEWED` y el reporte lo repite: la etiqueta que decide cada
+veredicto es un juicio humano, así que hasta que alguien lo confirme los
+números miden el criterio de quien escribió el archivo.
 
 ## Agentes y orquestación
 
