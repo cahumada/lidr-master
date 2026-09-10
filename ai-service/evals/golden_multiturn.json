@@ -1,0 +1,435 @@
+{
+  "status": "REVIEWED",
+  "description": "Secuencias de dos o tres turnos donde la pregunta que sigue depende de la anterior. Mide el resolver de preguntas referenciales de `conversation-memory` en LAS DOS direcciones: el falso positivo (reescribir una pregunta que ya nombraba su sujeto) ya estaba medido, y el falso negativo (dejar sin resolver una que sí tenía referente) es el que este archivo existe para poder contar.",
+  "why_this_file_matters": [
+    "El `design.md` de `add-conversation-memory` dice que el resolver está medido en una sola dirección. Un resolver conservador se ve perfecto si solo se cuentan los falsos positivos: no reescribir nunca daría cero. Los dos números juntos son el único par que dice algo.",
+    "La anotación que hace el trabajo NO es `relevant_document_ids` sino `referent`: si esta pregunta, leída por una persona, depende del turno anterior o no. Es un juicio humano y por eso el archivo arranca sin revisar.",
+    "Las secuencias están escritas como una persona escribe el segundo turno —corto, con el sujeto elidido— y no como lo escribiría alguien que sabe que hay un regex del otro lado. Ahí está el valor: `¿y qué validaciones tiene?` y `¿cuáles son sus validaciones?` piden lo mismo y solo una lleva marca."
+  ],
+  "how_to_read_referent": {
+    "clear": "Una persona que leyó el turno anterior sabe exactamente de qué habla esta pregunta, y la pregunta sola no lo dice. NO reescribirla es un FALSO NEGATIVO.",
+    "absent": "La pregunta se sostiene sola: nombra su transacción, o nombra su sujeto en palabras. Reescribirla es un FALSO POSITIVO — le agrega un segundo sujeto a una pregunta que ya tenía uno.",
+    "ambiguous": "Hay más de un referente defensible, o el referente es la respuesta anterior y no un documento. Se reporta aparte y NO cuenta ni como acierto ni como error: contarlo en cualquiera de los dos lados sería elegir una respuesta y después evaluarse contra la propia elección."
+  },
+  "how_to_read_expected_referents": [
+    "Son los `document_id` que una reescripción correcta debería nombrar: hacia dónde apunta la pregunta, no qué documento la responde.",
+    "Los dos campos se separan a propósito. En `MT-CA014-matriz` el referente es `CA014` —es lo que el usuario estaba mirando— y el documento que responde es `CA014A`. Un resolver que nombra bien el referente y una recuperación que trae el documento equivocado son dos fallas distintas, y colapsarlas en un número deja sin saber cuál pasó.",
+    "NO se anota el texto literal de la reescritura. El resolver hoy escribe `(sobre CA014)` y ese formato es una decisión de implementación: fijarlo acá haría que un cambio de formato rompiera el eval sin que nada se haya degradado."
+  ],
+  "how_to_add_more": [
+    "Copiar una secuencia y cambiar `turns`. El `id` lleva prefijo `MT-` y tiene que ser único.",
+    "El primer turno nunca lleva `referent`: no hay turno anterior del que depender.",
+    "Todo turno posterior lleva `referent` y, si es `clear` o `ambiguous`, `expected_referents`.",
+    "`provenance` tiene que decir de dónde sale la anotación de forma que se pueda volver a comprobar — la sección o el campo del corpus, no «me parece».",
+    "Las dos casillas de `review` arrancan en `null` y las pone una persona que conozca el negocio. Mientras alguna esté en `null`, el reporte lo dice."
+  ],
+  "sequences": [
+    {
+      "id": "MT-CA014-validaciones",
+      "module": "policies",
+      "provenance": "CA014 (Coberturas de la póliza individual o certificado) tiene secciones Campos, Validaciones, Efecto, Función y Notas para el programador. El segundo turno pide la sección Validaciones de ese mismo documento.",
+      "note": "El caso que el resolver sí resuelve. Está para que el número no se lea como «el resolver no anda»: la marca `y` al principio es la que dispara.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "¿Qué se carga en la pantalla de coberturas de una póliza individual?",
+          "relevant_document_ids": [
+            "CA014"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Y qué validaciones tiene?",
+          "referent": "clear",
+          "expected_referents": [
+            "CA014"
+          ],
+          "relevant_document_ids": [
+            "CA014"
+          ],
+          "why": "El sujeto es la pantalla del turno anterior. Sola, la pregunta no dice de qué habla."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    },
+    {
+      "id": "MT-CA014-posesivo",
+      "module": "policies",
+      "provenance": "Mismo documento y misma sección que MT-CA014-validaciones. La única diferencia es cómo se escribe el segundo turno.",
+      "note": "El par de control de MT-CA014-validaciones. Misma intención, mismo referente, mismo documento esperado: cambia que el sujeto se elide con un posesivo en vez de con `y`. Si una pasa y la otra no, la diferencia es del resolver y no de la pregunta.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "¿Cómo se cargan las coberturas de una póliza individual?",
+          "relevant_document_ids": [
+            "CA014"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Cuáles son sus validaciones?",
+          "referent": "clear",
+          "expected_referents": [
+            "CA014"
+          ],
+          "relevant_document_ids": [
+            "CA014"
+          ],
+          "why": "`sus` no puede referirse a nada dentro de la pregunta. Es la forma más común de pedir la sección siguiente de lo que se estaba leyendo."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    },
+    {
+      "id": "MT-CO008-campos",
+      "module": "collections",
+      "provenance": "CO008 (Ingreso de pagos) tiene sección Campos con Banco, Cliente, Cuenta bancaria, Cuenta contable, Factor de cambio y otros. El segundo turno pide esa sección.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "¿Cómo se ingresa un pago de una relación de cobro?",
+          "relevant_document_ids": [
+            "CO008"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Qué campos tiene?",
+          "referent": "clear",
+          "expected_referents": [
+            "CO008"
+          ],
+          "relevant_document_ids": [
+            "CO008"
+          ],
+          "why": "Sujeto elidido por completo — ni pronombre ni posesivo. Es la forma más corta de pedir lo mismo, y la que menos marca deja."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    },
+    {
+      "id": "MT-OP001-esa-pantalla",
+      "module": "cash_and_banks",
+      "provenance": "OP001 (Entrada de dinero en caja), módulo DMECYB / Caja y Bancos, tiene sección Validaciones. El segundo turno pide esa sección con un demostrativo seguido de sustantivo.",
+      "note": "Este caso mide el precio de una decisión que ya está tomada y documentada. El resolver exige que `esa|ese|esos` no lleve sustantivo detrás, porque matchearlos en cualquier lado disparaba en 3 de las 35 preguntas del golden de recuperación —«esos boletines», «esa cobranza»—, todas con sujeto propio. La guarda evita esos tres falsos positivos y a cambio deja pasar éste. El eval existe para poder poner número a los dos lados de ese canje, no para declararlo bug.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "¿Cómo se registra una entrada de dinero en caja?",
+          "relevant_document_ids": [
+            "OP001"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Qué validaciones tiene esa pantalla?",
+          "referent": "clear",
+          "expected_referents": [
+            "OP001"
+          ],
+          "relevant_document_ids": [
+            "OP001"
+          ],
+          "why": "`esa pantalla` no puede ser ninguna pantalla mencionada en esta pregunta, porque no menciona ninguna. Es un demostrativo con sustantivo, que es la forma que la guarda del resolver descarta."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    },
+    {
+      "id": "MT-CA014-matriz",
+      "module": "policies",
+      "provenance": "CA014 (Coberturas de la póliza individual o certificado) y CA014A (Coberturas de la póliza matriz) son dos documentos distintos con secciones equivalentes. CA014A tiene Capital máximo, Capital mínimo, Carencia, Edad máx. — campos de la matriz que el individual no tiene.",
+      "note": "La secuencia que separa las dos anotaciones. El referente es CA014 (es lo que el usuario venía leyendo) y el documento que responde es CA014A. Un resolver correcto nombra CA014; una recuperación correcta trae CA014A.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "¿Qué se carga en las coberturas de la póliza individual?",
+          "relevant_document_ids": [
+            "CA014"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Y para la póliza matriz?",
+          "referent": "clear",
+          "expected_referents": [
+            "CA014"
+          ],
+          "relevant_document_ids": [
+            "CA014A"
+          ],
+          "why": "«¿y para X?» hereda el verbo y el objeto del turno anterior: lo que se pregunta es qué se carga en las coberturas, ahora de la matriz."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    },
+    {
+      "id": "MT-OP004-autonoma",
+      "module": "cash_and_banks",
+      "provenance": "OP004 (Actualización de cuentas bancarias y de caja), módulo DMECYB. El segundo turno la nombra por su código, así que no depende del turno anterior.",
+      "note": "Control del falso positivo: el turno anterior dejó un referente disponible y la pregunta no lo necesita. Reescribirla le agregaría un sujeto que ya tiene.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "¿Cómo se cargan las coberturas de una póliza individual?",
+          "relevant_document_ids": [
+            "CA014"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Cómo se actualizan las cuentas bancarias en OP004?",
+          "referent": "absent",
+          "relevant_document_ids": [
+            "OP004"
+          ],
+          "why": "Nombra su transacción. No hay nada que resolver."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    },
+    {
+      "id": "MT-SI004-autonoma-sin-codigo",
+      "module": "claims",
+      "provenance": "SI004 (Datos generales del siniestro) tiene sección Campos con Causa, Cliente, Estado, Destino del cheque. CO008 (Ingreso de pagos) tiene un campo Cliente en su sección Validaciones. El segundo turno nombra su sujeto en palabras, sin código.",
+      "note": "El caso difícil del falso positivo: la pregunta se sostiene sola pero NO trae un token con forma de transacción, así que la primera guarda del resolver no la cubre. La sostiene la segunda: no lleva marca referencial.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "¿Qué datos generales se cargan de un siniestro?",
+          "relevant_document_ids": [
+            "SI004"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Qué validaciones existen sobre el campo Cliente en el ingreso de pagos?",
+          "referent": "absent",
+          "relevant_document_ids": [
+            "CO008"
+          ],
+          "why": "Nombra el campo y la pantalla en palabras. Un lector que no vio el turno anterior la entiende igual."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    },
+    {
+      "id": "MT-clave-ambiguo",
+      "module": "policies",
+      "provenance": "CA001k (Solicitud de clave para tratamiento de pólizas) y CA001M (Solicitud de clave para tratamiento de pólizas colectivas) son las dos pantallas de solicitud de clave. El primer turno las compara, así que la respuesta cita las dos.",
+      "note": "Dos referentes igual de defendibles. El resolver nombra hasta dos, así que acá los nombraría a los dos y no elegiría — que es lo correcto, pero no lo convierte en un acierto medible: la pregunta no tiene una respuesta única contra la cual acertar.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "¿Qué diferencia hay entre la solicitud de clave para pólizas individuales y la de colectivas?",
+          "relevant_document_ids": [
+            "CA001k",
+            "CA001M"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Y eso quién lo autoriza?",
+          "referent": "ambiguous",
+          "expected_referents": [
+            "CA001k",
+            "CA001M"
+          ],
+          "relevant_document_ids": [
+            "CA001k",
+            "CA001M"
+          ],
+          "why": "`eso` puede señalar cualquiera de las dos pantallas, o la diferencia entre ellas. Las tres lecturas son razonables."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    },
+    {
+      "id": "MT-OP001-reemplazo-de-referente",
+      "module": "cash_and_banks",
+      "provenance": "OP001 (Entrada de dinero en caja) y OP004 (Actualización de cuentas bancarias y de caja) son dos pantallas del módulo DMECYB. Las dos tienen sección Validaciones, así que el tercer turno tiene respuesta en cualquiera de las dos — y solo una es la correcta.",
+      "note": "Tres turnos, y el que importa es el tercero. `last_document_ids` se REEMPLAZA cada turno y no se acumula, así que el referente del tercer turno tiene que ser OP004 (lo último citado) y no OP001. Es la única secuencia del archivo que puede fallar nombrando un referente que alguna vez fue correcto. El segundo turno, además, es un falso positivo esperado: nombra su sujeto en palabras pero empieza con `y`, que es marca.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "¿Cómo se registra una entrada de dinero en caja?",
+          "relevant_document_ids": [
+            "OP001"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Y cómo se actualizan las cuentas bancarias y de caja?",
+          "referent": "absent",
+          "relevant_document_ids": [
+            "OP004"
+          ],
+          "why": "«cuentas bancarias y de caja» es el sujeto de la pregunta y es el título de OP004. El `y` inicial es coordinación con el turno anterior, no una referencia a él."
+        },
+        {
+          "n": 3,
+          "question": "¿Y qué validaciones tiene?",
+          "referent": "clear",
+          "expected_referents": [
+            "OP004"
+          ],
+          "relevant_document_ids": [
+            "OP004"
+          ],
+          "why": "El sujeto es la pantalla del turno 2, no la del turno 1. Nombrar OP001 acá sería resolver hacia un referente vencido."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    },
+    {
+      "id": "MT-CA001M-clave-incompleta",
+      "module": "policies",
+      "provenance": "CA001M (Solicitud de clave para tratamiento de pólizas colectivas) tiene campos Clave - agencia, Clave - canal de venta, Clave - certificado, Clave - fecha vigencia, y una sección Validaciones sobre ellos.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "¿Qué datos hay que completar para pedir una clave de póliza colectiva?",
+          "relevant_document_ids": [
+            "CA001M"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Qué pasa si no la completo?",
+          "referent": "clear",
+          "expected_referents": [
+            "CA001M"
+          ],
+          "relevant_document_ids": [
+            "CA001M"
+          ],
+          "why": "`la` es la clave del turno anterior. La pregunta sola no tiene antecedente para ese pronombre."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    },
+    {
+      "id": "MT-CO001-meta-pregunta",
+      "module": "collections",
+      "provenance": "CO001 (Documentos de una relación) tiene sección Campos con Certificado, Cliente, Concepto de cargo/abono, Cuota, Datos del bono.",
+      "note": "El referente no es un documento sino la respuesta anterior. Se anota `ambiguous` a propósito: nombrar el documento que se citó es una lectura defendible y dejarla sin tocar también, porque no es una pregunta de recuperación nueva. Contarla de cualquiera de los dos lados inflaría el número que sea.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "¿Qué documentos componen una relación de cobro?",
+          "relevant_document_ids": [
+            "CO001"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Me lo explicás con un ejemplo?",
+          "referent": "ambiguous",
+          "expected_referents": [
+            "CO001"
+          ],
+          "relevant_document_ids": [
+            "CO001"
+          ],
+          "why": "`lo` es lo que se acaba de responder, no un documento del corpus. Pide reformular, no buscar."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    },
+    {
+      "id": "MT-anchor-prefijo-fijado",
+      "module": "policies",
+      "provenance": "CA014 (Coberturas de la póliza individual o certificado). El primer turno declara una restricción con la frase «de acá en adelante solo módulo CA», que `detect_anchors` reconoce y fija como `transaction_prefix = CA`. Verificado llamando a `detect_anchors` con esa frase exacta.",
+      "note": "La única secuencia que ejercita anchors en vez del resolver, para que la columna de anchors del modo grafo tenga algo que reportar. El anchor que queda fijado es `transaction_prefix` y NO `module_code`, aunque la frase diga «módulo»: en el corpus, «módulo CA» es el prefijo de la transacción, y `module_code` es otra cosa (`DMECAR`, `DMECOB`). Esa distinción la arregló `fix-module-filter-vocabulary`; anotar `module_code` acá volvería a mezclarlas.\nLa primera versión de esta secuencia decía «solo Caja y Bancos» y no fijaba NADA — `detect_anchors` devolvía lista vacía—, así que medía el resolver dos veces y la columna de anchors salía en blanco.",
+      "turns": [
+        {
+          "n": 1,
+          "question": "De acá en adelante solo módulo CA: ¿qué se carga en las coberturas de la póliza individual?",
+          "relevant_document_ids": [
+            "CA014"
+          ],
+          "expected_anchor_kinds": [
+            "transaction_prefix"
+          ]
+        },
+        {
+          "n": 2,
+          "question": "¿Y qué validaciones tiene?",
+          "referent": "clear",
+          "expected_referents": [
+            "CA014"
+          ],
+          "relevant_document_ids": [
+            "CA014"
+          ],
+          "why": "Mismo caso que MT-CA014-validaciones, pero con un anchor activo. El resolver y los anchors son piezas distintas y esta secuencia las corre juntas: el turno no nombra el prefijo y tiene que quedar acotado igual."
+        }
+      ],
+      "review": {
+        "questions_are_realistic": true,
+        "referent_labels_are_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
+      }
+    }
+  ],
+  "known_annotation_notes": [
+    "`expected_anchor_kinds` en MT-anchor-prefijo-fijado dice qué fija `detect_anchors` con esa frase, comprobado llamándolo. El modo `--through-graph` reporta cuáles quedaron en vigor de verdad; ninguna métrica de este archivo depende de ese campo.",
+    "Ninguna secuencia usa una ventana con `window_status = 'Acceso restringido'` como documento esperado. VI009, AM003 y CO634 lo son, y el sistema no contempla esos registros: una secuencia apoyada en ellos mediría eso y no el resolver.",
+    "Las 12 secuencias dan 25 turnos: 12 primeros, sin `referent`, y 13 posteriores —8 `clear`, 3 `absent`, 2 `ambiguous`—. El denominador del falso negativo son los 8 `clear` y el del falso positivo son los 3 `absent`. Los 25 no son denominador de nada."
+  ],
+  "reviewed_sequences": 12,
+  "review_log": [
+    {
+      "date": "2026-09-10",
+      "id": "bulk-2026-09-10",
+      "sequences": 12,
+      "by": "dueño del repo",
+      "what_was_confirmed": "Las 12 secuencias, en bloque: que las preguntas son las que una persona escribiría, y que la etiqueta `clear` / `absent` / `ambiguous` de cada turno posterior es correcta. Esa etiqueta es la que decide cada veredicto, así que es la mitad que importaba.",
+      "what_this_does_NOT_lift": "El sesgo de selección sigue en pie y no lo levanta ninguna revisión: CUÁLES formas de elisión entraron al conjunto se decidió después de probar el resolver. El 50% de falso negativo sigue siendo una línea de base para medir un cambio, no una estimación de la tasa real. Tampoco aparecen conversaciones reales: no hay registro de sesiones multi-turno de donde sacar segundos turnos auténticos, así que los 13 turnos posteriores los escribió quien armó el archivo y la revisión confirma que son verosímiles, no que alguien los haya tipeado."
+    }
+  ]
+}

@@ -190,6 +190,20 @@ corpus generado. El repo trae el pipeline, no los datos.
   [`COMO_LEER.md`](ai-service/evals/COMO_LEER.md).
 - **Generación**: sin streaming ni versiones de prompt más allá de `v1`; el
   guardrail de citas *marca* `grounded=false`, no reintenta solo.
+- **Preguntas de seguimiento**: el resolver que convierte «¿y qué validaciones
+  tiene?» en una pregunta buscable es un regex conservador, y ahora está medido
+  en **las dos direcciones**: deja sin resolver **4 de 8** preguntas con
+  referente claro, y reescribe **1 de 3** que se sostenían solas. Las cuatro que
+  se le escapan son formas corrientes de elidir el sujeto que no dejan marca —un
+  posesivo, el sujeto omitido, un demostrativo con sustantivo, un pronombre de
+  objeto—. El conjunto es chico y sus casos se eligieron después de probar el
+  resolver, así que ese 50% **no** es la tasa real: fija un antes contra el cual
+  medir un cambio — y eso no lo levanta la revisión del conjunto, que confirma
+  las etiquetas y no la selección. Además, las reescrituras que sí hace nombran
+  el referente correcto aisladas (4/4) y le agregan uno de más cuando corren por
+  el grafo (0/4), porque el turno anterior cita diez documentos y toma los dos
+  primeros. Ver
+  [`ai-service/evals/MULTITURN_EVAL.md`](ai-service/evals/MULTITURN_EVAL.md).
 - **Agentes**: sin persistencia ni escritura — por eso no hay `sandbox.py` ni
   un agente de competencia entre estimadores como en el curso, que sí
   escribe (`save_estimate`). El día que exista una escritura real (por
@@ -207,9 +221,10 @@ corpus generado. El repo trae el pipeline, no los datos.
   toca un solo proyecto todavía puede producir un deploy del otro. Es
   configuración de Railway (*Watch Paths*) y de Vercel (*Ignored Build Step*),
   no código.
-- **Próximo paso más claro**: los tres `openspec/changes/` en curso —cerrar la
-  autenticación de la consola, la selección de corrida del mirror y el eval
-  multi-turno—. El despliegue ya está verificado de punta a punta.
+- **Próximo paso más claro**: los `openspec/changes/` en curso —cerrar la
+  autenticación de la consola y la selección de corrida del mirror—. El eval
+  multi-turno está implementado, corrido y con su golden set revisado. El
+  despliegue ya está verificado de punta a punta.
 
 ## Fuente de verdad
 
