@@ -12,6 +12,7 @@ import structlog
 
 from app.config import get_settings
 from app.dependencies import get_activity_log, get_embedder, get_reranker
+from app.domain.business_db_store import ActiveRun, resolve_active_run
 from app.domain.graph.activity import describe_node
 from app.domain.profiles import synthesizer_runtime
 from app.domain.schemas import AnswerAgentState, QueryFilters
@@ -68,7 +69,9 @@ def thread_config(
 
 
 def initial_state(
-    body: AnswerRequest, conversation: ConversationSession | None = None
+    body: AnswerRequest,
+    conversation: ConversationSession | None = None,
+    active_run: ActiveRun | None = None,
 ) -> AnswerAgentState:
     """Seed state for a fresh run. || Estado semilla para una corrida nueva.
 
@@ -114,6 +117,16 @@ def initial_state(
         "agent_contributions": [],
         "review_reasons": [],
     }
+    # Resolved by the caller, which is the one that has a database session, and
+    # frozen into the state here. Absent means "no active run", and then the
+    # evidence block falls back to the stamped column -- see
+    # `context_budget.resolve_window_status`.
+    # || La resuelve quien llama, que es el que tiene sesión de base, y se
+    # congela acá. Ausente significa «no hay corrida activa», y entonces el
+    # bloque de evidencia cae a la columna estampada.
+    if active_run is not None:
+        state["active_run_id"] = active_run.run_id
+        state["active_run_env"] = active_run.env
     if conversation is not None:
         state["session_id"] = conversation.session_id
         state["conversation_facts"] = conversation.facts.model_dump(mode="json")
@@ -324,6 +337,7 @@ async def _stream_and_log(
     persona: str | None = None,
     guardrails: str | None = None,
     conversation=None,
+    active_run: ActiveRun | None = None,
 ):
     """Run the graph via ``astream``, narrating each node into the activity log.
 
@@ -339,7 +353,7 @@ async def _stream_and_log(
         guardrails=guardrails,
     )
 
-    seed = initial_state(body, conversation)
+    seed = initial_state(body, conversation, active_run)
     async for update in graph.astream(seed, config, stream_mode="updates"):
         for node_name, node_update in update.items():
             for entry in describe_node(node_name, node_update):
@@ -392,6 +406,7 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
                 persona=runtime.persona,
                 guardrails=runtime.guardrails,
                 conversation=conversation,
+                active_run=await resolve_active_run(session, settings),
             )
             values = snapshot.values or {}
             interrupts = getattr(snapshot, "interrupts", None) or ()

@@ -96,9 +96,17 @@ Es el único punto donde este change toca código que ya funcionaba.
 
 ## 5. `activated_by` es un dato declarado, y se etiqueta como tal
 
-El servicio no tiene autenticación: `add-console-authentication` pone los roles
-en el token de sesión y gatea las rutas **en la consola**. Entonces el servicio no
-puede verificar quién activó nada.
+El servicio autentica al **llamador** con un token compartido
+(`add-service-authentication`, aterrizado después de que se escribió este
+diseño), y eso no cambia la conclusión: un token no es una persona.
+`add-console-authentication` pone los roles en el token de sesión y gatea las
+rutas **en la consola**, así que el servicio sabe que quien llama tiene la
+credencial y no puede verificar quién activó nada.
+
+Vale anotar por qué la enmienda no altera la decisión: la alternativa que se
+descartaba era autenticar **usuarios** en el servicio, y un secreto compartido no
+es eso. Cerrar el servicio corta el acceso anónimo; no le da identidad de
+usuario.
 
 Guardarlo igual sirve —cambiar de corrida cambia lo que dice cada respuesta, y
 querer saber quién lo hizo es razonable—, pero el campo se llama y se documenta

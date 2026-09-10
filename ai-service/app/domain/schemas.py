@@ -135,6 +135,24 @@ class AnswerAgentState(TypedDict, total=False):
     resolved_question: str
     resolved_referents: list[str]
     session_id: str | None
+
+    # Which mirror run this turn resolves window status from. Carried as a
+    # STRING and not as the tree itself: this state is serialized into the
+    # LangGraph checkpointer, and a few MB of navigation tree does not belong
+    # in a checkpoint. The tree comes from a process cache keyed by exactly
+    # these two values, so a paused run resumed after an activation still
+    # answers with the run it started on -- which is the correct behaviour: a
+    # turn should not change its mind about the world halfway through.
+    # || De qué corrida del mirror resuelve el estado de ventana este turno.
+    # Viaja como STRING y no como el árbol: este estado se serializa al
+    # checkpointer, y unos MB de árbol no van ahí. El árbol sale de un caché de
+    # proceso con esas dos claves, así que una corrida pausada y retomada
+    # después de una activación sigue respondiendo con la corrida en la que
+    # empezó — que es lo correcto: un turno no debería cambiar de idea sobre el
+    # mundo a mitad de camino.
+    active_run_id: str | None
+    active_run_env: str
+
     conversation_facts: dict
     conversation_anchors: list[dict]
     conversation_turns: list[dict]

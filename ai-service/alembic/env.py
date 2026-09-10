@@ -28,6 +28,7 @@ from app.foundation.persistence.database import Base, to_sync_url
 # is what autogenerate compares against.
 # || Se importa por el efecto de registrar las tablas en Base.metadata, que es
 # contra lo que compara autogenerate.
+from app.domain import business_db_store  # noqa: F401
 from app.domain import profiles  # noqa: F401
 from app.domain import providers_store  # noqa: F401
 from app.foundation.persistence import usage as llm_usage  # noqa: F401

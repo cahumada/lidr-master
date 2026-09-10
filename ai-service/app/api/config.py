@@ -29,12 +29,16 @@ de entorno siempre le gana a una guardada.
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Literal
+
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
+from app.domain.business_db_store import get_stamp, resolve_active_run
 from app.domain.graph.catalog import (
     AGENT_SPECS,
     AgentSpec,
@@ -385,6 +389,55 @@ class ServiceConfigResponse(BaseModel):
         description="Compiled-graph topology for the flow screen. "
         "|| Topología del grafo compilado, para la pantalla de flujo.",
     )
+    business_db: BusinessDbView = Field(
+        description="Which mirror run the service reads from, and where that came "
+        "from. || De qué corrida del mirror lee el servicio, y de dónde salió eso.",
+    )
+
+
+class BusinessDbView(BaseModel):
+    """The mirror run in force, for the console to show beside the rest.
+
+    It lives in ``GET /config`` and not only in ``GET /business-db/runs``
+    because it belongs with the rest of what is in force: a console screen that
+    shows the active model and the active corpus version should not need a
+    second, unrelated call to say which mirror run is answering.
+
+    ``origin`` is the field that carries the meaning. `selected` means somebody
+    chose it, `default` means nobody did and `BUSINESS_DB_RUN_ID` supplied it,
+    `none` means neither and then ``reason`` says so. The seed is never written
+    as a row, so this is the only way to tell a choice from a default.
+
+    || La corrida del mirror en vigor, para que la consola la muestre con el
+    resto. Vive en ``GET /config`` y no solo en ``GET /business-db/runs`` porque
+    va con lo demás que está vigente: una pantalla que muestra el modelo activo
+    y la versión activa del corpus no debería necesitar una segunda llamada para
+    decir qué corrida está respondiendo. ``origin`` es el campo que lleva el
+    significado, y como la semilla nunca se escribe como fila, es la única forma
+    de distinguir una elección de un default.
+    """
+
+    run_id: str | None = None
+    env: str
+    origin: Literal["selected", "default", "none"]
+    reason: str | None = None
+    activated_at: datetime | None = None
+    activated_by: str | None = Field(
+        default=None,
+        description="DECLARED by the caller, never verified. "
+        "|| DECLARADO por quien llama, nunca verificado.",
+    )
+    stamped_run_id: str | None = Field(
+        default=None,
+        description="Which run stamped the corpus metadata. Different from `run_id` "
+        "means the stamped column is stale. || Con qué corrida se estampó la metadata "
+        "del corpus. Distinta de `run_id` significa que la columna quedó vieja.",
+    )
+    stamp_matches_active: bool | None = Field(
+        default=None,
+        description="None when the corpus was never stamped. "
+        "|| None cuando el corpus nunca se estampó.",
+    )
 
 
 class AgentProfileUpdate(BaseModel):
@@ -719,6 +772,31 @@ async def read_config(
         credential_storage_enabled=secrets_enabled(),
         wires=dict(WIRE_LABELS),
         flow=GraphFlowView.model_validate(served_flow),
+        business_db=await _business_db_view(session, settings),
+    )
+
+
+async def _business_db_view(session: AsyncSession, settings) -> BusinessDbView:
+    """The active run plus the corpus stamp, so the drift is visible here too.
+
+    || La corrida activa más el sello del corpus, para que el desfasaje también
+    se vea acá.
+    """
+    active = await resolve_active_run(session, settings)
+    stamp = await get_stamp(session, settings.TENANT_ID, settings.DOC_VERSION)
+    return BusinessDbView(
+        run_id=active.run_id,
+        env=active.env,
+        origin=active.origin,
+        reason=active.reason,
+        activated_at=active.activated_at,
+        activated_by=active.activated_by,
+        stamped_run_id=stamp.run_id if stamp else None,
+        stamp_matches_active=(
+            None
+            if stamp is None
+            else (stamp.run_id == active.run_id and stamp.env == active.env)
+        ),
     )
 
 

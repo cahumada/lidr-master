@@ -100,9 +100,14 @@ corrida activa: el desfasaje se muestra, no se deduce.
 - **AND** no se corrige nada automáticamente
 
 ### Requirement: Quién activó DEBE viajar como dato declarado
-El servicio no autentica: los roles viven en el token de sesión de la consola y
-el gate de administrador se aplica ahí. Entonces el servicio no puede verificar
-la identidad de quien activa.
+El servicio autentica al **llamador** con un token compartido, y un token no es
+una persona: los roles viven en el token de sesión de la consola y el gate de
+administrador se aplica ahí. Entonces el servicio sabe que quien llama tiene la
+credencial, y no puede verificar la identidad de quien activa.
+
+La distinción importa porque las dos puertas se confunden fácil: cerrar el
+servicio con un token corta el acceso anónimo y **no** le da identidad de
+usuario.
 
 Se guarda lo que quien llama informa, y se documenta como **declarado**. Un
 registro que parece autoritativo sin serlo es peor que no tenerlo.

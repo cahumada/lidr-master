@@ -14,6 +14,7 @@ from app.generation.rag.context_budget import (
     fit_to_budget,
     interleave_by_query,
     render_hit_block,
+    resolve_window_status,
 )
 from app.generation.rag.prompt_builder import build_context
 from app.generation.rag.schemas import SearchHit
@@ -200,6 +201,99 @@ def test_a_restricted_status_adds_the_declared_warning_line():
 
     assert "Estado de la ventana (declarado): Acceso restringido" in block
     assert "baja" not in block.lower()
+
+
+# --- La advertencia sale del árbol ACTIVO, no de la columna estampada -------
+# `window_status` está estampado desde una corrida concreta y queda viejo apenas
+# se activa otra. Estos tests fijan que cambiar de árbol cambie la advertencia
+# SIN tocar la columna del chunk, que es la decisión central de
+# `add-extraction-run-selection`.
+# || The warning comes from the ACTIVE tree, not the stamped column.
+
+
+def _tree(statuses: dict[str, str | None]):
+    """Un resolver como el de `NavigationTree.window_status`."""
+    return lambda document_id: statuses.get(document_id)
+
+
+def test_the_active_tree_decides_over_the_stamped_column():
+    """La columna dice `Activo` y el árbol activo dice que no: gana el árbol."""
+    hit = _hit(document_id="CA014", window_status="Activo")
+
+    block = render_hit_block(1, hit, status_of=_tree({"CA014": "Acceso restringido"}))
+
+    assert "Estado de la ventana (declarado): Acceso restringido" in block
+
+
+def test_the_active_tree_can_also_clear_a_stale_warning():
+    """El caso inverso, que es el que la columna sola no puede dar.
+
+    Estampada como restringida y ya reactivada en la corrida vigente: sin
+    resolver del árbol, la respuesta seguiría advirtiendo sobre una ventana que
+    hoy está activa.
+    """
+    hit = _hit(document_id="CA014", window_status="Acceso restringido")
+
+    block = render_hit_block(1, hit, status_of=_tree({"CA014": "Activo"}))
+
+    assert "Estado de la ventana" not in block
+
+
+def test_switching_trees_switches_the_warning_without_touching_the_chunk():
+    hit = _hit(document_id="CA014", window_status=None)
+
+    restricted = render_hit_block(1, hit, status_of=_tree({"CA014": "Acceso restringido"}))
+    active = render_hit_block(1, hit, status_of=_tree({"CA014": "Activo"}))
+
+    assert "Acceso restringido" in restricted
+    assert "Estado de la ventana" not in active
+    # La columna del chunk quedó igual: son dos autoridades declaradas por uso,
+    # no dos copias que se sincronizan.
+    assert hit.window_status is None
+
+
+def test_a_tree_with_no_opinion_renders_no_warning():
+    """Un código que el árbol no conoce no inventa una advertencia."""
+    hit = _hit(document_id="DESCONOCIDO", window_status="Acceso restringido")
+
+    block = render_hit_block(1, hit, status_of=_tree({}))
+
+    assert "Estado de la ventana" not in block
+
+
+def test_without_a_resolver_the_stamped_column_is_the_fallback():
+    """Sin árbol tampoco hay corrida activa: la columna es el único hecho."""
+    block = render_hit_block(1, _hit(window_status="Acceso restringido"))
+
+    assert "Estado de la ventana (declarado): Acceso restringido" in block
+
+
+def test_resolve_window_status_prefers_the_tree_and_falls_back_to_the_column():
+    hit = _hit(document_id="CA014", window_status="Activo")
+
+    assert resolve_window_status(hit, _tree({"CA014": "Acceso restringido"})) == (
+        "Acceso restringido"
+    )
+    assert resolve_window_status(hit, None) == "Activo"
+
+
+def test_the_budget_counts_the_warning_the_active_tree_produces():
+    """El resolver llega al contador y al renderer, o el presupuesto miente.
+
+    Un resolver que llegara solo al renderer haría que `fit_to_budget` cuente
+    de menos exactamente las líneas que después se emiten.
+    """
+    hit = _hit(document_id="CA014", window_status=None)
+    status_of = _tree({"CA014": "Acceso restringido"})
+
+    with_warning = count_tokens(render_hit_block(1, hit, status_of=status_of))
+    without = count_tokens(render_hit_block(1, hit))
+    assert with_warning > without
+
+    # Presupuesto que alcanza para el bloque pelado pero no para el advertido.
+    budget = (with_warning + without) // 2
+    assert fit_to_budget([hit], budget, status_of=status_of).kept == []
+    assert fit_to_budget([hit], budget).kept == [hit]
 
 
 def test_fit_to_budget_counts_the_warning_line():

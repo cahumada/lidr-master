@@ -22,6 +22,7 @@ from app.api.answer import router as answer_router
 from app.api.answer_agentic import router as answer_agentic_router
 from app.api.answer_session import list_router as answer_sessions_router
 from app.api.answer_session import router as answer_session_router
+from app.api.business_db import router as business_db_router
 from app.api.config import router as config_router
 from app.api.corpus import router as corpus_router
 from app.api.documents import router as documents_router
@@ -164,6 +165,7 @@ for _router in (
     config_router,
     corpus_router,
     usage_router,
+    business_db_router,
 ):
     app.include_router(_router, dependencies=_PROTECTED)
 

@@ -38,3 +38,11 @@ incomparable cada corrida del eval de fidelidad.
 - **WHEN** se activa una corrida donde el estado de esa transacción es distinto
 - **THEN** la advertencia del bloque cambia en la consulta siguiente
 - **AND** la columna estampada en el chunk NO se modifica
+
+#### Scenario: Sin corrida vigente, la columna estampada es el respaldo
+- **WHEN** no hay ninguna corrida en vigor y por lo tanto no hay árbol activo
+- **THEN** la advertencia se resuelve de la columna estampada en el chunk
+- **AND** eso NO contradice la regla de arriba: si no hay corrida activa, no hay
+  nada respecto de lo cual la columna esté vieja, y su procedencia está
+  registrada en el sello del corpus. Lo que no debe pasar es que decida la
+  columna **habiendo** árbol.

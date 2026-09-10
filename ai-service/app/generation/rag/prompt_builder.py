@@ -17,6 +17,7 @@ from collections.abc import Callable
 from app.foundation.prompts import render_prompt
 from app.generation.rag.context_budget import (
     BudgetedContext,
+    StatusResolver,
     fit_to_budget,
     render_hit_block,
 )
@@ -37,7 +38,9 @@ PROMPT_VERSION = "v1"
 PROMPT_VERSION_WITH_MEMORY = "v2"
 
 
-def build_context(hits: list[SearchHit]) -> str:
+def build_context(
+    hits: list[SearchHit], *, status_of: StatusResolver | None = None
+) -> str:
     """One numbered block per hit, provenance first.
 
     The per-hit rendering lives in :func:`render_hit_block`, which is also
@@ -50,7 +53,8 @@ def build_context(hits: list[SearchHit]) -> str:
     enviado no pueden separarse.
     """
     return "\n\n".join(
-        render_hit_block(index, hit) for index, hit in enumerate(hits, start=1)
+        render_hit_block(index, hit, status_of=status_of)
+        for index, hit in enumerate(hits, start=1)
     )
 
 
@@ -61,6 +65,7 @@ def build_messages(
     persona: str | None = None,
     guardrails: str | None = None,
     memory: str | None = None,
+    status_of: StatusResolver | None = None,
 ) -> tuple[str, str]:
     """Render the versioned system + user pair for this question.
 
@@ -95,7 +100,7 @@ def build_messages(
         version,
         "user",
         question=question,
-        context=build_context(hits),
+        context=build_context(hits, status_of=status_of),
     )
     return system, user
 
@@ -108,6 +113,7 @@ def build_budgeted_messages(
     persona: str | None = None,
     guardrails: str | None = None,
     memory_for: Callable[[int], str | None] | None = None,
+    status_of: StatusResolver | None = None,
 ) -> tuple[str, str, BudgetedContext]:
     """Fit the evidence to ``budget``, then render the prompt from what fit.
 
@@ -141,7 +147,7 @@ def build_budgeted_messages(
     # memoria se queda con lo que sobre. Ese orden es el invariante y vive acá
     # y no en quien llama, para que no se pueda equivocar de a un call site por
     # vez: la memoria nunca puede sacarle presupuesto a un chunk.
-    budgeted = fit_to_budget(hits, budget)
+    budgeted = fit_to_budget(hits, budget, status_of=status_of)
     memory = memory_for(budget - budgeted.tokens_used) if memory_for else None
     system, user = build_messages(
         question,
@@ -149,5 +155,6 @@ def build_budgeted_messages(
         persona=persona,
         guardrails=guardrails,
         memory=memory,
+        status_of=status_of,
     )
     return system, user, budgeted

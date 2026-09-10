@@ -18,48 +18,114 @@ import secrets
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.domain.business_db_store import resolve_active_run, resolve_active_run_sync
+from app.foundation.persistence.database import get_async_session
 from app.generation.rag.chunking.functional_spec import FunctionalSpecChunker
 from app.generation.rag.embedding.embedder import OpenAIEmbedder
 from app.generation.rag.navigation import (
+    NavigationTree,
     get_navigation_tree,
-    load_navigation_tree_from_database_url,
+    get_navigation_tree_for_run,
 )
 
 
-def resolve_navigation_tree():
-    """The WINDOWS tree for this deployment: mirror when configured, CSV otherwise.
+def resolve_navigation_tree(env: str | None = None, run_id: str | None = None):
+    """The WINDOWS tree for one run: the mirror when there is one, the CSV otherwise.
 
-    || El árbol WINDOWS de este despliegue: mirror cuando está configurado, CSV si no.
+    Takes the run as ARGUMENTS rather than reading it from settings, which is
+    the whole point: the run is now a selection that can change while the
+    process lives, and a function that resolves it from the environment would
+    pin every caller to whatever was configured at boot.
+
+    Called with no arguments it falls back to the CSV, where status stays
+    unresolved because the export has no `SSTATREGT` column.
+
+    || El árbol WINDOWS de UNA corrida: el mirror cuando hay, el CSV si no. La
+    corrida entra por ARGUMENTOS y no se lee de settings, que es el punto: ahora
+    es una selección que puede cambiar mientras el proceso vive, y una función
+    que la resolviera del ambiente pegaría a cada llamador a lo que estaba
+    configurado al arrancar.
     """
     settings = get_settings()
-    if settings.BUSINESS_DB_RUN_ID:
-        return load_navigation_tree_from_database_url(
+    if run_id:
+        return get_navigation_tree_for_run(
             settings.DATABASE_URL,
-            tenant=settings.TENANT_ID,
-            env=settings.BUSINESS_DB_ENV,
-            run_id=settings.BUSINESS_DB_RUN_ID,
+            settings.TENANT_ID,
+            env or settings.BUSINESS_DB_ENV,
+            run_id,
         )
     return get_navigation_tree(settings.WINDOWS_TREE_PATH)
 
 
-@lru_cache
-def get_functional_spec_chunker() -> FunctionalSpecChunker:
-    """Chunker singleton, configured from Settings.
-
-    || Singleton del chunker, configurado desde Settings.
-    """
+# Keyed by the run, and bounded. `@lru_cache` with NO arguments — which is what
+# this was — pinned the chunker to whichever run happened to be resolved when
+# the process booted, and the resulting bug is one of the worst available: two
+# replicas of the service serving different navigation trees depending on when
+# each one started. The tree is inside the chunker, so the chunker's identity is
+# the run's identity.
+# || Con la corrida en la clave, y acotado. Un `@lru_cache` SIN argumentos —que
+# es lo que era— pegaba el chunker a la corrida que se hubiera resuelto al
+# arrancar el proceso, y el bug resultante es de los peores: dos réplicas del
+# servicio sirviendo árboles distintos según cuándo arrancó cada una. El árbol
+# vive adentro del chunker, así que la identidad del chunker es la de la corrida.
+@lru_cache(maxsize=4)
+def build_functional_spec_chunker(
+    env: str | None = None, run_id: str | None = None
+) -> FunctionalSpecChunker:
+    """The chunker for one run. || El chunker de una corrida."""
     settings = get_settings()
     return FunctionalSpecChunker(
         narrative_token_cap=settings.NARRATIVE_CHUNK_TOKEN_CAP,
         index_doc_min_links=settings.INDEX_DOC_MIN_LINKS,
         index_doc_min_link_density=settings.INDEX_DOC_MIN_LINK_DENSITY,
-        navigation_tree=resolve_navigation_tree(),
+        navigation_tree=resolve_navigation_tree(env, run_id),
         tenant_id=settings.TENANT_ID,
         doc_version=settings.DOC_VERSION,
     )
+
+
+async def get_functional_spec_chunker(
+    session: AsyncSession = Depends(get_async_session),  # noqa: B008 — FastAPI's required DI idiom.
+) -> FunctionalSpecChunker:
+    """Chunker for the run that is active right now.
+
+    Async because resolving the active run is a query: the selection lives in a
+    table, so a request served after an activation gets the new tree without a
+    redeploy and without a restart.
+
+    || Chunker de la corrida activa ahora. Async porque resolver la corrida es
+    una consulta: la selección vive en una tabla, así que un request servido
+    después de una activación recibe el árbol nuevo sin redeploy ni reinicio.
+    """
+    active = await resolve_active_run(session, get_settings())
+    return build_functional_spec_chunker(active.env, active.run_id)
+
+
+def get_functional_spec_chunker_sync() -> FunctionalSpecChunker:
+    """Same chunker, for the batch paths that cannot await.
+
+    The rebuild runs in a thread and the scripts are plain ``main()``s. They
+    still resolve the SELECTED run: a batch that chunks against a run nobody
+    chose would stamp the corpus with it.
+
+    || El mismo chunker, para los caminos batch que no pueden await. Igual
+    resuelven la corrida SELECCIONADA: un batch que trocea contra una corrida
+    que nadie eligió estamparía el corpus con ella.
+    """
+    settings = get_settings()
+    active = resolve_active_run_sync(settings.DATABASE_URL, settings)
+    return build_functional_spec_chunker(active.env, active.run_id)
+
+
+def resolve_active_navigation_tree_sync() -> NavigationTree | None:
+    """The tree of the active run, for sync callers. || El árbol de la corrida activa."""
+    settings = get_settings()
+    active = resolve_active_run_sync(settings.DATABASE_URL, settings)
+    return resolve_navigation_tree(active.env, active.run_id)
 
 
 @lru_cache
