@@ -58,10 +58,14 @@
   `specs/service-authentication/spec.md`.
 - [x] 5.2 Delta en `specs/web-console/spec.md`: la capa que habla HTTP adjunta el
   token.
-- [ ] 5.3 `openspec/standards/bff-standards.md`: su sección de seguridad dice
+- [x] 5.3 `openspec/standards/bff-standards.md`: su sección de seguridad dice
   que autenticar la consola no autentica el servicio. Con este change eso deja
   de ser cierto y hay que corregirlo. **Proponer el parche y esperar
   aprobación** antes de editar el estándar.
+      > Parche propuesto y aprobado por el dueño del repo el 2026-09-10. La
+      > línea «Auth: no hay» se partió en dos: auth de personas (Auth.js, gate
+      > de rol en el servidor) y auth del servicio (el token que agrega el
+      > cliente base, sin prefijo `NEXT_PUBLIC_`).
 - [x] 5.4 `python scripts/validate_specs.py` sin errores desde la raíz.
 - [x] 5.5 `README.md` (**faltaba en el plan**, apareció preguntando si estaba
   documentado): las dos variables en la tabla de despliegue, el párrafo con el
@@ -80,12 +84,13 @@
       > misma forma que `main.py` (routers con guarda, `/health` afuera). El
       > `curl` contra la instancia local exige poner la variable y reiniciar el
       > servicio, y esa instancia es del dueño del repo — va junto con 6.3.
-- [ ] 6.2 Confirmar que la consola sigue funcionando de punta a punta con la
+- [x] 6.2 Confirmar que la consola sigue funcionando de punta a punta con la
   variable configurada en los dos lados.
-      > Verificado hasta donde llega sin sesión: `/login` responde 200 y
-      > `/api/search` redirige a login en vez de contestar. Una búsqueda
-      > autenticada de punta a punta la tiene que hacer una persona — el agente
-      > no puede iniciar sesión.
+      > Verificado por el agente hasta donde llega sin sesión: `/login` responde
+      > 200 y `/api/search` redirige a login en vez de contestar. La búsqueda
+      > autenticada de punta a punta la confirmó el dueño del repo el
+      > 2026-09-10, que cargó las variables y desplegó — el agente no puede
+      > iniciar sesión.
 - [x] 6.3 **Cargar la variable en Railway y en Vercel antes de mergear**, con el
   mismo valor. Si el servicio se despliega antes que la consola, la consola
   queda rota hasta que el otro lado tenga la variable — es el único orden que

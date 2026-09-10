@@ -183,8 +183,16 @@ ninguna pantalla lo lea.
   paquete. Viven en el servicio (env o `PUT /config/providers/{id}/key`).
 - No loguear el body de una clave. Este BFF hoy no tiene un logger
   estructurado: no agregar `console.log` del request.
-- Auth: no hay. No fingir un `protect()` ni un cookie check que no
-  existe. Cuando entre, es un change con proposal.
+- Auth de personas: la consola autentica con Auth.js y el gate de rol se
+  aplica **en el servidor** (ver `add-console-authentication`). No fingir un
+  `protect()` donde no hay uno, y no deducir de la nav que una ruta esté
+  cerrada: el filtro de la navegación no autoriza.
+- Auth del servicio: toda llamada a `ai-service` lleva el token compartido, y
+  lo agrega el **cliente base** — ninguna pantalla ni Route Handler lo maneja.
+  La variable es `AI_SERVICE_TOKEN`, **sin** prefijo `NEXT_PUBLIC_`, que es el
+  mecanismo que la expondría al browser. Sin configurar no se manda header: el
+  servicio puede estar abierto a propósito en desarrollo, y en producción no
+  arranca sin el suyo.
 - Uploads: el archivo pasa de largo a `/documents/ingest-file`. Acá no
   se escribe a disco ni se persiste.
 
