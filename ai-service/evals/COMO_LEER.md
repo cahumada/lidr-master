@@ -206,13 +206,18 @@ candidato) y lo que le falta (subirla arriba, que es trabajo de un reranker).
 
 ## Lo que estos números NO dicen
 
-**No dicen que la recuperación sea buena.** Mientras `golden_retrieval.json`
-esté en `PENDING_REVIEW`, las 30 preguntas las derivó el mismo sistema que se
-evalúa contra ellas. Sirven para **comparar configuraciones entre sí**. Para
-afirmar calidad hace falta que alguien que conozca el negocio complete las dos
-casillas de `review` por pregunta.
+**No dicen que la recuperación sea buena, aunque el set ya esté revisado.**
+`golden_retrieval.json` está en `REVIEWED`: sus 65 preguntas tienen las dos
+casillas de `review` confirmadas por alguien que conoce el negocio —35 de a una
+y 30 en bloque el 2026-09-10, ver `review_log`—. Eso levanta la reserva sobre
+las **anotaciones**, no sobre las **preguntas**: las derivó el corpus, no una
+persona, así que el conjunto sigue midiendo qué tan bien se recupera lo que el
+propio sistema propuso como relevante. El set de preguntas escritas por una
+persona es `golden_curated.json`.
 
-**No cubren un tipo de pregunta**, y eso sesga la métrica. Las 30 se derivan de
+Sirven, sobre todo, para **comparar configuraciones entre sí**.
+
+**No cubren un tipo de pregunta**, y eso sesga la métrica. Las 65 se derivan de
 criterios que dan **varios** documentos relevantes, así que el conjunto premia
 traer muchos documentos — y por eso `cap 1` gana. No hay ninguna pregunta
 profunda sobre un solo documento. Peor: medirla necesitaría anotar **chunks**
