@@ -427,8 +427,10 @@ def main() -> int:
     parser.add_argument(
         "--human-only", action="store_true",
         help=(
-            "Only the questions a person wrote and reviewed. The drafted ones "
-            "are unreviewed, so mixing them in makes every number provisional."
+            "Only the questions a person WROTE (type=user_question). The rest "
+            "were derived from the corpus -- their annotations are reviewed, "
+            "but the questions are the system's, so mixing them measures "
+            "something different rather than something provisional."
         ),
     )
     args = parser.parse_args()

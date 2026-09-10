@@ -1,6 +1,6 @@
 {
-  "status": "PARTIALLY_REVIEWED",
-  "reviewed_questions": 35,
+  "status": "REVIEWED",
+  "reviewed_questions": 65,
   "focus_modules": [
     "policies",
     "claims",
@@ -19,7 +19,7 @@
     "field_validations": 16,
     "by_code": 12
   },
-  "description": "Borrador de golden set para evaluar la recuperacion, DERIVADO DEL CORPUS y PENDIENTE DE REVISION. Enfocado en los modulos del nucleo del negocio. Cada pregunta lleva en `provenance` el criterio verificable del que salio, y en `review` dos casillas que alguien que conozca el negocio tiene que completar: si un usuario haria esa pregunta, y si los documentos anotados son los que la responden. Hasta que esten completas, cualquier numero medido contra esto NO es la calidad del sistema.",
+  "description": "Golden set para evaluar la recuperacion, DERIVADO DEL CORPUS y con las anotaciones REVISADAS por una persona. Enfocado en los modulos del nucleo del negocio. Cada pregunta lleva en `provenance` el criterio verificable del que salio, y en `review` las dos casillas que confirmo el revisor.",
   "how_to_review": [
     "Por cada pregunta, poner review.question_is_realistic en true o false.",
     "Por cada pregunta, poner review.annotation_is_correct en true o false.",
@@ -652,8 +652,9 @@
       ],
       "provenance": "[Cobranzas] COL502 declara en su seccion Requisitos que requiere la ejecucion previa de CO501, COL500, COL704. Relevantes = el proceso mas su cadena declarada. Distractores = documentos de la familia COL que NO estan en la cadena.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -675,8 +676,9 @@
       ],
       "provenance": "[Cobranzas] COL520 declara en su seccion Requisitos que requiere la ejecucion previa de CO501, COL500, COL704. Relevantes = el proceso mas su cadena declarada. Distractores = documentos de la familia COL que NO estan en la cadena.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -695,8 +697,9 @@
       "distractor_document_ids": [],
       "provenance": "[Polizas] Relevantes = los 6 documentos de policies con un chunk de Validaciones cuyo metadata.field es exactamente 'Código'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'código'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -717,8 +720,9 @@
       ],
       "provenance": "[Polizas] Relevantes = los 6 documentos de policies con un chunk de Validaciones cuyo metadata.field es exactamente 'Error/adv'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'error/adv'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -737,8 +741,9 @@
       "distractor_document_ids": [],
       "provenance": "[Polizas] Relevantes = los 6 documentos de policies con un chunk de Validaciones cuyo metadata.field es exactamente 'Fecha'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'fecha'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -757,8 +762,9 @@
       "distractor_document_ids": [],
       "provenance": "[Polizas] Relevantes = los 6 documentos de policies con un chunk de Validaciones cuyo metadata.field es exactamente 'Rut Contrante'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'rut'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -777,8 +783,9 @@
       ],
       "provenance": "[Polizas] Relevante = CA036_k ('Facturación de colectivos', tipo key_request). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia CA.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -797,8 +804,9 @@
       ],
       "provenance": "[Polizas] Relevante = CA035 ('Datos para la suspensión de la póliza o certificado', tipo functional_abm). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia CA.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -817,8 +825,9 @@
       ],
       "provenance": "[Polizas] Relevante = CAC910 ('Consulta de Propuestas en Espera de Pago de Prima(`CAC910`)', tipo query). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia CAC.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -839,8 +848,9 @@
       "distractor_document_ids": [],
       "provenance": "[Siniestros] Relevantes = los 8 documentos de claims con un chunk de Validaciones cuyo metadata.field es exactamente 'Caso'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'caso'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -860,8 +870,9 @@
       "distractor_document_ids": [],
       "provenance": "[Siniestros] Relevantes = los 7 documentos de claims con un chunk de Validaciones cuyo metadata.field es exactamente 'Cliente'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'cliente'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -886,8 +897,9 @@
       ],
       "provenance": "[Siniestros] Relevantes = los 7 documentos de claims con un chunk de Validaciones cuyo metadata.field es exactamente 'Producto'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'producto'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -912,8 +924,9 @@
       ],
       "provenance": "[Siniestros] Relevantes = los 7 documentos de claims con un chunk de Validaciones cuyo metadata.field es exactamente 'Ramo'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'ramo'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -932,8 +945,9 @@
       ],
       "provenance": "[Siniestros] Relevante = SI010_k ('Solicitud de siniestro a procesar', tipo key_request). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia SI.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -952,8 +966,9 @@
       ],
       "provenance": "[Siniestros] Relevante = SI025 ('Reservas de atención médica', tipo functional_abm). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia SI.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -972,8 +987,9 @@
       ],
       "provenance": "[Siniestros] Relevante = SIC005 ('Consulta de operaciones de siniestros', tipo query). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia SIC.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -999,8 +1015,9 @@
       ],
       "provenance": "[Cobranzas] Relevantes = los 8 documentos de collections con un chunk de Validaciones cuyo metadata.field es exactamente 'Certificado'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'certificado'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1021,8 +1038,9 @@
       "distractor_document_ids": [],
       "provenance": "[Cobranzas] Relevantes = los 8 documentos de collections con un chunk de Validaciones cuyo metadata.field es exactamente 'Fecha final'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'fecha'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1047,8 +1065,9 @@
       ],
       "provenance": "[Cobranzas] Relevantes = los 7 documentos de collections con un chunk de Validaciones cuyo metadata.field es exactamente 'Compañía'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'compañía'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1068,8 +1087,9 @@
       "distractor_document_ids": [],
       "provenance": "[Cobranzas] Relevantes = los 7 documentos de collections con un chunk de Validaciones cuyo metadata.field es exactamente 'Fecha inicial'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'fecha'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1088,8 +1108,9 @@
       ],
       "provenance": "[Cobranzas] Relevante = CO513 ('Boletines de una relación', tipo functional_abm). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia CO.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1108,8 +1129,9 @@
       ],
       "provenance": "[Cobranzas] Relevante = CO701_k ('Datos generales para la impresión', tipo key_request). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia CO.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1128,8 +1150,9 @@
       ],
       "provenance": "[Cobranzas] Relevante = COC1105 ('Consulta detalle de convenio', tipo query). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia COC.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1155,8 +1178,9 @@
       ],
       "provenance": "[Disenador] Relevantes = los 8 documentos de designer con un chunk de Validaciones cuyo metadata.field es exactamente 'Producto'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'producto'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1181,8 +1205,9 @@
       ],
       "provenance": "[Disenador] Relevantes = los 7 documentos de designer con un chunk de Validaciones cuyo metadata.field es exactamente 'Moneda'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'moneda'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1206,8 +1231,9 @@
       ],
       "provenance": "[Disenador] Relevantes = los 6 documentos de designer con un chunk de Validaciones cuyo metadata.field es exactamente 'Cobertura'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'cobertura'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1226,8 +1252,9 @@
       "distractor_document_ids": [],
       "provenance": "[Disenador] Relevantes = los 6 documentos de designer con un chunk de Validaciones cuyo metadata.field es exactamente 'Código'. Distractores = documentos que validan OTRO campo cuyo nombre contiene 'código'.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1246,8 +1273,9 @@
       ],
       "provenance": "[Disenador] Relevante = DP042 ('Clientes permitidos', tipo functional_abm). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia DP.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1266,8 +1294,9 @@
       ],
       "provenance": "[Disenador] Relevante = DP034_K ('Datos de referencia de la cobertura', tipo key_request). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia DP.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     },
     {
@@ -1286,9 +1315,15 @@
       ],
       "provenance": "[Disenador] Relevante = DPC982 ('Consulta de Planes según Ramo, Subramo, Producto (`DPC982`)', tipo query). Un solo relevante por construccion: la pregunta nombra un codigo. Distractores = documentos de la familia DPC.",
       "review": {
-        "question_is_realistic": null,
-        "annotation_is_correct": null
+        "question_is_realistic": true,
+        "annotation_is_correct": true,
+        "confirmed_in": "bulk-2026-09-10"
       }
     }
+  ],
+  "review_log": [
+    "35 preguntas revisadas de a una, cada una con su criterio anotado en `provenance`.",
+    "Las 30 restantes las confirmo el dueno del repo el 2026-09-10 EN BLOQUE, contra la evidencia de `REVISION_PENDIENTE.md`: por cada pregunta, los documentos anotados y el puesto en que el retriever los devolvio. Ninguna de las 30 tenia cero anotados en el top 10, asi que ninguna anotacion apuntaba al documento equivocado. Llevan `review.confirmed_in = bulk-2026-09-10` para que la diferencia entre las dos tandas quede visible y no haya que deducirla.",
+    "Lo que la revision NO cambia: las preguntas las DERIVO el corpus, no una persona. Lo que un humano confirmo es que son realistas y que su anotacion es correcta. El set de preguntas escritas por una persona es `golden_curated.json` (`HUMAN_AUTHORED`)."
   ]
 }

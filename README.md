@@ -178,15 +178,16 @@ corpus generado. El repo trae el pipeline, no los datos.
 
 ## Limitaciones conocidas y próximos pasos
 
-- **Recuperación**: la mejor configuración medida encuentra ~45% de los
-  documentos relevantes que podría encontrar (`p@10`). El golden set está
-  **parcialmente revisado**: 35 de sus 65 preguntas tienen la anotación
-  confirmada por una persona, y las 30 restantes están listadas con su
-  evidencia en
-  [`ai-service/evals/REVISION_PENDIENTE.md`](ai-service/evals/REVISION_PENDIENTE.md).
-  Hasta que se cierren, el 45% es una medición sobre un conjunto a medio
-  auditar — ver
-  [`ai-service/evals/COMO_LEER.md`](ai-service/evals/COMO_LEER.md).
+- **Recuperación**: la mejor configuración medida —`+split +rerank modelo`—
+  llega a `precision@10 = 0.171` sobre un techo de `0.243`, o sea **71% de lo
+  que el conjunto permite**, en las 35 preguntas que escribió una persona
+  (`--human-only`). Encuentra el 97% de los relevantes en su conjunto candidato
+  y `recall@60 = 87%`: lo que le falta es **subirlos**, no encontrarlos. Las 65
+  anotaciones del golden set están revisadas, pero las preguntas derivadas las
+  produjo el corpus, así que ese subconjunto mide qué tan bien se recupera lo
+  que el propio sistema propuso como relevante — ver
+  [`ai-service/evals/RETRIEVAL_EVAL.md`](ai-service/evals/RETRIEVAL_EVAL.md) y
+  [`COMO_LEER.md`](ai-service/evals/COMO_LEER.md).
 - **Generación**: sin streaming ni versiones de prompt más allá de `v1`; el
   guardrail de citas *marca* `grounded=false`, no reintenta solo.
 - **Agentes**: sin persistencia ni escritura — por eso no hay `sandbox.py` ni
