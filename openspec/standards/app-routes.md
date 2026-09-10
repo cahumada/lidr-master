@@ -21,29 +21,64 @@ borre después por “limpieza”.
 
 ## Páginas
 
+Los **grupos de ruta no aparecen en la URL**: `(console)/(admin)/models/page.tsx`
+sirve `/models`. Están para el layout de cada grupo, y en `(admin)` ese layout
+**es** la autorización — ver §Layouts y shell.
+
 La nav y la portada leen `lib/console-nav.ts`. Una pantalla nueva que no
 esté en `CONSOLE_MODULES` no aparece en el sidebar ni en el home.
 
+### Antes de la sesión — `(auth)/`
+
+Las únicas páginas que `proxy.ts` deja pasar sin cookie.
+
 | Path | Propósito |
 |---|---|
-| `layout.tsx` | Layout raíz: script de tema en `<head>`, sidebar, header. `lang="es"`. Sin `className` en `<html>` — React lo resetearía al hidratar y borraría `dark`. |
-| `page.tsx` | Portada agrupada por los tres módulos del operador (Respuesta, RAG, Configuración). Sin métricas en vivo: `p@10` y los conteos salen de scripts, no de un endpoint. |
-| `answer/page.tsx` | Chat agentico. Server Component: carga facets y perfiles del sintetizador; el hilo vive en `answer-console.tsx`. No usa `PageFrame`: el thread ocupa el inset entero. |
-| `search/page.tsx` | Búsqueda híbrida con procedencia. Server Component precarga facets; falla de facets → lista vacía, no error page. |
-| `documents/page.tsx` | Vista previa de chunking. **No persiste.** El corpus se construye en `/corpus`. |
-| `corpus/page.tsx` | Rebuild (trocear, embeber, cargar) y seguimiento del job. Server Component lee identidad del corpus y jobs recientes para el guard de `reset`. |
-| `agents/page.tsx` | Catálogo de agentes desde `GET /config`. Persona, guardrails, tools. `dynamic = "force-dynamic"`. Degrada a catálogo vacío si el servicio no responde. |
-| `agents/flow/page.tsx` | Diagrama del grafo que corre `POST /answer/agentic`. Crear un perfil no agrega un nodo. |
-| `models/page.tsx` | Proveedores, catálogo de modelos, credenciales write-only. Un proveedor sin clave usable se deshabilita en la UI. |
-| `usage/page.tsx` | Agregado de tokens de chat del tenant. Admin. Degrada a vacío + aviso si el servicio no responde. |
+| `(auth)/login/page.tsx` | Login: Google y correo + contraseña. Acepta `?next=` y lo saneada con `safe-redirect.ts` — un `next` externo no puede volverse un redirect abierto. |
+| `(auth)/register/page.tsx` | Autoservicio de alta. La cuenta nace `usuario` y **deshabilitada**: registrarse no da acceso. |
+| `(auth)/register/pending/page.tsx` | Donde espera quien se registró hasta que un administrador la habilite. Sin esta pantalla, un alta exitosa se veía igual que un fallo. |
+
+### Con sesión — `(console)/`
+
+Cualquier rol autenticado.
+
+| Path | Propósito |
+|---|---|
+| `(console)/page.tsx` | Portada agrupada por los tres módulos del operador (Respuesta, RAG, Configuración). Sin métricas en vivo: `p@10` y los conteos salen de scripts, no de un endpoint. |
+| `(console)/answer/page.tsx` | Chat agentico. Server Component: carga facets y perfiles del sintetizador; el hilo vive en `answer-console.tsx`. No usa `PageFrame`: el thread ocupa el inset entero. |
+| `(console)/search/page.tsx` | Búsqueda híbrida con procedencia. Server Component precarga facets; falla de facets → lista vacía, no error page. |
+| `(console)/documents/page.tsx` | Vista previa de chunking. **No persiste.** El corpus se construye en `/corpus`. |
+
+### Solo `administrador` — `(console)/(admin)/`
+
+Escriben configuración, destruyen datos o deciden quién entra. Mover una de
+estas carpetas fuera del grupo la abre a cualquier sesión.
+
+| Path | Propósito |
+|---|---|
+| `(console)/(admin)/corpus/page.tsx` | Rebuild (trocear, embeber, cargar) y seguimiento del job. Server Component lee identidad del corpus y jobs recientes para el guard de `reset`. |
+| `(console)/(admin)/agents/page.tsx` | Catálogo de agentes desde `GET /config`. Persona, guardrails, tools. `dynamic = "force-dynamic"`. Degrada a catálogo vacío si el servicio no responde. |
+| `(console)/(admin)/agents/flow/page.tsx` | Diagrama del grafo que corre `POST /answer/agentic`. Crear un perfil no agrega un nodo. |
+| `(console)/(admin)/models/page.tsx` | Proveedores, catálogo de modelos, credenciales write-only. Un proveedor sin clave usable se deshabilita en la UI. |
+| `(console)/(admin)/usage/page.tsx` | Agregado de tokens de chat del tenant. Degrada a vacío + aviso si el servicio no responde. |
+| `(console)/(admin)/users/page.tsx` | Cuentas, roles y habilitación. Las mutaciones son Server Actions (`users/actions.ts`), no Route Handlers. |
 
 ## Layouts y shell
 
+Cuatro layouts, y **tres de ellos existen por la autenticación**. El de la
+raíz quedó reducido a propósito: `/login` se renderiza antes de que haya
+sesión, y un sidebar de pantallas que no se pueden abrir todavía cuenta qué
+opera esta consola.
+
 | Path | Propósito |
 |---|---|
-| `layout.tsx` | Único layout. No hay grupo `(public)` / `(private)`: la consola no tiene auth todavía. |
-| `components/app-sidebar.tsx` | Sidebar; lee `CONSOLE_MODULES`. |
-| `components/app-header.tsx` | Header con conmutador de tema. |
+| `layout.tsx` | Solo el shell del documento: `<html lang="es">`, script de tema en `<head>`, favicon. Sin `className` en `<html>` — React lo resetearía al hidratar y borraría `dark`. |
+| `(auth)/layout.tsx` | Una columna centrada, sin sidebar ni header. |
+| `(console)/layout.tsx` | El chrome de la consola **y el gate de sesión**: llama a `auth()` y redirige a `/login` si no resuelve. `proxy.ts` ya rechazó lo que no traía cookie, pero lee la cookie **sin verificar la firma**: una falsificada pasa el borde a propósito y muere acá. |
+| `(console)/(admin)/layout.tsx` | El gate de rol. Devuelve `<ForbiddenScreen />` si el rol no es `administrador`. La pertenencia es el file system, no una lista de paths: un layout no recibe el pathname. |
+| `components/forbidden-screen.tsx` | El 403 con pantalla propia. **Dice 403 y el status HTTP es 200**: `forbidden()` exige `experimental.authInterrupts`. |
+| `components/app-sidebar.tsx` | Sidebar; lee `visibleModules(role)`. El filtro es presentación — **no autoriza**. |
+| `components/app-header.tsx` | Conmutador de tema, identidad de quien entró, salir y vincular Google. |
 | `components/page-frame.tsx` | Columna con padding para pantallas-herramienta. El chat no la usa. |
 
 ## Route Handlers (BFF)
@@ -52,6 +87,17 @@ El browser solo habla con estas rutas. Cada una reenvía a `ai-service`
 vía `lib/ai-service/`. No re-declarar defaults ni validación de negocio
 que ya vive en el servicio; el BFF solo rechaza lo que no puede
 reenviar (JSON inválido, `q` ausente, archivo ausente).
+
+### Autenticación — la única que no es relay
+
+| Path | Propósito |
+|---|---|
+| `api/auth/[...nextauth]/route.ts` | `GET`/`POST` — reexporta los `handlers` de Auth.js. El **único** Route Handler que no reenvía a FastAPI: la sesión es del origen de esta app, no del servicio. `bff-standards.md` §Rol del BFF admite esta excepción y ninguna otra. `proxy.ts` lo deja abierto — si no, entrar exigiría estar adentro. |
+
+Las mutaciones de identidad **no** son Route Handlers: son Server Actions
+(`(auth)/login/actions.ts`, `(auth)/register/actions.ts`,
+`(console)/actions.ts`, `(admin)/users/actions.ts`). No agregar un endpoint
+paralelo para lo que ya hace una action.
 
 ### Búsqueda e ingesta
 
@@ -145,9 +191,15 @@ los módulos de cada router. Swagger en `/docs`.
 
 ## Notas
 
-- **Sin auth / multi-tenant en la UI.** El servicio no tiene usuarios ni
-  token. No agregar `/sign-in` ni `/org/[slug]/` hasta que exista
-  capability detrás.
+- **Auth sí; multi-tenant no.** La consola autentica personas (Auth.js,
+  dos roles) y el servicio pide un token compartido que agrega el cliente
+  base. Lo que sigue sin existir es el tenant por usuario: es un setting del
+  despliegue. No agregar `/org/[slug]/` ni una columna `tenant_id` hasta que
+  haya capability detrás.
+- **Todo lo que no esté en `(auth)/` exige sesión.** Una página nueva
+  colgada de `app/` y no de `app/(console)/` queda publicada sin gate. El
+  `matcher` de `proxy.ts` enumera lo que se alcanza sin cookie: `/api/auth/*`,
+  `/login`, `/register`, los assets de Next y `/brand/*`.
 - **El browser nunca ve `AI_SERVICE_URL`.** Privada, sin prefijo
   `NEXT_PUBLIC_`. `lib/ai-service/base-client.ts` importa `server-only`.
 - **Una pantalla, un módulo de nav.** Si se agrega una página, se agrega

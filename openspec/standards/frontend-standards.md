@@ -16,17 +16,31 @@ son servidor — [bff-standards.md](./bff-standards.md).
 | Markdown | `react-markdown` + `remark-gfm` (respuesta del chat) |
 | Tema | Tokens del tema Woken (tweakcn) en `app/globals.css`; mecánica en `lib/theme.ts` |
 | Datos | Server Components + Route Handlers. El browser **no** habla con el servicio IA |
-| Tests | Este paquete no tiene runner de tests de UI. CI corre `pnpm lint` y `pnpm build` |
+| Tests | `pnpm test` cubre `lib/auth/` (`node --test` + `tsx`). **De UI no hay runner**; CI corre `pnpm lint`, `pnpm test` y `pnpm build` |
 
 No hay client-side router aparte del App Router, no hay cliente HTTP
-de terceros, no hay librería de tema ni de i18n, no hay auth. No
-introducirlos sin proposal.
+de terceros, no hay librería de tema ni de i18n. No introducirlos sin
+proposal.
+
+**Auth sí hay**, desde `add-console-authentication`: Auth.js v5 con Google
+y contraseña, sesión en JWT. Lo que hay que saber desde el frontend son dos
+cosas y las dos son límites, no APIs nuevas:
+
+- **Ninguna pantalla decide si se puede entrar.** El rol se resuelve en el
+  servidor —`app/(console)/layout.tsx` para la sesión,
+  `app/(console)/(admin)/layout.tsx` para el rol— y una pantalla que ya
+  renderiza es una pantalla que pasó el gate. No repetir el chequeo en un
+  Client Component: no agrega seguridad y crea una segunda fuente de verdad.
+- **El filtro de la nav es presentación.** `visibleModules(role)` oculta lo
+  que no se puede abrir; no autoriza. La mecánica completa está en
+  [bff-standards.md](./bff-standards.md) §Identidad.
 
 Comandos, desde `business-backend/`:
 
 ```bash
 pnpm dev
 pnpm lint
+pnpm test
 pnpm build
 ```
 
@@ -38,23 +52,34 @@ shell compartido y una sola capa de datos:
 ```
 business-backend/
 ├── app/
-│   ├── layout.tsx              # shell: sidebar + header + tema
-│   ├── page.tsx                # portada
-│   ├── answer/                 # chat (page + console + markdown)
-│   ├── search/
-│   ├── documents/
-│   ├── corpus/
-│   ├── agents/                 # catálogo + /flow
-│   ├── models/
+│   ├── layout.tsx              # solo el shell del documento: <html>, tema
+│   ├── (auth)/                 # antes de la sesión: sin sidebar ni header
+│   │   ├── login/
+│   │   └── register/           # + register/pending
+│   ├── (console)/              # detrás de la sesión: shell + gate
+│   │   ├── layout.tsx          # sidebar + header; resuelve la sesión
+│   │   ├── page.tsx            # portada
+│   │   ├── answer/             # chat (page + console + markdown)
+│   │   ├── search/
+│   │   ├── documents/
+│   │   └── (admin)/            # el grupo es el gate de rol
+│   │       ├── layout.tsx      # exige `administrador`
+│   │       ├── corpus/
+│   │       ├── agents/         # catálogo + /flow
+│   │       ├── models/
+│   │       ├── usage/
+│   │       └── users/
 │   └── api/                    # BFF — no es frontend
 ├── components/
 │   ├── ui/                     # shadcn: solo los que se usan
 │   ├── page-frame.tsx
 │   ├── app-sidebar.tsx
 │   ├── app-header.tsx
+│   ├── forbidden-screen.tsx    # el 403 con pantalla propia
 │   └── theme-toggle.tsx
 ├── lib/
 │   ├── ai-service/             # server-only; ver bff-standards
+│   ├── auth/                   # identidad; ver bff-standards §Identidad
 │   ├── theme.ts
 │   ├── console-nav.ts          # única fuente de la nav
 │   └── utils.ts                # cn()
@@ -62,9 +87,17 @@ business-backend/
     └── use-mobile.ts
 ```
 
-- Una pantalla nueva es una carpeta bajo `app/<ruta>/` con `page.tsx`
-  (Server Component) y el cliente interactivo al lado
-  (`*-console.tsx`).
+Los grupos de ruta —`(auth)`, `(console)`, `(admin)`— no aparecen en la URL:
+`app/(console)/(admin)/models/page.tsx` sirve `/models`. Están para que cada
+grupo tenga su layout, y en el caso de `(admin)` eso **es** la autorización:
+una pantalla está protegida porque está en ese directorio. Mover una carpeta
+adentro o afuera del grupo cambia quién la puede abrir.
+
+- Una pantalla nueva es una carpeta con `page.tsx` (Server Component) y el
+  cliente interactivo al lado (`*-console.tsx`). **En qué grupo va es parte
+  del change**: `(console)/` si cualquier sesión puede abrirla,
+  `(console)/(admin)/` si escribe configuración o destruye datos. Dejarla
+  fuera de `(console)/` la publica sin sesión.
 - El ítem de nav se agrega en `CONSOLE_MODULES` (`lib/console-nav.ts`)
   en el mismo change. Sidebar y portada leen de ahí: una pantalla que
   está en uno y no en el otro es un bug.
@@ -248,7 +281,7 @@ en un script inline en `<head>` — **antes** del primer pintado.
 ## Workflow de este stack
 
 - Rama con sufijo `-web`. Ver [git-workflow.md](./git-workflow.md).
-- `pnpm lint` y `pnpm build` en verde.
+- `pnpm lint`, `pnpm test` y `pnpm build` en verde.
 - Verificar en el browser el flujo que se tocó — no solo un
   screenshot. Si no hay browser tools, `pnpm build` + decir qué no
   se pudo clickear.

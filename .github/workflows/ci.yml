@@ -105,7 +105,7 @@ jobs:
   # Etapa 2 — consola web: lint + build
   # ---------------------------------------------------------------------------
   business-backend:
-    name: Consola web · lint & build
+    name: Consola web · lint, tests & build
     needs: changes
     if: needs.changes.outputs.business-backend == 'true'
     runs-on: ubuntu-latest
@@ -142,6 +142,16 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      # `pnpm test` es `node --test` sobre `lib/auth/` y nada más: contraseñas,
+      # roles, barandas y el saneado del `next` del login. Corre ANTES del build
+      # y sin base ni secretos — esos módulos son puros a propósito, para que
+      # esta lógica se pueda probar sin levantar Postgres. De UI no hay runner:
+      # eso lo cubre `pnpm build` (tipos) y la verificación en browser del change.
+      # || `pnpm test` is `node --test` over `lib/auth/` only. No database and no
+      # secrets: those modules are pure on purpose. There is no UI runner.
+      - name: Tests
+        run: pnpm test
 
       # `next build` corre TypeScript, así que el chequeo de tipos entra acá.
       # No hay AI_SERVICE_URL: el build no llama al servicio, y si algún día lo

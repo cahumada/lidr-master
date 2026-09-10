@@ -5,9 +5,17 @@ El backend de negocio de la consola: Route Handlers bajo
 servicio IA, `business-backend/lib/ai-service/`.
 
 Esto **no** es el API de producto. El API de producto es FastAPI en
-`ai-service/`. Acá no hay ORM, no hay jobs propios, no hay dominio
-de seguros. Hay un proxy same-origin para que el browser nunca vea
-`AI_SERVICE_URL`.
+`ai-service/`. Acá no hay jobs propios ni dominio de seguros. Hay un
+proxy same-origin para que el browser nunca vea `AI_SERVICE_URL`.
+
+Hay **una** excepción de persistencia y está acotada **por enumeración**:
+la identidad de la consola —usuarios, cuentas de proveedor, sesiones,
+tokens de verificación y rol— vive en Postgres vía Prisma. Esas cinco
+entidades y ninguna otra. Enumerada y no «persistencia de identidad» a
+propósito: sin lista, es la puerta por la que entra una tabla de
+preferencias, después una de favoritos, y el estándar dejó de decir algo.
+Cualquier tabla fuera de esa enumeración es dominio, y el dominio vive en
+el servicio. Ver [§Identidad](#identidad).
 
 Páginas y componentes: [frontend-standards.md](./frontend-standards.md).
 Servicio Python: [ai-service-standards.md](./ai-service-standards.md).
@@ -21,7 +29,7 @@ Servicio Python: [ai-service-standards.md](./ai-service-standards.md).
 | HTTP al servicio | `fetch` en `lib/ai-service/base-client.ts`, marcado `server-only` |
 | Validación | La del servicio. El BFF solo rechaza lo que no puede reenviar |
 | Lint / tipos | `pnpm lint` (eslint-config-next) y `pnpm build` (corre `tsc`) |
-| Tests | No hay runner de Jest/Vitest en este paquete. El contrato se prueba en `ai-service/tests/api/` |
+| Tests | `pnpm test` (`node --test` + `tsx`) sobre `lib/auth/` y nada más. Sin Jest ni Vitest. El contrato upstream se prueba en `ai-service/tests/api/` |
 
 Comandos, desde `business-backend/`:
 
@@ -29,7 +37,9 @@ Comandos, desde `business-backend/`:
 pnpm install          # lockfile: pnpm-lock.yaml; CI usa --frozen-lockfile
 pnpm dev
 pnpm lint
+pnpm test             # lib/auth/ — ver §Tests
 pnpm build
+pnpm db:deploy        # migraciones de identidad — ver §Identidad
 ```
 
 ## Rol del BFF
@@ -40,7 +50,8 @@ browser  ──same-origin──►  Route Handler  ──AI_SERVICE_URL──�
                                  └── lib/ai-service/{search,documents,corpus,answer,config}
 ```
 
-Tres reglas que no se negocian (ya son capability de `web-console`):
+Cuatro reglas que no se negocian (las tres primeras ya son capability
+de `web-console`):
 
 1. **El browser nunca llama al servicio IA.** Ni `NEXT_PUBLIC_AI_SERVICE_URL`,
    ni un `fetch` desde un Client Component al host de Railway.
@@ -50,6 +61,11 @@ Tres reglas que no se negocian (ya son capability de `web-console`):
 3. **La app web nunca llama a un proveedor de modelos.** Ni del lado del
    servidor. Si una pantalla necesita un LLM, el servicio expone un
    endpoint y el BFF lo reenvía.
+4. **Todo Route Handler es relay, salvo el de autenticación.** La única
+   excepción es `app/api/auth/[...nextauth]/route.ts`, que reexporta los
+   `handlers` de Auth.js: la sesión pertenece al origen de esta app, no al
+   servicio, así que no hay a quién reenviarla. Está anotado en el propio
+   archivo. Otro handler que no sea relay necesita su propio proposal.
 
 `server-only` es la garantía, no la convención: importar
 `base-client.ts` desde un Client Component es error de build.
@@ -78,6 +94,54 @@ Un contexto nuevo (otro grupo de endpoints) es un archivo nuevo en
 `lib/ai-service/`, no un `fetch` suelto en el Route Handler. El
 handler queda en cinco a treinta líneas: parsear lo mínimo, llamar al
 cliente, devolver JSON o `toErrorPayload`.
+
+## Identidad
+
+La excepción de la intro, con su forma. La introdujo
+`add-console-authentication`; el porqué de cada decisión está en el
+`design.md` de ese change.
+
+```
+business-backend/
+├── auth.ts                     # Auth.js: proveedores, callbacks, strategy "jwt"
+├── proxy.ts                    # gate de borde: ¿hay cookie de sesión?
+├── prisma/schema.prisma        # las cinco entidades enumeradas, y nada más
+└── lib/auth/
+    ├── prisma-client.ts        # el ÚNICO lugar que abre una conexión a base
+    ├── prisma.ts               # el mismo singleton + `server-only`
+    ├── password.ts             # hash y verificación
+    ├── roles.ts                # los dos roles; tabla pura, sin imports de base
+    ├── guards.ts               # barandas de la pantalla de usuarios
+    └── safe-redirect.ts        # el `next` del login, saneado
+```
+
+Cinco reglas:
+
+1. **`lib/auth/` y `lib/ai-service/` no se importan entre sí.** Una habla
+   Postgres por Prisma, la otra HTTP con FastAPI. Mezclarlas es cómo una
+   consulta de negocio termina saliendo de la base equivocada.
+2. **Base aparte de la del corpus, y su propia variable.**
+   `AUTH_DATABASE_URL`, nunca `DATABASE_URL` —ese nombre ya es el del
+   corpus—, sin `NEXT_PUBLIC_`. Alembic no ve estas tablas y un `pg_dump`
+   del corpus no puede traer contraseñas.
+3. **El rol se resuelve en el servidor.** `proxy.ts` responde una sola
+   pregunta —¿hay cookie?— y **lee la cookie sin verificar su firma**: es
+   un gate optimista en el borde, no autorización. La sesión real se
+   resuelve en el layout, donde está el secreto.
+4. **La pertenencia al grupo de administración es el file system.** Las
+   pantallas que escriben configuración o destruyen datos viven bajo
+   `app/(console)/(admin)/` y las cierra el layout de ese grupo. No una
+   lista de paths comparada contra el pathname: un layout no recibe el
+   pathname, y leer un header que puso el proxy falla **abierto** justo
+   cuando el proxy se salteó.
+5. **El filtro de la navegación no autoriza.** `lib/console-nav.ts` usa los
+   roles para no mostrar lo que no se puede abrir; eso es presentación.
+   Borrarlo no abre nada y agregarlo no cierra nada.
+
+Prisma 7 toma un `adapter` de driver en vez de una `datasourceUrl`, así que
+el pooling que necesitan las funciones serverless se configura en el `Pool`
+de `pg` (`lib/auth/prisma-client.ts`), y la URL directa de las migraciones
+vive en `prisma7.config.ts`.
 
 ## El Route Handler es transporte
 
@@ -198,22 +262,37 @@ ninguna pantalla lo lea.
 
 ## Tests
 
-El BFF no tiene suite propia. Eso no autoriza a “probar a mano y ya”:
+Hay **un** runner y cubre **una** carpeta: `pnpm test` corre
+`node --import tsx --test "lib/auth/*.test.ts"`. Node ya trae el runner y
+`tsx` ya estaba para `seed:admin`, así que no se agregó ninguna dependencia
+de test.
 
-- El contrato upstream se cubre en `ai-service/tests/api/`.
+Esa es la respuesta a lo que este estándar dejaba abierto —«si el BFF crece
+hasta tener lógica que no sea relay, el proposal justifica el runner»—. La
+lógica que lo justificó es hashear y verificar una contraseña, resolver un
+rol y sanear un redirect: nada de eso es relay y nada de eso se puede cubrir
+desde `ai-service/tests/`. El alcance queda ahí:
+
+- **Se testea** lo puro de `lib/auth/`: `password`, `roles`, `guards`,
+  `safe-redirect`.
+- **No hay runner** para páginas, formularios ni el flujo de OAuth, que
+  necesita el proveedor real y se verifica en el browser.
+- **El contrato upstream** se sigue cubriendo en `ai-service/tests/api/`.
 - Un Route Handler nuevo que cambia el mapping de status (olvidar el
   202, tragarse un 409) es un bug de BFF: si no hay test acá, el
   checklist del change tiene que incluir una verificación explícita
   (`pnpm build` + ejercicio del flujo, o un test en el servicio que
   fije el status que el BFF debe reenviar).
-- No agregar Jest “por las dudas”. Si el BFF crece hasta tener lógica
-  que no sea relay, el proposal justifica el runner.
+- Sigue en pie el “no agregar Jest ni Vitest por las dudas”. Ampliar el
+  alcance del runner —una suite de UI, por ejemplo— pide su proposal,
+  igual que lo pidió éste.
 
 ## Workflow de este stack
 
 - Rama con sufijo `-web` (páginas y BFF viajan juntos). Ver
   [git-workflow.md](./git-workflow.md).
-- `pnpm lint` y `pnpm build` antes de dar el change por listo.
+- `pnpm lint`, `pnpm test` y `pnpm build` antes de dar el change por listo.
+  Los tres corren en CI.
 - Inventario: toda ruta nueva se agrega a
   [app-routes.md](./app-routes.md) en el mismo change.
 

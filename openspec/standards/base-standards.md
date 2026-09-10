@@ -75,7 +75,7 @@ Si el enunciado no alcanza para planear, formalizarlo primero con
    cuando hay trade-offs. `<change-id>` es kebab-case y empieza con verbo.
 2. **Implementar** — tachar el checklist a medida que entra.
 3. **Verificar** — desde `ai-service/`: `uv run pytest` y `uv run ruff check .`.
-   Desde `business-backend/`: `pnpm lint` y `pnpm build`. Desde la raíz:
+   Desde `business-backend/`: `pnpm lint`, `pnpm test` y `pnpm build`. Desde la raíz:
    `python scripts/validate_specs.py`.
 4. **Archivar** — integrar deltas en `openspec/specs/` y mover el change a
    `openspec/changes/archive/<YYYY-MM-DD>-<id>/`.
