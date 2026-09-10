@@ -14,7 +14,11 @@ en sí (que se queda agnóstico del framework).
 
 from __future__ import annotations
 
+import secrets
 from functools import lru_cache
+from typing import Annotated
+
+from fastapi import Header, HTTPException, status
 
 from app.config import get_settings
 from app.generation.rag.chunking.functional_spec import FunctionalSpecChunker
@@ -244,3 +248,54 @@ def get_corpus_source():
             "corpus que leer."
         )
     return LocalCorpusSource(settings.CORPUS_ROOT)
+
+
+def require_service_token(
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    """Reject a caller that does not carry the service's shared secret.
+
+    Applied at ROUTER level in ``app/main.py`` and not endpoint by endpoint, so
+    an endpoint added tomorrow is closed without anyone remembering to close
+    it. ``/health`` is the one exception, and it is registered outside the
+    protected routers.
+
+    With no ``SERVICE_TOKEN`` configured this passes: the environment is
+    declared open (see ``Settings.SERVICE_TOKEN``), which is what lets the
+    tests and the evals run. Production without a token does not boot, so this
+    branch cannot be the production posture by accident.
+
+    The comparison is ``compare_digest`` and not ``==``: an equality that
+    short-circuits leaks the shared prefix through timing. And the 401 does not
+    say whether the header was missing or wrong — that difference only helps
+    somebody trying tokens.
+
+    || Rechaza a quien no trae el secreto compartido del servicio. Se aplica a
+    nivel de ROUTER en ``app/main.py`` y no endpoint por endpoint, así un
+    endpoint agregado mañana queda cerrado sin que nadie se acuerde de
+    cerrarlo. ``/health`` es la única excepción y se registra afuera.
+
+    Sin ``SERVICE_TOKEN`` configurado esto pasa: el entorno está declarado
+    abierto, que es lo que permite correr los tests y los evals. Producción sin
+    token no arranca, así que esta rama no puede ser la postura de producción
+    por descuido.
+
+    La comparación es ``compare_digest`` y no ``==``: una igualdad que corta al
+    primer byte distinto filtra el prefijo por tiempo. Y el 401 no dice si el
+    header faltaba o estaba mal — esa diferencia solo le sirve a quien está
+    probando tokens.
+    """
+    expected = get_settings().SERVICE_TOKEN.strip()
+    if not expected:
+        return
+
+    presented = ""
+    if authorization and authorization.lower().startswith("bearer "):
+        presented = authorization[len("bearer ") :].strip()
+
+    if not secrets.compare_digest(presented, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Service token required. || Se requiere el token del servicio.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

@@ -16,7 +16,7 @@ import contextlib
 from contextlib import AsyncExitStack, asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from app.api.answer import router as answer_router
 from app.api.answer_agentic import router as answer_agentic_router
@@ -28,6 +28,7 @@ from app.api.documents import router as documents_router
 from app.api.search import router as search_router
 from app.api.usage import router as usage_router
 from app.config import get_settings
+from app.dependencies import require_service_token
 
 
 def configure_logging() -> None:
@@ -70,6 +71,21 @@ async def lifespan(app: FastAPI):
     """
     configure_logging()
     settings = get_settings()
+
+    # The one signal that an environment is answering anyone. `Settings` already
+    # refuses to boot in production without the token, so reaching this branch
+    # there is impossible — but a staging URL that someone shared is exactly the
+    # case this line exists to make findable in a log.
+    # || La única señal de que un entorno le está contestando a cualquiera.
+    # `Settings` ya se niega a arrancar en producción sin el token, así que
+    # llegar acá allá es imposible — pero una URL de staging que alguien
+    # compartió es justo el caso que esta línea existe para hacer buscable.
+    if not settings.SERVICE_TOKEN.strip():
+        log.warning(
+            "service_auth_disabled",
+            app_env=settings.APP_ENV,
+            detail="SERVICE_TOKEN is empty: every endpoint answers without credentials",
+        )
 
     async def _seed_providers() -> None:
         try:
@@ -126,15 +142,30 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Visual Time RAG — servicio IA", version="0.1.0", lifespan=lifespan)
-app.include_router(documents_router)
-app.include_router(search_router)
-app.include_router(answer_router)
-app.include_router(answer_agentic_router)
-app.include_router(answer_sessions_router)
-app.include_router(answer_session_router)
-app.include_router(config_router)
-app.include_router(corpus_router)
-app.include_router(usage_router)
+# Every router carries the token dependency; `/health` is declared outside them
+# and stays open because it is the platform's healthcheck. Putting the guard
+# HERE and not on each endpoint is deliberate: an endpoint added tomorrow is
+# closed without anyone remembering to close it, and the list of what is open
+# is one line long instead of scattered across nine files.
+# || Todos los routers llevan la dependencia del token; `/health` se declara
+# afuera y queda abierto porque es el healthcheck de la plataforma. Poner la
+# guarda ACÁ y no en cada endpoint es deliberado: un endpoint agregado mañana
+# queda cerrado sin que nadie se acuerde, y la lista de lo que está abierto
+# mide una línea en vez de estar repartida en nueve archivos.
+_PROTECTED = [Depends(require_service_token)]
+
+for _router in (
+    documents_router,
+    search_router,
+    answer_router,
+    answer_agentic_router,
+    answer_sessions_router,
+    answer_session_router,
+    config_router,
+    corpus_router,
+    usage_router,
+):
+    app.include_router(_router, dependencies=_PROTECTED)
 
 
 @app.get("/health")

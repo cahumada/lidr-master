@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -445,6 +445,52 @@ class Settings(BaseSettings):
     # || Acota el escaneo iterativo para que un filtro que casi no matchea nada
     # no pueda recorrer el índice entero.
     HNSW_MAX_SCAN_TUPLES: int = 20000
+
+    # --- Service authentication || Autenticación del servicio ---------------
+
+    # The shared secret the console's BFF sends on every call. The service has
+    # ONE legitimate client and it runs on a server: what it needs to know is
+    # not WHO is asking -- the console authenticates people -- but whether the
+    # caller is its console.
+    #
+    # EMPTY means the service answers without asking, which is what lets the
+    # tests, the evals and a local `curl` run without ceremony. That tolerance
+    # ends at `APP_ENV=production`: see the validator below.
+    #
+    # || El secreto compartido que el BFF de la consola manda en cada llamada.
+    # El servicio tiene UN cliente legítimo y corre en un servidor: lo que
+    # necesita saber no es QUIÉN pregunta —a las personas las autentica la
+    # consola— sino si quien llama es su consola.
+    #
+    # VACÍO significa que el servicio atiende sin pedir nada, que es lo que
+    # permite correr los tests, los evals y un `curl` local sin ceremonia. Esa
+    # tolerancia termina en `APP_ENV=production`: ver el validador de abajo.
+    SERVICE_TOKEN: str = ""
+
+    @model_validator(mode="after")
+    def _refuse_production_without_a_token(self) -> Settings:
+        """An auth a deploy forgot to configure is worse than no auth at all.
+
+        Open with the LOOK of closed is worse than the current state, because
+        today the absence of authentication is at least declared. So production
+        without the secret does not boot: the variable's name in a startup
+        error is cheaper than finding out from an access log.
+
+        || Una auth que un despliegue se olvidó de configurar es peor que
+        ninguna: queda abierta con ASPECTO de cerrada, y hoy al menos la
+        ausencia de autenticación está declarada. Así que producción sin el
+        secreto no arranca — el nombre de la variable en un error de arranque
+        sale más barato que enterarse por un log de accesos.
+        """
+        if self.APP_ENV == "production" and not self.SERVICE_TOKEN.strip():
+            raise ValueError(
+                "SERVICE_TOKEN is required when APP_ENV=production: the service "
+                "deploys on a public URL and would answer anyone. "
+                "|| SERVICE_TOKEN es obligatoria con APP_ENV=production: el "
+                "servicio se despliega con URL pública y le contestaría a "
+                "cualquiera."
+            )
+        return self
 
 
 @lru_cache
