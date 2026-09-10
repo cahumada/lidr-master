@@ -85,18 +85,22 @@ apoyarse.
 ## 5. Despliegue del servicio IA (Railway)
 - [x] 5.1 `ai-service/Dockerfile`: `uv sync --frozen`, `uvicorn app.main:app`.
 - [x] 5.2 `ai-service/.dockerignore`: `data/`, `.venv/`, `evals/`, `tests/`.
-- [ ] 5.3 Proyecto Railway: root directory `ai-service/`, healthcheck
+- [x] 5.3 Proyecto Railway: root directory `ai-service/`, healthcheck
       `/health` (ya existe en `app/main.py`), variables `DATABASE_URL`,
       `OPENAI_API_KEY`, `TENANT_ID`, `DOC_VERSION`, `CORPUS_ROOT` si aplica.
-- [ ] 5.4 Railway "Watch Paths" = `ai-service/**`, para que un commit en
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.
+- [x] 5.4 Railway "Watch Paths" = `ai-service/**`, para que un commit en
       `business-backend/` no dispare un redeploy.
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.
 - [x] 5.5 Documentarlo en el `README.md` de la raíz.
 
 ## 6. Despliegue de la app web (Vercel)
-- [ ] 6.1 Proyecto Vercel: root directory `business-backend/`, variable
+- [x] 6.1 Proyecto Vercel: root directory `business-backend/`, variable
       `AI_SERVICE_URL` con la URL pública de Railway.
-- [ ] 6.2 "Ignored Build Step" que salte el build cuando el commit no toca
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.
+- [x] 6.2 "Ignored Build Step" que salte el build cuando el commit no toca
       `business-backend/`.
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.
 - [x] 6.3 Documentarlo en el `README.md` de la raíz.
 
 ## 7. CI
@@ -107,7 +111,7 @@ apoyarse.
 - [x] 7.3 Job de la app web: `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm build`,
       `working-directory: business-backend`, condicionado al filtro.
 - [x] 7.4 Ningún job de deploy (§5, §6).
-- [ ] 7.5 Chequeo de contrato entre `types.ts` y los schemas Pydantic, al
+- [x] 7.5 Chequeo de contrato entre `types.ts` y los schemas Pydantic, al
       estilo del `check_contract.py` del curso. **La justificación llegó sola:**
       los tipos se escribieron a mano contra el código Python y ya nacieron
       desincronizados — `ChunkedDocument.is_container` faltaba y `Reference`
@@ -116,6 +120,7 @@ apoyarse.
       mano; eso es exactamente lo que un job puede hacer solo. Decidir si se
       compara contra el `openapi.json` del servicio o contra una respuesta
       grabada.
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.
 
 ## 8. Documentación
 - [x] 8.1 `openspec/project.md`: la stack de `business-backend/` (Next.js,
@@ -137,8 +142,11 @@ apoyarse.
 - [x] 9.8 Smoke del tema: las tres pantallas en claro y en oscuro, la elección
       sobreviviendo una recarga y una navegación dura, y sin flash blanco al
       cargar con el tema oscuro puesto.
-- [ ] 9.5 Smoke post-deploy: las tres pantallas en Vercel contra Railway.
-- [ ] 9.6 Confirmar los dos filtros de despliegue con commits reales: uno que
+- [x] 9.5 Smoke post-deploy: las tres pantallas en Vercel contra Railway.
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.
+- [x] 9.6 Confirmar los dos filtros de despliegue con commits reales: uno que
       toque solo `business-backend/` (no debe redesplegar Railway) y uno que
       toque solo `ai-service/` (no debe redesplegar Vercel).
-- [ ] 9.7 Promover el delta de `web-console` a `openspec/specs/` y archivar.
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.
+- [x] 9.7 Promover el delta de `web-console` a `openspec/specs/` y archivar.
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.

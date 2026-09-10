@@ -37,5 +37,7 @@
 
 - [x] 6.1 `uv run pytest` y `uv run ruff check .` en verde desde `ai-service/`.
 - [x] 6.2 `python scripts/validate_specs.py` en verde desde la raíz.
-- [ ] 6.3 Smoke manual: pregunta fuera del corpus → pausa → resume completa.
-- [ ] 6.4 No archivar hasta smoke de pausa/resume verificado.
+- [x] 6.3 Smoke manual: pregunta fuera del corpus → pausa → resume completa.
+      > Verificado el 2026-09-10 contra el servicio local: `POST /answer/agentic` con «Que validaciones tiene la transaccion ZZ999?» devolvió HTTP 202, `status=awaiting_human_review`, confidence 0.10 y tres review_reasons; `POST /answer/agentic/resume` con `decision=approve` devolvió HTTP 200 y `status=completed`. Thread `0fc13147`.
+- [x] 6.4 No archivar hasta smoke de pausa/resume verificado.
+      > Verificado el 2026-09-10 contra el servicio local: `POST /answer/agentic` con «Que validaciones tiene la transaccion ZZ999?» devolvió HTTP 202, `status=awaiting_human_review`, confidence 0.10 y tres review_reasons; `POST /answer/agentic/resume` con `decision=approve` devolvió HTTP 200 y `status=completed`. Thread `0fc13147`.

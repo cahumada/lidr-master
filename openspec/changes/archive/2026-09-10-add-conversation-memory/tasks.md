@@ -112,10 +112,9 @@ presupuesto de contexto, así que ese change entra primero.
       pronombre. Corregido con la regla gramatical (no con un umbral) y
       fijado con tests parametrizados en las dos direcciones. Después:
       **0 de 35**, y 0 reescrituras sin sesión.
-- [ ] 7.6 (nuevo, NO de este change) Golden set multi-turno para medir el
-      falso NEGATIVO y la calidad de la reescritura, más un eval que pase por
-      el grafo en vez de por `generate_answer`. Sin eso, el resolver está
-      medido en una sola dirección y el `design.md` lo dice.
+      > La tarea 7.6 (golden set multi-turno y eval por el grafo) salió a su
+      > propio change, `add-multiturn-conversation-eval`: no era de este change
+      > y bloqueaba su archivado. Decidido el 2026-09-10.
 - [x] 7.4 La conversación de tres turnos que motiva el change, como test de
       integración sobre el grafo real y no como prueba manual
       (`test_three_turns_of_one_conversation`): pregunta que nombra su sujeto,

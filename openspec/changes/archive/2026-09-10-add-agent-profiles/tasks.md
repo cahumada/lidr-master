@@ -92,4 +92,5 @@
       el tope de tokens como `settings` (override parcial) → `POST /answer`
       responde 200 con el modelo del perfil → "volver a los defaults" deja
       todo en `settings`.
-- [ ] 9.5 No archivar hasta que el despliegue esté verificado de punta a punta.
+- [x] 9.5 No archivar hasta que el despliegue esté verificado de punta a punta.
+      > Cerrada por decisión del dueño del repo el 2026-09-10: no hay desarrollo pendiente. Lo que NO se ejercitó queda declarado en el proposal.

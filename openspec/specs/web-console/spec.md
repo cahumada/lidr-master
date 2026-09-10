@@ -17,14 +17,16 @@ Promovido de: `add-web-console`, `add-answer-console`, `add-flow-worked-example`
 `render-answer-markdown`, `add-answer-history-console`, `add-llm-usage-console`,
 `improve-agents-console-layout`, `add-window-status-console`.
 
-**Dos cosas quedaron deliberadamente afuera**, porque una spec afirma lo que el
-código hace hoy:
+**Un hueco declarado.** El aislamiento de despliegue está especificado solo en
+su mitad implementada: CI filtra por rutas (`dorny/paths-filter` en
+`.github/workflows/ci.yml`), pero **el filtrado del lado de las plataformas
+—Railway y Vercel— no está configurado**. `add-web-console` se cerró sin esa
+configuración (decisión del dueño del repo, 2026-09-10), así que la spec afirma
+lo que CI hace y no lo que las plataformas todavía no hacen. Hasta que se
+configure, un commit que toca un solo proyecto puede producir un deploy del otro.
 
-- El requirement de **despliegue por proyecto** de `add-web-console`. El
-  filtrado de CI está implementado (`dorny/paths-filter` en
-  `.github/workflows/ci.yml`), pero la otra mitad —que Railway y Vercel solo
-  desplieguen por cambios en sus rutas— sigue siendo configuración pendiente en
-  ese change.
+**Y una cosa quedó afuera**, porque una spec afirma lo que el código hace hoy:
+
 - Los siete requirements de **identidad y roles** de
   `add-console-authentication`, que tiene 23 tasks abiertas. El único punto
   donde el documento actual roza el tema es el gate de `/usage` al rol
@@ -112,6 +114,23 @@ curso" con referencia al job existente.
 - **WHEN** el servicio IA está caído o devuelve 5xx
 - **THEN** la pantalla muestra un mensaje que dice qué falló
 - **AND** no expone una traza ni el detalle interno de la respuesta
+
+### Requirement: CI DEBE correr los checks de un proyecto solo cuando cambian sus rutas
+El monorepo tiene dos proyectos con toolchains distintos. Correr la suite de
+Python porque cambió un `.tsx` gasta tiempo y produce rojos que no dicen nada
+sobre el commit.
+
+El filtrado de plataformas —que Vercel y Railway desplieguen solo por cambios en
+sus rutas— es configuración de cada dashboard y **no está hecha**; ver el hueco
+declarado arriba.
+
+#### Scenario: cambio solo en la app web
+- **WHEN** un commit a `main` toca únicamente archivos bajo `business-backend/`
+- **THEN** el job de CI del servicio IA no se ejecuta
+
+#### Scenario: cambio solo en el servicio IA
+- **WHEN** un commit a `main` toca únicamente archivos bajo `ai-service/`
+- **THEN** el job de CI de la app web no se ejecuta
 
 ### Requirement: La navegación agrupa las pantallas en tres módulos
 La consola SHALL exponer la navegación en tres módulos: **Respuesta** (chat),

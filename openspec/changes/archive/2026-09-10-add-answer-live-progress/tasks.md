@@ -73,5 +73,7 @@
       corpus cargado → el flujo en vivo narra los cuatro agentes → pausa
       202 con motivos reales (confianza 0.10, sin evidencia) → aprobar →
       respuesta final con traza de enrutado completa.
-- [ ] 7.5 No archivar hasta que `add-answer-orchestration` esté archivado
+- [x] 7.5 No archivar hasta que `add-answer-orchestration` esté archivado
       (depende de ese smoke de pausa/resume manual, todavía pendiente ahí).
+      > `add-answer-orchestration` se archiva en este mismo commit, con su
+      > smoke de pausa/resume verificado el 2026-09-10.
