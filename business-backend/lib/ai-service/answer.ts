@@ -18,6 +18,7 @@ import type {
   SessionCreated,
   SessionSummary,
   SessionView,
+  AnswerPromptView,
 } from "./types";
 
 /** Answer and agentic-answer context. Never imports another context.
@@ -124,5 +125,22 @@ export function unpinAnswerSessionAnchor(
 ): Promise<SessionView> {
   return deleteJson<SessionView>(
     `/answer/session/${encodeURIComponent(sessionId)}/anchors/${encodeURIComponent(kind)}/${encodeURIComponent(value)}`,
+  );
+}
+
+/**
+ * The prompt behind one answer, while it is still inside the retention window.
+ *
+ * Fetched on demand and never inlined in the turn payload: it is ~60 KB with
+ * the corpus, the persona and the guardrails inside, and it is read almost
+ * never. A 404 means it never existed or the window swept it — from the
+ * caller's side the same fact.
+ *
+ * || El prompt detrás de una respuesta, mientras siga en la ventana. Se pide a
+ * demanda y nunca viaja en el payload del turno: son ~60 KB.
+ */
+export function getAnswerPrompt(promptId: string): Promise<AnswerPromptView> {
+  return getJson<AnswerPromptView>(
+    `/answer/prompts/${encodeURIComponent(promptId)}`,
   );
 }

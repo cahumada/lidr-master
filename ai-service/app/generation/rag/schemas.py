@@ -896,6 +896,16 @@ class AnswerResponse(BaseModel):
         "model was not called. || Tokens de la última completion. Ceros con "
         "reported=false cuando no se llamó al modelo.",
     )
+    prompt_id: str | None = Field(
+        default=None,
+        description="Id of the prompt exactly as it went to the model, readable for a "
+        "short window at GET /answer/prompts/{id}. Absent when no model call happened, "
+        "or when storing it failed -- the answer outranks its audit trail. The text is "
+        "NOT inlined: it is ~60 KB and carries the corpus, the persona and the "
+        "guardrails. || Id del prompt tal como salió al modelo, legible por una ventana "
+        "corta. Ausente si no hubo llamada al modelo o si falló guardarlo. El texto NO "
+        "viaja acá: son ~60 KB con el corpus, la persona y los guardrails.",
+    )
     business_db: BusinessDbContext | None = Field(
         default=None,
         description="What the source database declared for the codes that entered the "

@@ -18,7 +18,10 @@ Acá no vive ni el prompt, ni la llamada al LLM, ni el chequeo de grounding.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -26,6 +29,7 @@ from app.dependencies import get_embedder, get_reranker, resolve_navigation_tree
 from app.domain.business_db_store import resolve_active_run
 from app.domain.profiles import ProfileResolutionError, synthesizer_runtime
 from app.foundation.persistence.database import get_async_session
+from app.foundation.persistence.prompts import read_prompt
 from app.foundation.persistence.usage import PURPOSE_ANSWER, llm_with_accounting
 from app.generation.rag.answer import generate_answer
 from app.generation.rag.context_budget import StatusResolver
@@ -126,3 +130,71 @@ def _status_from_run(active) -> StatusResolver | None:
         return None
     tree = resolve_navigation_tree(active.env, active.run_id)
     return tree.window_status if tree is not None else None
+
+
+class AnswerPromptResponse(BaseModel):
+    """One synthesis prompt, exactly as it went to the provider.
+
+    Served on its own instead of inlined in the answer: it is ~60 KB with the
+    corpus, the persona and the guardrails inside, and it is read almost never.
+
+    || Un prompt de síntesis, tal como salió. Se sirve aparte y no embebido en
+    la respuesta: son ~60 KB y casi nunca se leen.
+    """
+
+    id: str = Field(description="The prompt id. || El id del prompt.")
+    created_at: datetime = Field(description="When it was sent. || Cuándo se envió.")
+    agent: str = Field(
+        description="Which agent composed it. || Qué agente lo compuso."
+    )
+    model: str = Field(description="Model it went to. || Modelo al que fue.")
+    profile_id: str | None = Field(
+        default=None,
+        description="Named synthesizer profile, when one was chosen. "
+        "|| Perfil nombrado del sintetizador, cuando se eligió uno.",
+    )
+    context_budget: int = Field(
+        description="Token ceiling the evidence was fitted to. "
+        "|| Techo de tokens al que se ajustó la evidencia."
+    )
+    system_text: str = Field(description="The system message. || El mensaje de sistema.")
+    user_text: str = Field(description="The user message. || El mensaje de usuario.")
+
+
+@router.get("/prompts/{prompt_id}", response_model=AnswerPromptResponse)
+def read_answer_prompt(prompt_id: str) -> AnswerPromptResponse:
+    """The prompt behind one answer, while it is still inside the window.
+
+    404 covers both "never existed" and "the retention swept it": from the
+    caller's side they are the same fact — there is nothing to audit — and
+    telling them apart would leak that a prompt once existed for that id.
+
+    || El prompt detrás de una respuesta, mientras siga dentro de la ventana.
+    El 404 cubre «nunca existió» y «lo barrió la retención»: para quien
+    pregunta es el mismo hecho.
+    """
+    settings = get_settings()
+    stored = read_prompt(
+        prompt_id,
+        tenant_id=settings.TENANT_ID,
+        retention_days=settings.ANSWER_PROMPT_RETENTION_DAYS,
+    )
+    if stored is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "No prompt for that id: it never existed, or the retention window "
+                "already swept it. || No hay prompt para ese id: nunca existió, o la "
+                "ventana de retención ya lo barrió."
+            ),
+        )
+    return AnswerPromptResponse(
+        id=stored.id,
+        created_at=stored.created_at,
+        agent=stored.agent,
+        model=stored.model,
+        profile_id=stored.profile_id,
+        context_budget=stored.context_budget,
+        system_text=stored.system_text,
+        user_text=stored.user_text,
+    )

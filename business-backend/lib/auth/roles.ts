@@ -75,3 +75,25 @@ export function isAdminOnly(pathname: string): boolean {
 export function asRole(value: unknown): Role {
   return ROLES.includes(value as Role) ? (value as Role) : DEFAULT_ROLE
 }
+
+/**
+ * Whether ``role`` may call an administration ROUTE HANDLER.
+ *
+ * Lives here and not next to the handler guard for the reason this whole file
+ * exists: it must be importable and unit-testable without pulling `next-auth`
+ * or a database client along. `lib/auth/api-guards.ts` is the server-only
+ * wrapper that resolves the session and calls this.
+ *
+ * Screens are gated by where their file sits, under `(admin)/`. Route handlers
+ * are not: `app/api/` is outside that group, so they need this.
+ *
+ * || Si ``role`` puede llamar un ROUTE HANDLER de administración. Vive acá por
+ * la razón por la que existe este archivo: tiene que ser importable y testeable
+ * sin arrastrar `next-auth` ni un cliente de base.
+ */
+export function mayCallAdminRoute(role: unknown): boolean {
+  // `asRole` floors an unknown value to the least privileged role, so a token
+  // carrying a role this build does not know is never an administrator.
+  // || `asRole` aterriza lo desconocido al rol menos privilegiado.
+  return asRole(role) === "administrador"
+}

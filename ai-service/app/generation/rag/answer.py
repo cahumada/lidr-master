@@ -17,6 +17,7 @@ import structlog
 from app.config import get_settings
 from app.dependencies import business_db_for_run
 from app.foundation.llm.wrapper import LLM, Usage
+from app.foundation.persistence.prompts import save_prompt
 from app.generation.rag.business_db.models import BusinessDbContext
 from app.generation.rag.context_budget import StatusResolver
 from app.generation.rag.guardrails import check_grounding
@@ -139,6 +140,21 @@ async def generate_answer(
 
     completion = llm.complete(system=system, user=user)
     answer = completion.text
+    # Stored right where it was sent. Reconstructing it later would show a
+    # prompt that never existed: persona, guardrails, memory and the active run
+    # all move between the answer and the moment someone looks at it.
+    # || Guardado justo donde se envió. Reconstruirlo después mostraría un
+    # prompt que nunca existió.
+    settings = get_settings()
+    prompt_id = save_prompt(
+        tenant_id=settings.TENANT_ID,
+        agent="answer",
+        model=getattr(llm, "model", "?"),
+        system_text=system,
+        user_text=user,
+        context_budget=budgeted.budget,
+        retention_days=settings.ANSWER_PROMPT_RETENTION_DAYS,
+    )
     # The prose is checked against what the model was actually shown, not
     # against everything the retriever found.
     # || La prosa se chequea contra lo que el modelo realmente vio, no contra
@@ -164,6 +180,7 @@ async def generate_answer(
         answer_truncated=completion.truncated,
         usage=_token_usage(completion.usage),
         business_db=db_context,
+        prompt_id=prompt_id,
     )
 
 

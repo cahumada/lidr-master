@@ -136,6 +136,7 @@ usa el eval del servicio, no la consola.
 
 | Path | Propósito |
 |---|---|
+| `api/answer/prompts/[promptId]/route.ts` | `GET` — relay a `GET /answer/prompts/{id}`. **Chequea el rol ANTES de llamar al servicio**: `/answer` no es una pantalla de administración, así que ocultar el link es presentación y el 403 es la protección. Único route handler con gate de rol; ver `lib/auth/api-guards.ts`. |
 | `api/business-db/runs/route.ts` | `GET` — relay a `GET /business-db/runs`. Lista todas las corridas, la vigente y el sello del corpus. |
 | `api/business-db/runs/[runId]/activate/route.ts` | `POST` — relay a `POST /business-db/runs/{run_id}/activate`. Reenvía 404 y 409 tal cual. `activated_by` lo declara quien llama. |
 
@@ -183,6 +184,7 @@ los módulos de cada router. Swagger en `/docs`.
 | `POST /corpus/rebuild` | 202 + job id. La raíz del corpus sale de settings, no del body. |
 | `GET /corpus/jobs` | Lista. |
 | `GET /corpus/jobs/{job_id}` | Detalle. |
+| `GET /answer/prompts/{prompt_id}` | El prompt tal como salió al modelo, mientras siga en la ventana de retención (`ANSWER_PROMPT_RETENTION_DAYS`, 7 días). `404` cuando no existe o ya se barrió — para quien pregunta es el mismo hecho. |
 | `GET /business-db/runs` | Corridas del mirror de VisualTIME para este cliente, la vigente con su origen (`selected` / `default`) y el sello del corpus al lado. Solo lectura sobre `visualtime.*`. |
 | `POST /business-db/runs/{run_id}/activate` | Elige con qué corrida trabaja el servicio. `404` si no existe, `409` si `loaded_data` es false. `activated_by` es **declarado** por quien llama. |
 | `GET /config` | Proveedores, modelos, agentes, flujo. Sin claves. |

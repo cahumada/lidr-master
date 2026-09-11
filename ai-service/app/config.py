@@ -239,6 +239,16 @@ class Settings(BaseSettings):
     # vacío.
     ANSWER_MAX_CONTEXT_TOKENS: int = Field(default=16384, ge=1)
 
+    # How long a sent prompt stays readable, for diagnosing a bad answer against
+    # what actually produced it. Short on purpose: a stored prompt carries the
+    # retrieved corpus in full plus the persona and the guardrails, which is the
+    # most sensitive material the service handles. The sweep rides along with
+    # each write, so this needs no scheduled job to be honoured.
+    # || Cuánto queda legible un prompt enviado. Corto a propósito: lleva el
+    # corpus recuperado entero más la persona y los guardrails. El barrido viaja
+    # con cada escritura, así que no hace falta una tarea programada.
+    ANSWER_PROMPT_RETENTION_DAYS: int = Field(default=7, ge=0)
+
     # --- Memoria conversacional || Conversation memory ---------------------
 
     # How many (question, answer) pairs the sliding window holds. Four, not the

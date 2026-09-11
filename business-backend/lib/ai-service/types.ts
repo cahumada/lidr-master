@@ -430,6 +430,21 @@ export interface BusinessDbContextView {
   block_emitted: boolean;
 }
 
+/** One synthesis prompt, exactly as it went to the provider. Fetched on demand
+ * from `GET /api/answer/prompts/{id}`, never inlined in a turn payload.
+ * || Un prompt de síntesis tal como salió. Se pide a demanda. */
+export interface AnswerPromptView {
+  id: string;
+  created_at: string;
+  agent: string;
+  model: string;
+  profile_id: string | null;
+  /** Token ceiling the evidence was fitted to. || Techo al que se ajustó. */
+  context_budget: number;
+  system_text: string;
+  user_text: string;
+}
+
 export interface AnswerAgenticCompleted {
   status: "completed";
   thread_id: string;
@@ -461,6 +476,9 @@ export interface AnswerAgenticCompleted {
   /** What the source database declared for the codes that entered the prompt.
    * Absent on a service that predates it. || Lo que declaró la base. */
   business_db?: BusinessDbContextView | null;
+  /** Id of the prompt as it went to the model. The text is fetched separately.
+   * || Id del prompt tal como salió. El texto se pide aparte. */
+  prompt_id?: string | null;
 }
 
 export interface AnswerAgenticPaused {
@@ -480,6 +498,9 @@ export interface AnswerAgenticPaused {
   answer_truncated: boolean;
   usage?: TokenUsage;
   business_db?: BusinessDbContextView | null;
+  /** Id of the prompt as it went to the model. The text is fetched separately.
+   * || Id del prompt tal como salió. El texto se pide aparte. */
+  prompt_id?: string | null;
 }
 
 export type AnswerAgenticResponse = AnswerAgenticCompleted | AnswerAgenticPaused;
@@ -836,6 +857,7 @@ export interface AnswerAgenticProgress {
   /** What the source database declared for this turn. Absent on an older
    * service. || Lo que declaró la base para este turno. */
   business_db?: BusinessDbContextView | null;
+  prompt_id?: string | null;
 }
 
 // --- Corridas del mirror || Mirror extraction runs ---------------------------

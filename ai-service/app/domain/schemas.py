@@ -198,6 +198,11 @@ class AnswerAgentState(TypedDict, total=False):
     pending_revalidation: bool
     retrieval_attempts: int
     usage: dict
+    # Id of the prompt as it went to the model, stored by the synthesizer. The
+    # TEXT never enters the state: it is ~60 KB and the state is checkpointed.
+    # || Id del prompt tal como salió al modelo. El TEXTO nunca entra al estado:
+    # son ~60 KB y el estado se checkpointea.
+    prompt_id: str | None
     business_db: dict | None
 
 

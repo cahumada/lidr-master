@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -58,6 +59,45 @@ def test_empty_hits_skip_llm():
     config = {"configurable": {"llm": FakeLLM()}}
     update = asyncio.run(answer_synthesizer(state, config))
     assert update["answer"] == INSUFFICIENT_CONTEXT_MESSAGE
+
+
+def test_a_slow_complete_does_not_block_the_event_loop(budget):
+    """`/progress` must stay servable while the provider thinks.
+
+    A sync `complete()` inside this async node used to freeze the event
+    loop for the whole Claude call; the console then saw a 502 at 30s.
+
+    || `/progress` tiene que seguir atendible mientras el proveedor piensa.
+    Un `complete()` sincrónico en este nodo async congelaba el event loop
+    durante toda la llamada a Claude; la consola veía un 502 a los 30s.
+    """
+
+    class SlowLLM:
+        def complete(self, *, system: str, user: str) -> Completion:
+            time.sleep(0.25)
+            return Completion(text="ok")
+
+    budget(10_000)
+
+    async def _run() -> None:
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        ticks: list[float] = []
+
+        async def ticker() -> None:
+            while loop.time() - started < 0.2:
+                await asyncio.sleep(0.04)
+                ticks.append(loop.time() - started)
+
+        state = {"query": "tope", "hits": [_hit(0)], "supervisor_steps": 3}
+        await asyncio.gather(
+            answer_synthesizer(state, {"configurable": {"llm": SlowLLM()}}),
+            ticker(),
+        )
+        assert ticks, "ticker never ran"
+        assert ticks[0] < 0.2, f"event loop was blocked until {ticks[0]:.3f}s"
+
+    asyncio.run(_run())
 
 
 def test_hits_trigger_llm():

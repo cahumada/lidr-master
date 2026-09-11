@@ -461,3 +461,36 @@ def test_a_stubbed_reader_puts_the_block_on_the_prompt(client, monkeypatch, llm)
     assert body["business_db"]["complete"] is True
     assert "Lo que declara la base" in llm.calls[0]["system"]
     assert "NO es documentación funcional" in llm.calls[0]["system"]
+
+
+def test_a_missing_prompt_reads_as_404(client):
+    """404 covers "never existed" and "the retention swept it".
+
+    From the caller's side they are the same fact — there is nothing to audit —
+    and telling them apart would leak that a prompt once existed for that id.
+
+    || El 404 cubre «nunca existió» y «lo barrió la retención»: para quien
+    pregunta es el mismo hecho.
+    """
+    response = client.get("/answer/prompts/00000000-0000-0000-0000-000000000000")
+
+    assert response.status_code == 404
+    assert "prompt" in response.json()["detail"].lower()
+
+
+def test_the_answer_payload_carries_the_id_and_not_the_text():
+    """~60 KB with the corpus inside does not travel in every payload.
+
+    Inlining it would ship it to every caller, including the one who has no
+    permission to read it — and an authorization applied in the client is not
+    an authorization.
+
+    || Embeberlo se lo mandaría a todos, incluido quien no puede leerlo.
+    """
+    from app.generation.rag.schemas import AnswerResponse
+
+    fields = set(AnswerResponse.model_fields)
+
+    assert "prompt_id" in fields
+    assert "system_text" not in fields
+    assert "user_text" not in fields

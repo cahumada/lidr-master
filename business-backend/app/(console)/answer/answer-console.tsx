@@ -19,6 +19,8 @@ import {
 
 import { AnswerMarkdown } from "./answer-markdown"
 import { BusinessDbPanel } from "./business-db-panel"
+import { PromptModal } from "./prompt-modal"
+import type { Role } from "@/lib/auth/roles"
 import { LiveFlowPanel } from "./live-flow-panel"
 import { WindowStatusBadge } from "@/components/window-status-badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -70,6 +72,11 @@ import type {
  */
 
 const POLL_INTERVAL_MS = 1200
+/** Keep retrying a transient 502/network blip for this long. Synthesis
+ * can outlast the BFF's 30s timeout when the service event loop is busy.
+ * || Reintentar un 502/red transitorio durante esto. La síntesis puede
+ * durar más que el timeout de 30s del BFF si el event loop está ocupado. */
+const PROGRESS_RETRY_BUDGET_MS = 180_000
 
 const SUGGESTIONS = [
   "¿Qué validaciones aplica CA014 al dar de alta una póliza?",
@@ -589,11 +596,13 @@ function AssistantBody({
   reviewNote,
   onNoteChange,
   onResume,
+  role,
 }: {
   turn: ChatTurn
   reviewNote: string
   onNoteChange: (value: string) => void
   onResume: (decision: "approve" | "reject") => void
+  role?: Role
 }) {
   if (turn.error) {
     return (
@@ -696,6 +705,12 @@ function AssistantBody({
           </div>
         </details>
         {result.business_db && <BusinessDbPanel context={result.business_db} />}
+        {/* Presentation only. `/api/answer/prompts/*` refuses a non-admin on
+            its own, because `/answer` is not an admin screen.
+            || Solo presentación: la ruta rechaza sola. */}
+        {result.prompt_id && role === "administrador" && (
+          <PromptModal promptId={result.prompt_id} />
+        )}
         {!turn.reopened && <RoutingTrace history={result.routing_history} />}
       </div>
     )
@@ -936,10 +951,15 @@ export function AnswerConsole({
   initialFacets,
   profiles,
   initialSessionId,
+  role,
 }: {
   initialFacets: SearchFacets
   profiles: NamedAgentProfile[]
   initialSessionId?: string | null
+  /** Resolved on the server. Hiding the prompt link is presentation only —
+   * `/api/answer/prompts/*` refuses on its own.
+   * || Resuelto en el servidor. Ocultar el link es solo presentación. */
+  role?: Role
 }) {
   const router = useRouter()
   const isMobile = useIsMobile()
@@ -1204,6 +1224,17 @@ export function AnswerConsole({
         })
         const body = (await response.json()) as AnswerAgenticProgress & { error?: string }
         if (!response.ok) {
+          // 502 is the BFF saying the service did not answer in 30s — the
+          // graph is often still running (Claude synthesis is 40–50s).
+          // || 502 es el BFF diciendo que el servicio no contestó en 30s —
+          // el grafo suele seguir corriendo (la síntesis tarda 40–50s).
+          if (
+            response.status === 502 &&
+            elapsedSince(startedAt) < PROGRESS_RETRY_BUDGET_MS
+          ) {
+            pollTimeoutRef.current = setTimeout(poll, POLL_INTERVAL_MS)
+            return
+          }
           patchTurn(turnId, {
             error: body.error ?? "No se pudo consultar el progreso.",
             pending: false,
@@ -1287,6 +1318,10 @@ export function AnswerConsole({
           })
         }
       } catch {
+        if (elapsedSince(startedAt) < PROGRESS_RETRY_BUDGET_MS) {
+          pollTimeoutRef.current = setTimeout(poll, POLL_INTERVAL_MS)
+          return
+        }
         patchTurn(turnId, {
           error: "No se pudo contactar a la consola.",
           pending: false,
@@ -1627,6 +1662,7 @@ export function AnswerConsole({
                       reviewNote={reviewNote}
                       onNoteChange={setReviewNote}
                       onResume={resume}
+                      role={role}
                     />
                   </div>
                 </div>
