@@ -5,6 +5,7 @@ import {
   Database,
   FileUp,
   GitBranch,
+  History,
   MessageSquare,
   Search,
   Users,
@@ -141,6 +142,14 @@ export const CONSOLE_MODULES: ConsoleModule[] = [
         description:
           "Proveedores, credenciales write-only y el catálogo de modelos.",
         icon: Cpu,
+      },
+      {
+        href: "/business-db",
+        roles: ADMIN_ONLY_ROLES,
+        title: "Corridas",
+        description:
+          "Corridas del mirror VisualTIME: cuál está en vigor y cuáles se pueden activar.",
+        icon: History,
       },
       {
         href: "/usage",

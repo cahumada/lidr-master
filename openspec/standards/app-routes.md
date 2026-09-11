@@ -60,6 +60,7 @@ estas carpetas fuera del grupo la abre a cualquier sesión.
 | `(console)/(admin)/agents/page.tsx` | Catálogo de agentes desde `GET /config`. Persona, guardrails, tools. `dynamic = "force-dynamic"`. Degrada a catálogo vacío si el servicio no responde. |
 | `(console)/(admin)/agents/flow/page.tsx` | Diagrama del grafo que corre `POST /answer/agentic`. Crear un perfil no agrega un nodo. |
 | `(console)/(admin)/models/page.tsx` | Proveedores, catálogo de modelos, credenciales write-only. Un proveedor sin clave usable se deshabilita en la UI. |
+| `(console)/(admin)/business-db/page.tsx` | Corridas del mirror VisualTIME: vigente, sello del corpus y activación solo con `loaded_data`. |
 | `(console)/(admin)/usage/page.tsx` | Agregado de tokens de chat del tenant. Degrada a vacío + aviso si el servicio no responde. |
 | `(console)/(admin)/users/page.tsx` | Cuentas, roles y habilitación. Las mutaciones son Server Actions (`users/actions.ts`), no Route Handlers. |
 
@@ -131,10 +132,12 @@ paralelo para lo que ya hace una action.
 No hay Route Handler para `POST /answer` (un solo tiro). Ese camino lo
 usa el eval del servicio, no la consola.
 
-Tampoco hay Route Handler todavía para `/business-db/*`. Los endpoints existen
-en el servicio; la pantalla que los usa es un change de `web` aparte, y su gate
-de rol depende de `add-console-authentication`. Cuando esa pantalla entre, sus
-handlers se agregan acá en el mismo change.
+### Corridas del mirror
+
+| Path | Propósito |
+|---|---|
+| `api/business-db/runs/route.ts` | `GET` — relay a `GET /business-db/runs`. Lista todas las corridas, la vigente y el sello del corpus. |
+| `api/business-db/runs/[runId]/activate/route.ts` | `POST` — relay a `POST /business-db/runs/{run_id}/activate`. Reenvía 404 y 409 tal cual. `activated_by` lo declara quien llama. |
 
 ### Configuración
 

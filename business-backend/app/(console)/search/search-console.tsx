@@ -11,6 +11,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import type { SearchFacets, SearchHit, SearchResponse } from "@/lib/ai-service/types";
 
 /**
@@ -264,6 +271,11 @@ function Results({
   result: SearchResponse;
   elapsedMs: number | null;
 }) {
+  const [detailHit, setDetailHit] = useState<{
+    hit: SearchHit;
+    position: number;
+  } | null>(null);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
@@ -312,16 +324,63 @@ function Results({
       <ol className="flex flex-col gap-3">
         {result.hits.map((hit, index) => (
           <li key={hit.content_hash + index}>
-            <Hit hit={hit} position={index + 1} />
+            <Hit
+              hit={hit}
+              position={index + 1}
+              onShowStructure={() => setDetailHit({ hit, position: index + 1 })}
+            />
           </li>
         ))}
       </ol>
+
+      <HitStructureSheet
+        detail={detailHit}
+        onOpenChange={(open) => {
+          if (!open) setDetailHit(null);
+        }}
+      />
     </div>
   );
 }
 
+function HitStructureSheet({
+  detail,
+  onOpenChange,
+}: {
+  detail: { hit: SearchHit; position: number } | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Sheet open={detail !== null} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-2xl">
+        <SheetHeader>
+          <SheetTitle>Estructura del chunk #{detail?.position ?? ""}</SheetTitle>
+          <SheetDescription>
+            Objeto completo del hit tal como lo devuelve{" "}
+            <span className="font-mono">GET /search</span>. La lista de
+            resultados queda visible detrás.
+          </SheetDescription>
+        </SheetHeader>
+        {detail && (
+          <pre className="bg-muted/40 overflow-auto rounded-lg p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+            {JSON.stringify(detail.hit, null, 2)}
+          </pre>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 /** A hit is never rendered without its provenance. || Un hit nunca se muestra sin su procedencia. */
-function Hit({ hit, position }: { hit: SearchHit; position: number }) {
+function Hit({
+  hit,
+  position,
+  onShowStructure,
+}: {
+  hit: SearchHit;
+  position: number;
+  onShowStructure: () => void;
+}) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-3">
@@ -341,9 +400,18 @@ function Hit({ hit, position }: { hit: SearchHit; position: number }) {
             </Badge>
           )}
           <WindowStatusBadge windowStatus={hit.window_status} />
-          <span className="text-muted-foreground ml-auto text-xs tabular-nums">
+          <span className="text-muted-foreground text-xs tabular-nums">
             {hit.score.toFixed(4)}
           </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="ml-auto h-7 text-xs"
+            onClick={onShowStructure}
+          >
+            Ver estructura
+          </Button>
         </div>
 
         <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">

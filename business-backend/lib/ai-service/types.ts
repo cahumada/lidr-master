@@ -32,6 +32,11 @@ export interface SearchHit {
   bullet_path: string | null;
   module_code: string | null;
   /**
+   * `content` answers something; `index` is a navigation node.
+   * || `content` responde algo; `index` es un nodo de navegación.
+   */
+  document_kind: string | null;
+  /**
    * Declared record status from `TABLE26` when the tree resolved it.
    * || Estado declarado del registro según `TABLE26` cuando el árbol lo resolvió.
    */
@@ -597,6 +602,22 @@ export interface GraphFlowEdge {
   target: string;
 }
 
+/** Which mirror run is in force, from `GET /config`. || Corrida del mirror en vigor. */
+export interface BusinessDbView {
+  run_id: string | null;
+  env: string;
+  /** `selected` | `default` | `none`. */
+  origin: "selected" | "default" | "none";
+  reason: string | null;
+  activated_at: string | null;
+  /** DECLARED by the caller, never verified. || DECLARADO por quien llama. */
+  activated_by: string | null;
+  /** Which run stamped the corpus metadata. || Con qué corrida se estampó el corpus. */
+  stamped_run_id: string | null;
+  /** False when the stamped column is stale. || False cuando la columna quedó vieja. */
+  stamp_matches_active: boolean | null;
+}
+
 export interface ServiceConfig {
   providers: ProviderConfig[];
   models: ModelConfig[];
@@ -617,6 +638,8 @@ export interface ServiceConfig {
   credential_storage_enabled: boolean;
   /** The wire formats the service implements. || Los formatos de wire implementados. */
   wires: Record<string, string>;
+  /** Mirror run in force. Absent on an older service. || Corrida del mirror en vigor. */
+  business_db?: BusinessDbView;
 }
 
 /**
@@ -691,6 +714,62 @@ export interface AnswerAgenticProgress {
   answer_truncated: boolean | null;
   error: string | null;
   usage?: TokenUsage;
+}
+
+// --- Corridas del mirror || Mirror extraction runs ---------------------------
+
+/** One run of the mirror, with what a chooser needs. || Una corrida del mirror. */
+export interface ExtractionRunItem {
+  run_id: string;
+  env: string;
+  extractor_version: string | null;
+  created_at_utc: string | null;
+  /** The extractor's own status. || El estado que le puso el extractor. */
+  status: string | null;
+  loaded_metadata: boolean;
+  loaded_dependencies: boolean;
+  loaded_data: boolean;
+  manifest_sha256: string | null;
+  is_active: boolean;
+  /** False when `loaded_data` is false. || False cuando `loaded_data` es false. */
+  can_activate: boolean;
+}
+
+/** The run in force and where it came from. || La corrida en vigor y de dónde salió. */
+export interface ActiveRunInfo {
+  run_id: string | null;
+  env: string;
+  origin: "selected" | "default" | "none";
+  reason: string | null;
+  activated_at: string | null;
+  activated_by: string | null;
+}
+
+/** Which run stamped the corpus metadata. || Con qué corrida se estampó el corpus. */
+export interface CorpusStampInfo {
+  run_id: string;
+  env: string;
+  doc_version: string;
+  stamped_at: string;
+  rows_updated: number;
+  matches_active: boolean;
+}
+
+/** Response of `GET /business-db/runs`. || Respuesta de `GET /business-db/runs`. */
+export interface ExtractionRunList {
+  active: ActiveRunInfo;
+  stamp: CorpusStampInfo | null;
+  runs: ExtractionRunItem[];
+}
+
+/** Body of `POST /business-db/runs/{run_id}/activate`. */
+export interface ActivateRunRequest {
+  activated_by?: string | null;
+}
+
+/** Response of `POST /business-db/runs/{run_id}/activate`. */
+export interface ActivateRunResponse {
+  active: ActiveRunInfo;
 }
 
 // --- Uso de tokens || Token usage --------------------------------------------
