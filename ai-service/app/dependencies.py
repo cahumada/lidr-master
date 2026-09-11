@@ -24,6 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.domain.business_db_store import resolve_active_run, resolve_active_run_sync
 from app.foundation.persistence.database import get_async_session
+from app.generation.rag.business_db.models import BusinessDbContext
+from app.generation.rag.business_db.render import render_block
+from app.generation.rag.business_db.resolve import anchored_codes, resolve_context
 from app.generation.rag.chunking.functional_spec import FunctionalSpecChunker
 from app.generation.rag.embedding.embedder import OpenAIEmbedder
 from app.generation.rag.navigation import (
@@ -31,6 +34,7 @@ from app.generation.rag.navigation import (
     get_navigation_tree,
     get_navigation_tree_for_run,
 )
+from app.generation.rag.schemas import SearchHit
 
 
 def resolve_navigation_tree(env: str | None = None, run_id: str | None = None):
@@ -59,6 +63,76 @@ def resolve_navigation_tree(env: str | None = None, run_id: str | None = None):
             run_id,
         )
     return get_navigation_tree(settings.WINDOWS_TREE_PATH)
+
+
+def resolve_business_db_context(
+    env: str | None,
+    run_id: str | None,
+    codes: list[str],
+) -> BusinessDbContext:
+    """What the active run declares for ``codes``. Sync, cached by table.
+
+    Same shape as :func:`resolve_navigation_tree`: the run arrives as
+    arguments, the tree and the reader are process caches keyed by that run.
+    Both answer paths call THIS function, so they cannot disagree about what
+    the base says.
+
+    Without a run there is no block and no fallback to the latest run or the
+    CSV — the dictionary and the rows only live in the mirror.
+
+    || Lo que declara la corrida activa para ``codes``. Sincrónico, cacheado
+    por tabla. Los dos caminos de respuesta usan ESTA función. Sin corrida
+    no hay bloque ni caída a la más reciente ni al CSV.
+    """
+    settings = get_settings()
+    if not run_id:
+        return BusinessDbContext.absent(
+            "no_active_run",
+            env=env,
+            detail=(
+                "No hay corrida activa; el diccionario y las filas solo viven "
+                "en el mirror. || No active run; the dictionary and the rows "
+                "only live in the mirror."
+            ),
+        )
+    resolved_env = env or settings.BUSINESS_DB_ENV
+    tree = resolve_navigation_tree(resolved_env, run_id)
+    return resolve_context(
+        database_url=settings.DATABASE_URL,
+        tenant=settings.TENANT_ID,
+        env=resolved_env,
+        run_id=run_id,
+        codes=codes,
+        tree=tree,
+        max_rows=settings.BUSINESS_DB_CONTEXT_MAX_ROWS,
+        as_of_override=settings.BUSINESS_DB_CONTEXT_AS_OF or None,
+    )
+
+
+def business_db_for_run(env: str | None, run_id: str | None):
+    """A `business_db_for` callable bound to one run, for `build_budgeted_messages`.
+
+    Receives the hits that entered the prompt and the tokens still unused.
+    Both answer paths use this so they cannot pick different codes or a
+    different ceiling.
+
+    || Un callable `business_db_for` atado a una corrida. Los dos caminos de
+    respuesta usan este, para que no elijan códigos ni techo distintos.
+    """
+    settings = get_settings()
+
+    def _for(kept: list[SearchHit], remaining: int) -> BusinessDbContext:
+        if not settings.BUSINESS_DB_CONTEXT_ENABLED:
+            return BusinessDbContext.absent("disabled", env=env)
+        codes, dropped = anchored_codes(
+            kept, max_codes=settings.BUSINESS_DB_CONTEXT_MAX_CODES
+        )
+        context = resolve_business_db_context(env, run_id, codes)
+        context = context.model_copy(update={"dropped_codes": list(dropped)}).with_completeness()
+        allowance = min(settings.BUSINESS_DB_CONTEXT_MAX_TOKENS, max(remaining, 0))
+        return render_block(context, budget=allowance)
+
+    return _for
 
 
 # Keyed by the run, and bounded. `@lru_cache` with NO arguments — which is what

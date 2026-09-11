@@ -56,6 +56,7 @@ from app.domain.profiles import (
 from app.foundation.persistence.database import get_async_session
 from app.foundation.persistence.usage import PURPOSE_SYNTHESIZER, llm_with_accounting
 from app.generation.conversation.store import SessionStore
+from app.generation.rag.business_db.models import BusinessDbContext
 from app.generation.rag.retrieval.hybrid import HybridRetriever
 from app.generation.rag.schemas import AnswerRequest, SearchHit, TokenUsage, token_usage_from_state
 from app.generation.rag.store.repository import ChunkRepository
@@ -156,6 +157,7 @@ class AnswerAgenticResponse(BaseModel):
         "quedo incompleta.",
     )
     usage: TokenUsage = Field(default_factory=TokenUsage)
+    business_db: BusinessDbContext | None = None
 
 
 class AnswerAgenticPausedResponse(BaseModel):
@@ -181,6 +183,7 @@ class AnswerAgenticPausedResponse(BaseModel):
     dropped_hits: int = Field(default=0, ge=0)
     answer_truncated: bool = False
     usage: TokenUsage = Field(default_factory=TokenUsage)
+    business_db: BusinessDbContext | None = None
 
 
 class AnswerAgenticResumeRequest(BaseModel):
@@ -234,6 +237,7 @@ class AnswerAgenticProgress(BaseModel):
     dropped_hits: int | None = None
     answer_truncated: bool | None = None
     usage: TokenUsage = Field(default_factory=TokenUsage)
+    business_db: BusinessDbContext | None = None
     error: str | None = Field(
         default=None, description="Set only when status='failed'. || Solo cuando status='failed'."
     )
@@ -276,7 +280,15 @@ def _completed_response(thread_id: str, values: dict) -> AnswerAgenticResponse:
         dropped_hits=int(values.get("dropped_hits") or 0),
         answer_truncated=bool(values.get("answer_truncated")),
         usage=token_usage_from_state(values),
+        business_db=_business_db_from_state(values),
     )
+
+
+def _business_db_from_state(values: dict) -> BusinessDbContext | None:
+    raw = values.get("business_db")
+    if not raw:
+        return None
+    return BusinessDbContext.model_validate(raw)
 
 
 def _paused_response(thread_id: str, question: str, values: dict, reasons: list[str]):
@@ -296,6 +308,7 @@ def _paused_response(thread_id: str, question: str, values: dict, reasons: list[
         dropped_hits=int(values.get("dropped_hits") or 0),
         answer_truncated=bool(values.get("answer_truncated")),
         usage=token_usage_from_state(values),
+        business_db=_business_db_from_state(values),
     )
 
 
@@ -597,4 +610,5 @@ async def answer_agentic_progress(thread_id: str):
         dropped_hits=result.get("dropped_hits"),
         answer_truncated=result.get("answer_truncated"),
         usage=token_usage_from_state(result),
+        business_db=_business_db_from_state(result),
     )

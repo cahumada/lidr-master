@@ -31,6 +31,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.generation.rag.business_db.models import BusinessDbContext
+
 # "inline_transaction" = backtick-quoted sibling transaction in prose (`CA003`).
 # "footnote_tag" = footnote-style tag (<DF009>).
 # || "inline_transaction" = transacción hermana citada entre backticks en la
@@ -893,4 +895,11 @@ class AnswerResponse(BaseModel):
         description="Tokens of the last completion. Zeros with reported=false when the "
         "model was not called. || Tokens de la última completion. Ceros con "
         "reported=false cuando no se llamó al modelo.",
+    )
+    business_db: BusinessDbContext | None = Field(
+        default=None,
+        description="What the source database declared for the codes that entered the "
+        "prompt, and whether anything that existed did not arrive. Absent only when "
+        "the path never tried. || Lo que la base fuente declaró para los códigos que "
+        "entraron al prompt, y si algo que existía no llegó.",
     )

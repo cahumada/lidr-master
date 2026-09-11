@@ -17,10 +17,12 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.dependencies import get_embedder, get_reranker
+from app.domain.business_db_store import ActiveRun
 from app.domain.profiles import ProfileResolutionError, SynthesizerRuntime
 from app.foundation.llm.wrapper import Completion, Usage
 from app.foundation.persistence.database import get_async_session
 from app.generation.rag.answer import INSUFFICIENT_CONTEXT_MESSAGE
+from app.generation.rag.business_db.models import BusinessDbContext, CodeResolution
 from app.generation.rag.retrieval.hybrid import RetrievalResult, RetrievedChunk
 from app.main import app
 
@@ -398,3 +400,64 @@ def test_the_single_shot_endpoint_refuses_a_session(client, monkeypatch, llm):
     assert response.status_code == 422
     assert "answer/agentic" in str(response.json()["detail"])
     assert llm.calls == []
+
+
+def test_business_db_travels_on_the_response(client, monkeypatch, llm):
+    monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
+    _use_llm(monkeypatch, llm)
+
+    body = client.post("/answer", json={"question": "tope de capital"}).json()
+
+    assert body["business_db"]["run_id"] == "test_run"
+    assert body["business_db"]["env"] == "PROD"
+    assert body["business_db"]["complete"] is True
+    assert body["business_db"]["block_emitted"] is False
+
+
+def test_without_an_active_run_the_field_says_why_and_there_is_no_block(
+    client, monkeypatch, llm
+):
+    async def _none(session, settings, tenant_id=None) -> ActiveRun:
+        return ActiveRun(
+            run_id=None,
+            env="PROD",
+            origin="none",
+            reason="no hay corrida",
+        )
+
+    monkeypatch.setattr("app.api.answer.resolve_active_run", _none)
+    monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
+    _use_llm(monkeypatch, llm)
+
+    body = client.post("/answer", json={"question": "tope de capital"}).json()
+
+    assert body["business_db"]["absent_reason"] == "no_active_run"
+    assert body["business_db"]["block_emitted"] is False
+    assert "Lo que declara la base" not in llm.calls[0]["system"]
+
+
+def test_a_stubbed_reader_puts_the_block_on_the_prompt(client, monkeypatch, llm):
+    def _resolve(env, run_id, codes):
+        return BusinessDbContext(
+            run_id=run_id,
+            env=env,
+            resolutions=[
+                CodeResolution(
+                    code=codes[0] if codes else "MA0007",
+                    outcome="no_maintained_table",
+                    window_description="Bancos",
+                    window_type_name="Tabla general",
+                )
+            ],
+        )
+
+    monkeypatch.setattr("app.dependencies.resolve_business_db_context", _resolve)
+    monkeypatch.setattr("app.api.answer.get_reranker", lambda: None)
+    _use_llm(monkeypatch, llm)
+
+    body = client.post("/answer", json={"question": "tope de capital"}).json()
+
+    assert body["business_db"]["block_emitted"] is True
+    assert body["business_db"]["complete"] is True
+    assert "Lo que declara la base" in llm.calls[0]["system"]
+    assert "NO es documentación funcional" in llm.calls[0]["system"]

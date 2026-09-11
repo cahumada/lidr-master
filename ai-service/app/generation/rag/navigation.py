@@ -82,6 +82,13 @@ WINDOW_TYPES = {
 # falla en 21, incluidos 16 menús vacíos que llamaba transacciones ejecutables.
 MENU_WINDOW_TYPE = "8"
 
+# Window type 10 is the only one whose `NG_IDENTI` means "this transaction
+# maintains `TABLE<n>`". Domain §7.1: 440 of 529 type-10 pairs match (83%);
+# 0 of 11 pairs of any other type match.
+# || El tipo 10 es el único cuyo `NG_IDENTI` significa «esta transacción
+# mantiene `TABLE<n>`».
+GENERAL_TABLE_WINDOW_TYPE = "10"
+
 # Window record status from `TABLE26` (`SSTATREGT` on `WINDOWS`). The operational
 # rule that only `1` is served lives in code, not in this catalog.
 # || Estado del registro de ventana según `TABLE26` (`SSTATREGT` en `WINDOWS`).
@@ -153,18 +160,25 @@ class NavigationTree:
         self._description: dict[str, str] = {}
         self._window_type: dict[str, str] = {}
         self._window_status_code: dict[str, str] = {}
+        # In-memory only. `NG_IDENTI` is not added to `NavigationLocation`:
+        # that model travels inside chunk metadata and a new field would force
+        # another 56,537-row backfill for a value the chunker does not use.
+        # || Solo en memoria. `NG_IDENTI` no se agrega a `NavigationLocation`.
+        self._ng_identi: dict[str, int] = {}
         self.status_normalized_from_4 = 0
         self.status_counts: Counter[str] = Counter()
         for row in rows:
             # Rows are (code, parent, description) or, from a newer export,
             # (code, parent, description, window_type, short_description) or,
-            # from the mirror, with `SSTATREGT` as a sixth field. Shorter rows
-            # still load: an older CSV keeps working and simply leaves the extra
-            # fields unresolved.
+            # from the mirror, with `SSTATREGT` as a sixth field and
+            # `NG_IDENTI` as a seventh. Shorter rows still load: an older CSV
+            # keeps working and simply leaves the extra fields unresolved —
+            # including `NG_IDENTI`, which the CSV never carried.
             # || Las filas son (código, padre, descripción) o, de un export más
             # nuevo, con tipo de ventana y descripción corta, o del mirror con
-            # `SSTATREGT` como sexto campo. Las filas más cortas siguen
-            # cargando: un CSV viejo funciona y deja los campos extra sin resolver.
+            # `SSTATREGT` como sexto campo y `NG_IDENTI` como séptimo. Las
+            # filas más cortas siguen cargando: un CSV viejo funciona y deja
+            # los campos extra sin resolver — incluido `NG_IDENTI`.
             code, parent_code, description = row[0], row[1], row[2]
             self._parent[code] = parent_code or None
             self._description[code] = description
@@ -178,6 +192,13 @@ class NavigationTree:
                 if status_code in WINDOW_STATUSES:
                     self._window_status_code[code] = status_code
                     self.status_counts[WINDOW_STATUSES[status_code]] += 1
+            if len(row) > 6 and row[6] not in (None, ""):
+                try:
+                    ident = int(str(row[6]).strip())
+                except ValueError:
+                    ident = 0
+                if ident:
+                    self._ng_identi[code] = ident
         # A code that is its OWN parent does not have children in any useful
         # sense. `MA6835` is exactly that -- a self-loop in the export, and one
         # of the two cycles the process map detects -- and counting it as a
@@ -194,6 +215,13 @@ class NavigationTree:
 
     def __len__(self) -> int:
         return len(self._parent)
+
+    def __contains__(self, code: object) -> bool:
+        return isinstance(code, str) and code in self._parent
+
+    def codes_set(self) -> set[str]:
+        """Every code, as a set. || Cada código, como conjunto."""
+        return set(self._parent)
 
     def path(self, code: str) -> list[str]:
         """Path from the root down to ``code``, empty when absent from the tree.
@@ -266,6 +294,18 @@ class NavigationTree:
         """
         declared = self._window_type.get(code)
         return WINDOW_TYPES.get(declared) if declared else None
+
+    def ng_identi(self, code: str) -> int | None:
+        """The generic table this window maintains, or ``None``.
+
+        Loaded from the mirror only. The CSV export never carried the column,
+        so a tree built from it leaves this unresolved — same as `SSTATREGT`.
+        Zero is stored as absent: it means "no table", not table 0.
+
+        || La tabla genérica que mantiene esta ventana, o ``None``. Solo del
+        mirror. El CSV no trae la columna. Cero se guarda como ausente.
+        """
+        return self._ng_identi.get(code)
 
     def window_status(self, code: str) -> str | None:
         """The declared record status, by name.
@@ -441,7 +481,8 @@ def load_navigation_tree_from_mirror(
                 trim(both from row->>'SDESCRIPT') AS description,
                 nullif(trim(both from row->>'NWINDOWTY'), '') AS window_type,
                 nullif(trim(both from row->>'SSHORT_DES'), '') AS short_description,
-                nullif(trim(both from row->>'SSTATREGT'), '') AS window_status
+                nullif(trim(both from row->>'SSTATREGT'), '') AS window_status,
+                nullif(trim(both from row->>'NG_IDENTI'), '') AS ng_identi
             FROM visualtime.business_data
             WHERE table_name = 'WINDOWS'
               AND tenant = %s
@@ -454,7 +495,15 @@ def load_navigation_tree_from_mirror(
         fetched = cursor.fetchall()
 
     rows: list[tuple] = []
-    for code, parent_code, description, window_type, short_description, window_status in fetched:
+    for (
+        code,
+        parent_code,
+        description,
+        window_type,
+        short_description,
+        window_status,
+        ng_identi,
+    ) in fetched:
         if not code:
             continue
         rows.append(
@@ -465,6 +514,7 @@ def load_navigation_tree_from_mirror(
                 window_type or "",
                 short_description or "",
                 window_status or "",
+                ng_identi or "",
             )
         )
 

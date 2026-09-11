@@ -198,6 +198,7 @@ class AnswerAgentState(TypedDict, total=False):
     pending_revalidation: bool
     retrieval_attempts: int
     usage: dict
+    business_db: dict | None
 
 
 def privilege_violations(state: dict[str, Any]) -> list[dict]:

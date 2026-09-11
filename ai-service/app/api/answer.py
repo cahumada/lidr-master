@@ -93,6 +93,7 @@ async def answer(
         provider_id=runtime.provider_id,
         tenant_id=settings.TENANT_ID,
     )
+    active = await resolve_active_run(session, settings)
     return await generate_answer(
         body.question,
         filters=filters,
@@ -105,21 +106,22 @@ async def answer(
         reranker=get_reranker() if body.rerank else None,
         persona=runtime.persona,
         guardrails=runtime.guardrails,
-        # The window-status warning comes from the ACTIVE run's tree, not from
-        # the stamped column. Resolved here because this is where the session
-        # is; `generate_answer` takes it as a parameter for exactly that reason.
-        # || La advertencia de estado sale del árbol de la corrida ACTIVA y no de
-        # la columna estampada. Se resuelve acá porque acá está la sesión.
-        status_of=await _status_of(session, settings),
+        # The window-status warning and the business-db block come from the
+        # ACTIVE run. Resolved here because this is where the session is;
+        # `generate_answer` takes them as parameters for exactly that reason.
+        # || La advertencia de estado y el bloque de base salen de la corrida
+        # ACTIVA. Se resuelven acá porque acá está la sesión.
+        status_of=_status_from_run(active),
+        active_run_env=active.env if active.run_id else None,
+        active_run_id=active.run_id,
     )
 
 
-async def _status_of(session: AsyncSession, settings) -> StatusResolver | None:
+def _status_from_run(active) -> StatusResolver | None:
     """The active run's status resolver, or nothing when no run is active.
 
     || El resolver de estado de la corrida activa, o nada si no hay ninguna.
     """
-    active = await resolve_active_run(session, settings)
     if not active.run_id:
         return None
     tree = resolve_navigation_tree(active.env, active.run_id)
