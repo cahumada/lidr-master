@@ -230,3 +230,6 @@
   **No** se implementa acá. Sigue pendiente a propósito: los endpoints están y
   la pantalla es el próximo change de consola. `app-routes.md` lo dice, para que
   quien lea el inventario no crea que falta un Route Handler por olvido.
+  **Queda sin tachar al archivar (2026-09-11), y es deliberado**: nunca fue
+  trabajo de este change, así que tacharlo afirmaría que la pantalla existe.
+  El change se cierra con este ítem diferido al change de consola, no cumplido.
