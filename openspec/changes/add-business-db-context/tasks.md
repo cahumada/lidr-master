@@ -1,11 +1,14 @@
 # Implementation Tasks
 
 ## 1. Dependencias y secuencia
-- [ ] 1.1 Este change asume `add-extraction-run-selection` aterrizado en `main`:
+- [x] 1.1 Este change asume `add-extraction-run-selection` aterrizado en `main`:
   usa `resolve_active_run`, `resolve_navigation_tree(env, run_id)` y las dos
   strings `active_run_id` / `active_run_env` del estado del grafo. La rama sale
-  de `main` **después** de ese PR, no antes. Verificar antes de empezar que
-  `app/domain/business_db_store.py` existe en `main`.
+  de `main` **después** de ese PR, no antes.
+  **Cumplido**: el PR #28 mergeó `add-extraction-run-selection-ai-service` a
+  `main` (`b871dc8`), y esta rama lo contiene —
+  `app/domain/business_db_store.py` y `app/api/business_db.py` están en el árbol
+  de trabajo.
 - [ ] 1.2 Sin dependencias nuevas. Todo se resuelve con `psycopg`, `pydantic` y
   `tiktoken`, que ya están. Si algo pide una librería nueva, vuelve al proposal.
 
