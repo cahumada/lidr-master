@@ -47,9 +47,11 @@ Dos consecuencias que la enmienda hace explícitas:
 > **Enmendado el 2026-09-10, después de verificar el despliegue.** Lo que se
 > implementó no es el nivel A sino uno más fuerte: la identidad quedó en **otra
 > instancia** de Postgres, no en otra base de la misma. `AUTH_DATABASE_URL`
-> apunta a `altaria.proxy.rlwy.net:37392/railway` y el corpus vive en
-> `altaria.proxy.rlwy.net:31812/railway` — mismo proxy de Railway, puertos
-> distintos. Confirmado consultando `pg_database` en la instancia de identidad:
+> apunta a la base `railway` de una instancia de Railway y el corpus vive en la
+> base `railway` de **otra**: mismo proxy TCP de Railway, puertos distintos.
+> (Los host:puerto reales no van acá: el repo es público y un endpoint de
+> Postgres escrito en un `.md` es un blanco gratis. Están en `.env.local`, que
+> no se commitea.) Confirmado consultando `pg_database` en la instancia de identidad:
 > tiene `postgres` y `railway`, y esa `railway` contiene exactamente `User`,
 > `Account`, `Session`, `VerificationToken` y `_prisma_migrations`, ninguna
 > tabla del corpus.
