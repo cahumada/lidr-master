@@ -437,21 +437,31 @@ def chunk_corpus(
     # Construirlo directo una vez dejó el breadcrumb sin resolver en todo el
     # corpus, en silencio.
     if tenant_id != settings.TENANT_ID or doc_version != settings.DOC_VERSION:
+        from app.dependencies import resolve_active_navigation_tree_sync
         from app.generation.rag.chunking.functional_spec import FunctionalSpecChunker
-        from app.generation.rag.navigation import get_navigation_tree
 
+        # A tenant or version other than the deployment's still gets the tree of
+        # the ACTIVE run: which run the mirror is read from is a service-wide
+        # selection, not a property of the corpus being chunked. Reading the CSV
+        # here — as this branch used to — left every breadcrumb unresolved for
+        # that corpus and left `window_status` empty, silently.
+        # || Un tenant o una versión distintos de los del despliegue igual reciben
+        # el árbol de la corrida ACTIVA: de qué corrida se lee el mirror es una
+        # selección del servicio y no una propiedad del corpus que se trocea. Leer
+        # el CSV acá —como hacía esta rama— dejaba el breadcrumb sin resolver y
+        # `window_status` vacío en todo ese corpus, en silencio.
         chunker = FunctionalSpecChunker(
             narrative_token_cap=settings.NARRATIVE_CHUNK_TOKEN_CAP,
             index_doc_min_links=settings.INDEX_DOC_MIN_LINKS,
             index_doc_min_link_density=settings.INDEX_DOC_MIN_LINK_DENSITY,
-            navigation_tree=get_navigation_tree(settings.WINDOWS_TREE_PATH),
+            navigation_tree=resolve_active_navigation_tree_sync(),
             tenant_id=tenant_id,
             doc_version=doc_version,
         )
     else:
-        from app.dependencies import get_functional_spec_chunker
+        from app.dependencies import get_functional_spec_chunker_sync
 
-        chunker = get_functional_spec_chunker()
+        chunker = get_functional_spec_chunker_sync()
 
     result = ChunkStepResult(
         corpus_id=str(uuid.uuid4()),

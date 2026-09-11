@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 import pytest
 
 from app.config import get_settings
+from app.domain.business_db_store import ActiveRun
 from app.domain.profiles import SynthesizerRuntime
 from app.foundation.llm.wrapper import Completion
 
@@ -102,6 +103,64 @@ def stub_synthesizer_runtime(monkeypatch):
         "app.domain.graph.runner.synthesizer_runtime",
     ):
         monkeypatch.setattr(target, _runtime)
+
+
+@pytest.fixture(autouse=True)
+def stub_active_run(monkeypatch):
+    """Resolve the active mirror run without a database.
+
+    `add-extraction-run-selection` made the answer path resolve which mirror
+    run it reads window status from, and resolving it is a QUERY. These tests
+    hand the routers a `None` session on purpose — they assert endpoint
+    contracts, not persistence — so without this the first thing every one of
+    them hits is `None.execute(...)`.
+
+    Stubbed at the seam and not made tolerant in the store: a
+    `resolve_active_run` that shrugged at a missing session would swallow the
+    real failure too, and "no active run" would become the answer to "the
+    database is unreachable". The selection's own rules are covered against a
+    real Postgres in `tests/domain/test_business_db_store.py` and at the
+    transport level in `test_business_db.py`, which patches this same seam with
+    what each scenario needs.
+
+    Every module that resolves it gets the stub, because which module the
+    router happens to import it from is not something these tests should have
+    to know.
+
+    || Resuelve la corrida activa del mirror sin base. Estos tests le pasan una
+    sesión `None` a los routers a propósito —prueban contratos de endpoint, no
+    persistencia— así que sin esto lo primero que toca cada uno es
+    `None.execute(...)`. Se stubbea en la COSTURA y no se vuelve tolerante el
+    store: un `resolve_active_run` que se encogiera de hombros ante una sesión
+    ausente también se tragaría la falla real, y «no hay corrida activa» pasaría
+    a ser la respuesta a «la base no responde». Las reglas de la selección se
+    cubren contra un Postgres real en `tests/domain/test_business_db_store.py`.
+    """
+
+    async def _active(session, settings, tenant_id=None) -> ActiveRun:
+        return ActiveRun(run_id="test_run", env="PROD", origin="default")
+
+    async def _no_stamp(session, tenant_id, doc_version):
+        return None
+
+    for module in (
+        "app.api.answer",
+        "app.api.answer_agentic",
+        "app.api.config",
+        "app.dependencies",
+        "app.domain.graph.runner",
+    ):
+        monkeypatch.setattr(f"{module}.resolve_active_run", _active)
+    monkeypatch.setattr("app.api.config.get_stamp", _no_stamp)
+
+    # The tree of that run, without touching `visualtime.*`. `None` means "no
+    # tree", which makes the evidence block fall back to the stamped column --
+    # the behaviour these tests were written against.
+    # || El árbol de esa corrida, sin tocar `visualtime.*`. `None` es «no hay
+    # árbol», que hace que el bloque caiga a la columna estampada: el
+    # comportamiento contra el que se escribieron estos tests.
+    for module in ("app.api.answer", "app.domain.graph.agents.answer_synthesizer"):
+        monkeypatch.setattr(f"{module}.resolve_navigation_tree", lambda *_args: None)
 
 
 @pytest.fixture(autouse=True)

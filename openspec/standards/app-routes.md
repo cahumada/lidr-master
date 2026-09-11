@@ -131,6 +131,11 @@ paralelo para lo que ya hace una action.
 No hay Route Handler para `POST /answer` (un solo tiro). Ese camino lo
 usa el eval del servicio, no la consola.
 
+Tampoco hay Route Handler todavía para `/business-db/*`. Los endpoints existen
+en el servicio; la pantalla que los usa es un change de `web` aparte, y su gate
+de rol depende de `add-console-authentication`. Cuando esa pantalla entre, sus
+handlers se agregan acá en el mismo change.
+
 ### Configuración
 
 | Path | Propósito |
@@ -175,6 +180,8 @@ los módulos de cada router. Swagger en `/docs`.
 | `POST /corpus/rebuild` | 202 + job id. La raíz del corpus sale de settings, no del body. |
 | `GET /corpus/jobs` | Lista. |
 | `GET /corpus/jobs/{job_id}` | Detalle. |
+| `GET /business-db/runs` | Corridas del mirror de VisualTIME para este cliente, la vigente con su origen (`selected` / `default`) y el sello del corpus al lado. Solo lectura sobre `visualtime.*`. |
+| `POST /business-db/runs/{run_id}/activate` | Elige con qué corrida trabaja el servicio. `404` si no existe, `409` si `loaded_data` es false. `activated_by` es **declarado** por quien llama. |
 | `GET /config` | Proveedores, modelos, agentes, flujo. Sin claves. |
 | `PUT /config/agents/{agent_key}` | Override. |
 | `DELETE /config/agents/{agent_key}` | Reset. |

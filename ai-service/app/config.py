@@ -55,12 +55,32 @@ class Settings(BaseSettings):
     # OPCIONAL: si el archivo falta, todos los breadcrumb quedan sin resolver.
     WINDOWS_TREE_PATH: Path = Path("data/windows_tree.csv")
 
-    # Which mirror run supplies the WINDOWS tree when status matters. Set
-    # explicitly — never "the latest run". Empty falls back to `WINDOWS_TREE_PATH`,
-    # where status stays unresolved because the CSV has no `SSTATREGT` column.
-    # || Qué corrida del mirror alimenta el árbol WINDOWS cuando importa el
-    # estado. Se elige explícitamente — nunca "la corrida más reciente". Vacío
-    # cae al CSV, donde el estado queda sin resolver porque no trae `SSTATREGT`.
+    # The DEFAULT mirror run, not a pin. It is the run a fresh install works
+    # with until somebody selects one through `POST /business-db/runs/{id}/activate`;
+    # from then on the SELECTION wins, because which run to work with is a
+    # product-operation decision and whoever operates outranks whoever deploys.
+    #
+    # This is the SEED mechanism `providers_store` uses for the model catalog,
+    # not the OVERRIDE it reserves for credentials — and the difference is
+    # deliberate: a key in the environment is secret management, and a mirror
+    # run is not. Leaving this set forever is fine and blocks nothing; an
+    # `activate` is never refused because of it.
+    #
+    # Still never "the latest run": empty and with no selection means the
+    # service says there is no run in force, and falls back to
+    # `WINDOWS_TREE_PATH`, where status stays unresolved because the CSV has no
+    # `SSTATREGT` column.
+    #
+    # || El valor POR DEFECTO de la corrida del mirror, no un pin. Es la corrida
+    # con la que trabaja una instalación nueva hasta que alguien elija una por
+    # `POST /business-db/runs/{id}/activate`; desde ahí gana la SELECCIÓN, porque
+    # con qué corrida trabajar es una decisión de operación del producto y quien
+    # opera está por encima de quien despliega. Es el mecanismo de SEMILLA que
+    # `providers_store` usa para el catálogo, no el de OVERRIDE que reserva para
+    # las credenciales. Dejarla puesta para siempre está bien y no bloquea nada:
+    # un `activate` nunca se rechaza por esto. Y sigue sin ser nunca «la más
+    # reciente»: vacía y sin selección, el servicio dice que no hay corrida
+    # vigente y cae al CSV, donde el estado queda sin resolver.
     BUSINESS_DB_ENV: str = "PROD"
     BUSINESS_DB_RUN_ID: str = ""
 

@@ -510,3 +510,31 @@ def get_navigation_tree(path: Path) -> NavigationTree | None:
     || Loader cacheado, para que la corrida batch parsee el export una sola vez.
     """
     return load_navigation_tree(path)
+
+
+# Bounded on purpose. Activating another run picks another KEY rather than
+# invalidating this one: there is nothing to invalidate, no window in which one
+# worker serves the old tree and another the new, and both versions can coexist
+# in memory while in-flight requests finish. A few MB each, and four is room for
+# a switch plus the runs an eval might compare without growing without bound.
+# || Acotado a propósito. Activar otra corrida elige otra CLAVE en vez de
+# invalidar ésta: no hay nada que invalidar y no hay ventana en la que un worker
+# sirva el árbol viejo y otro el nuevo. Unos pocos MB cada uno, y cuatro alcanza
+# para un cambio más las corridas que un eval quiera comparar.
+@lru_cache(maxsize=4)
+def get_navigation_tree_for_run(
+    database_url: str, tenant: str, env: str, run_id: str
+) -> NavigationTree:
+    """Cached mirror loader, keyed by the run it came from.
+
+    The key is what makes switching runs safe. ``database_url`` is part of it
+    only because it is an argument — it is constant for a process, so it does
+    not multiply entries.
+
+    || Loader del mirror cacheado, con la corrida en la clave. Esa clave es lo
+    que hace seguro cambiar de corrida. La URL entra en la clave solo porque es
+    un argumento: es constante en un proceso, así que no multiplica entradas.
+    """
+    return load_navigation_tree_from_database_url(
+        database_url, tenant=tenant, env=env, run_id=run_id
+    )

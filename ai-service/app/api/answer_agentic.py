@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.dependencies import get_activity_log, get_embedder, get_reranker
+from app.domain.business_db_store import resolve_active_run
 from app.domain.graph.runner import (
     THREAD_PREFIX as _THREAD_PREFIX,
 )
@@ -365,7 +366,8 @@ async def answer_agentic(
     conversation = await open_turn(store, body)
 
     try:
-        await graph.ainvoke(initial_state(body, conversation), config)
+        active_run = await resolve_active_run(session, settings)
+        await graph.ainvoke(initial_state(body, conversation, active_run), config)
         snapshot = await graph.aget_state(config)
     except Exception as exc:
         log.error("answer_agentic_failed", error_type=type(exc).__name__, error=str(exc)[:300])

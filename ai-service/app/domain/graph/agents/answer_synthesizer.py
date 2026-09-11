@@ -12,6 +12,7 @@ import structlog
 from langchain_core.runnables import RunnableConfig
 
 from app.config import get_settings
+from app.dependencies import resolve_navigation_tree
 from app.domain.graph.privilege import record_model_action
 from app.domain.schemas import AnswerAgentState
 from app.foundation.llm.wrapper import usage_payload
@@ -23,10 +24,42 @@ from app.generation.conversation.models import (
     Turn,
 )
 from app.generation.rag.answer import INSUFFICIENT_CONTEXT_MESSAGE
+from app.generation.rag.context_budget import StatusResolver
 from app.generation.rag.prompt_builder import build_budgeted_messages
 from app.generation.rag.schemas import SearchHit
 
 log = structlog.get_logger()
+
+
+def _status_of(state: AnswerAgentState) -> StatusResolver | None:
+    """The window-status resolver of this turn's ACTIVE run, or nothing.
+
+    The run travels in the state as two strings and the tree comes from a
+    process cache keyed by them, so this costs a dict lookup after the first
+    turn of a process — no query, no reload.
+
+    ``None`` when the state carries no run: then `resolve_window_status` falls
+    back to the stamped column, which is the only fact available when there is
+    no active run to be stale against.
+
+    Reads the state and not settings on purpose. Reading `BUSINESS_DB_RUN_ID`
+    here would pin the answer to what was configured at deploy time and quietly
+    undo the whole selection: the operator would activate a run and the
+    warnings would keep coming from the old one.
+
+    || El resolver de estado de ventana de la corrida ACTIVA de este turno, o
+    nada. La corrida viaja en el estado como dos strings y el árbol sale de un
+    caché con esas claves, así que después del primer turno del proceso cuesta
+    un lookup: sin consulta y sin recarga. ``None`` cuando el estado no trae
+    corrida, y entonces se cae a la columna estampada. Lee el ESTADO y no
+    settings a propósito: leer `BUSINESS_DB_RUN_ID` acá pegaría la respuesta a
+    lo configurado en el deploy y desharía la selección en silencio.
+    """
+    run_id = state.get("active_run_id")
+    if not run_id:
+        return None
+    tree = resolve_navigation_tree(state.get("active_run_env"), str(run_id))
+    return tree.window_status if tree is not None else None
 
 
 def _memory_for(state: AnswerAgentState, settings) -> Callable[[int], str | None] | None:
@@ -119,6 +152,7 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
         persona=persona,
         guardrails=guardrails,
         memory_for=_memory_for(state, settings),
+        status_of=_status_of(state),
     )
 
     # Evidence came back and none of it fit the budget. Same outcome as no

@@ -22,11 +22,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.dependencies import get_embedder, get_reranker
+from app.dependencies import get_embedder, get_reranker, resolve_navigation_tree
+from app.domain.business_db_store import resolve_active_run
 from app.domain.profiles import ProfileResolutionError, synthesizer_runtime
 from app.foundation.persistence.database import get_async_session
 from app.foundation.persistence.usage import PURPOSE_ANSWER, llm_with_accounting
 from app.generation.rag.answer import generate_answer
+from app.generation.rag.context_budget import StatusResolver
 from app.generation.rag.retrieval.hybrid import ALL_BRANCHES, DEFAULT_BRANCHES, HybridRetriever
 from app.generation.rag.schemas import AnswerRequest, AnswerResponse
 from app.generation.rag.store.repository import ChunkRepository, SearchFilters
@@ -103,4 +105,22 @@ async def answer(
         reranker=get_reranker() if body.rerank else None,
         persona=runtime.persona,
         guardrails=runtime.guardrails,
+        # The window-status warning comes from the ACTIVE run's tree, not from
+        # the stamped column. Resolved here because this is where the session
+        # is; `generate_answer` takes it as a parameter for exactly that reason.
+        # || La advertencia de estado sale del árbol de la corrida ACTIVA y no de
+        # la columna estampada. Se resuelve acá porque acá está la sesión.
+        status_of=await _status_of(session, settings),
     )
+
+
+async def _status_of(session: AsyncSession, settings) -> StatusResolver | None:
+    """The active run's status resolver, or nothing when no run is active.
+
+    || El resolver de estado de la corrida activa, o nada si no hay ninguna.
+    """
+    active = await resolve_active_run(session, settings)
+    if not active.run_id:
+        return None
+    tree = resolve_navigation_tree(active.env, active.run_id)
+    return tree.window_status if tree is not None else None

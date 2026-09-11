@@ -16,6 +16,7 @@ import structlog
 
 from app.config import get_settings
 from app.foundation.llm.wrapper import LLM, Usage
+from app.generation.rag.context_budget import StatusResolver
 from app.generation.rag.guardrails import check_grounding
 from app.generation.rag.prompt_builder import build_budgeted_messages
 from app.generation.rag.retrieval.hybrid import DEFAULT_BRANCHES, HybridRetriever
@@ -48,6 +49,7 @@ async def generate_answer(
     reranker=None,
     persona: str | None = None,
     guardrails: str | None = None,
+    status_of: StatusResolver | None = None,
 ) -> AnswerResponse:
     """Retrieve, generate, and mark whether the prose stayed inside the hits.
 
@@ -56,9 +58,19 @@ async def generate_answer(
     prompt exactly as before, which is what keeps the fidelity eval
     comparable across runs that did not configure either.
 
+    ``status_of`` resolves a document's window status from the ACTIVE mirror
+    run. It is a parameter and not something this function looks up, because
+    resolving the active run is a query and this function does not own a
+    session — whoever does owns the decision. Passing nothing falls back to the
+    stamped `window_status` column, which is what the eval scripts get.
+
     || Recupera, genera, y marca si la prosa se quedó dentro de los hits.
     ``persona`` y ``guardrails`` vienen del perfil y se appendean al system
-    prompt; ``None`` deja el prompt como antes.
+    prompt; ``None`` deja el prompt como antes. ``status_of`` resuelve el estado
+    de ventana desde la corrida ACTIVA del mirror: es un parámetro y no algo que
+    esta función busque, porque resolver la corrida es una consulta y esta
+    función no es dueña de una sesión. Sin él se cae a la columna estampada, que
+    es lo que reciben los scripts de eval.
     """
     result = await retriever.retrieve(
         question,
@@ -86,6 +98,7 @@ async def generate_answer(
         budget=get_settings().ANSWER_MAX_CONTEXT_TOKENS,
         persona=persona,
         guardrails=guardrails,
+        status_of=status_of,
     )
 
     # Evidence was retrieved and none of it fit. Treated as insufficient

@@ -39,7 +39,7 @@ descarta en silencio.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import structlog
@@ -53,7 +53,47 @@ log = structlog.get_logger()
 _ACTIVE_WINDOW_STATUS = WINDOW_STATUSES["1"]
 
 
-def render_hit_block(index: int, hit: SearchHit) -> str:
+# Resolves a document id to its declared window status. In practice this is
+# `NavigationTree.window_status` of the ACTIVE run.
+# || Resuelve un document_id a su estado declarado. En la práctica es
+# `NavigationTree.window_status` de la corrida ACTIVA.
+StatusResolver = Callable[[str], str | None]
+
+
+def resolve_window_status(hit: SearchHit, status_of: StatusResolver | None) -> str | None:
+    """The status to warn about: the active tree first, the stamped column after.
+
+    Two authorities, declared by use rather than kept in sync. The answer path
+    resolves from the **active tree**, because that is what holds at the moment
+    of answering; `hit.window_status` is a value stamped from one concrete run
+    and goes stale the moment a different run is activated. Answering with the
+    state of a run nobody chose any more is the defect this change removes.
+
+    The column is still the fallback, and that is not a compromise: when there
+    is no tree there is no active run either, so there is nothing for the column
+    to be stale *against* — and its provenance is recorded in
+    `business_db_stamp`. What must never happen is the column deciding while a
+    tree exists, and that is what the order here rules out.
+
+    || Dos autoridades, declaradas por uso y no mantenidas sincronizadas. El
+    camino de respuesta resuelve del **árbol activo**, que es lo que vale al
+    momento de responder; `hit.window_status` es un valor estampado desde una
+    corrida concreta y queda viejo apenas se activa otra. Responder con el estado
+    de una corrida que ya nadie eligió es el defecto que este change saca.
+    La columna sigue siendo el fallback, y no es una concesión: si no hay árbol
+    tampoco hay corrida activa, así que no hay nada respecto de lo cual la
+    columna esté vieja, y su procedencia está en `business_db_stamp`. Lo que no
+    puede pasar es que decida la columna habiendo árbol, y eso es lo que este
+    orden descarta.
+    """
+    if status_of is not None:
+        return status_of(hit.document_id)
+    return hit.window_status
+
+
+def render_hit_block(
+    index: int, hit: SearchHit, *, status_of: StatusResolver | None = None
+) -> str:
     """One numbered evidence block, provenance first.
 
     The single renderer for a hit: :func:`fit_to_budget` counts tokens over
@@ -62,12 +102,17 @@ def render_hit_block(index: int, hit: SearchHit) -> str:
     The header and the breadcrumb are real tokens the model will read —
     counting only ``hit.text`` would under-report every block.
 
+    ``status_of`` is threaded all the way from the caller for that same reason:
+    a resolver that reached the renderer but not the counter would make the
+    budget under-count by exactly the warning lines it emits.
+
     || Un bloque de evidencia numerado, la procedencia primero. Es el ÚNICO
     renderer de un hit: :func:`fit_to_budget` cuenta tokens sobre lo que
     devuelve esta función y ``build_context`` emite exactamente esto, así el
-    texto medido y el que recibe el modelo no pueden separarse. El
-    encabezado y el breadcrumb son tokens reales — contar solo ``hit.text``
-    subestimaría cada bloque.
+    texto medido y el que recibe el modelo no pueden separarse. ``status_of``
+    viaja desde quien llama por lo mismo: un resolver que llegara al renderer y
+    no al contador haría que el presupuesto cuente de menos exactamente las
+    líneas de advertencia que emite.
     """
     section = hit.section or "(sin sección)"
     lines = [f"### {index}. [{hit.document_id} · {section}]"]
@@ -75,8 +120,9 @@ def render_hit_block(index: int, hit: SearchHit) -> str:
         lines.append(f"Documento: {hit.document_title}")
     if hit.bullet_path:
         lines.append(f"Ruta: {hit.bullet_path}")
-    if hit.window_status and hit.window_status != _ACTIVE_WINDOW_STATUS:
-        lines.append(f"Estado de la ventana (declarado): {hit.window_status}")
+    window_status = resolve_window_status(hit, status_of)
+    if window_status and window_status != _ACTIVE_WINDOW_STATUS:
+        lines.append(f"Estado de la ventana (declarado): {window_status}")
     lines.append(hit.text)
     return "\n".join(lines)
 
@@ -161,7 +207,9 @@ def interleave_by_query(groups: Sequence[Sequence[SearchHit]]) -> list[SearchHit
     return ordered
 
 
-def fit_to_budget(hits: Sequence[SearchHit], budget: int) -> BudgetedContext:
+def fit_to_budget(
+    hits: Sequence[SearchHit], budget: int, *, status_of: StatusResolver | None = None
+) -> BudgetedContext:
     """Keep the leading hits that fit in ``budget`` tokens.
 
     The walk stops at the FIRST hit that does not fit, instead of skipping
@@ -179,7 +227,7 @@ def fit_to_budget(hits: Sequence[SearchHit], budget: int) -> BudgetedContext:
     kept: list[SearchHit] = []
     used = 0
     for index, hit in enumerate(hits, start=1):
-        cost = count_tokens(render_hit_block(index, hit))
+        cost = count_tokens(render_hit_block(index, hit, status_of=status_of))
         if used + cost > budget:
             break
         kept.append(hit)
