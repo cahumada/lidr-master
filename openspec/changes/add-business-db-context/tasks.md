@@ -70,6 +70,24 @@
   `jsonb` como texto sin formato declarado, y castear en SQL convierte un valor
   raro en un error de toda la consulta. Una fecha que no parsea se **cuenta**
   (`date_unparsed`) y esa fila queda afuera con su motivo.
+- [ ] 3.6 **El supuesto de que `1` es `Activo` se mide, no se asume.** Filtrar por
+  `SSTATREGT = '1'` se apoya en que §4.1 midió que las 722 `TABLE<n>` usan
+  `SSTATREGT` y nada más — pero **el catálogo de estados es por tabla** (§4.2), y
+  que todas remitan a `TABLE26` sigue siendo `[HIPÓTESIS]`: `CONFIGECONGROUP`
+  declara su propio `1 ACTIVO - 0 DESACTIVO`. Si alguna `TABLE<n>` usa otro
+  catálogo, el filtro deja afuera filas vigentes **y la contabilidad de
+  completitud no lo ve**, porque desde su punto de vista el filtro funcionó.
+  Dos cosas, y la segunda es la que importa:
+  - El supuesto queda escrito en `validity.py` con su evidencia, no implícito en
+    una comparación con `"1"`.
+  - Medirlo: leer la **descripción de la columna** `SSTATREGT` de cada `TABLE<n>`
+    en `business_tables` —de ahí salieron las remisiones a *"tabla 26"*, *"1541"*,
+    *"535"*— y listar las que declaran otro catálogo o ninguno. El número va
+    anotado en esta task. Si la lista no está vacía, esas tablas **no se filtran
+    por estado** y se reportan como `no_validity_mechanism`, que es la salida que
+    ya existe para «sin mecanismo declarado».
+  Es el punto 7 de §13 del documento de dominio, que este change convierte de
+  pregunta abierta en riesgo activo.
 
 ## 4. El bloque y su presupuesto
 - [ ] 4.1 `app/generation/rag/business_db/render.py` (nuevo): `render_block`, el
@@ -192,3 +210,12 @@
 - [ ] 9.5 Anotar en `openspec/domain/visualtime-database-metadata.md` §13 qué
   huecos cierra este change y cuáles siguen abiertos. **No** convertir nada de
   `domain/` en requirement: sigue siendo referencia.
+  **Primera mitad hecha el 2026-09-11, antes de implementar**, y anotada como tal:
+  §13 dice qué huecos toca este change —el 3 recibe su insumo, el 2 deja de ser
+  invisible, el 7 pasa a ser riesgo activo, el 4 y el 6 quedan fuera a propósito—
+  bajo el título **«En curso … todavía sin implementar»** y no bajo «Cerrado por».
+  Escribir «cerrado» antes de que el código exista es exactamente la forma en que
+  una fuente de referencia empieza a mentir.
+  **Falta la segunda mitad**: al archivar, mover lo que efectivamente quedó hecho
+  a un bloque «Cerrado por `add-business-db-context`» con los números medidos, y
+  dejar en «en curso» solo lo que siga sin estarlo. Esta task se tacha ahí, no antes.
