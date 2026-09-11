@@ -50,6 +50,13 @@ causa nueva se muestra con su nombre, porque el vocabulario es cerrado del lado
 del servicio y una etiqueta desconocida es un despliegue desfasado, no un error
 del usuario.
 
+**`dropped_codes` también es una causa y también se nombra.** Es la única
+incompletitud que no viaja como causa de una resolución —el tope descartó esos
+códigos *antes* de resolver nada para ellos, así que no hay resolución que la
+lleve—, y leyendo solo las causas el aviso caía a un texto genérico justo en el
+caso más común. Un `complete: false` que el servicio no explique con ninguna de
+las dos vías SHALL reportarse como defecto del servicio, no como un aviso vago.
+
 #### Scenario: Contexto incompleto
 - **WHEN** un turno vuelve con `complete` en false
 - **THEN** se muestra un aviso de que el contexto de base quedó incompleto
@@ -68,6 +75,16 @@ del usuario.
 #### Scenario: Causa que la consola no conoce
 - **WHEN** la respuesta trae una causa que el cliente no tiene mapeada
 - **THEN** se muestra el nombre de la causa tal como vino
+
+#### Scenario: Códigos que el tope dejó afuera
+- **WHEN** el contexto viene incompleto solo porque `dropped_codes` no está vacío
+- **THEN** el aviso nombra el tope de códigos anclados
+- **AND** lista los códigos que quedaron afuera
+
+#### Scenario: Incompletitud que nadie nombra
+- **WHEN** `complete` es false y no hay ni causas ni `dropped_codes`
+- **THEN** el aviso dice que el servicio no nombró la causa
+- **AND** NO se muestra un texto genérico como si fuera una explicación
 
 ### Requirement: La pantalla de corridas dice si una corrida tiene sus aristas construidas
 Las tablas por dependencia se materializan en un batch por corrida. Activar una

@@ -293,8 +293,19 @@ class Settings(BaseSettings):
     BUSINESS_DB_CONTEXT_MAX_ROWS: int = Field(default=50, ge=1)
 
     # How many distinct hit `document_id`s to resolve. A 0 resolves nothing.
-    # || Cuántos `document_id` distintos de los hits resolver. Un 0 no resuelve nada.
-    BUSINESS_DB_CONTEXT_MAX_CODES: int = Field(default=8, ge=1)
+    #
+    # Matched to the answer path's default `limit=10` with `max_per_document=1`:
+    # ten hits are ten distinct documents, so a cap of 8 dropped two codes on
+    # EVERY answer and marked the context incomplete every time. A notice that
+    # fires on every turn trains the operator to ignore it, which costs more
+    # than the two codes did. The block's own ceiling
+    # (BUSINESS_DB_CONTEXT_MAX_TOKENS) still bounds the cost: more codes share
+    # the same tokens, they do not add any.
+    # || Alineado con el `limit=10` y `max_per_document=1` del camino de
+    # respuesta: diez hits son diez documentos distintos, así que un tope de 8
+    # recortaba dos códigos en TODAS las respuestas y marcaba el contexto
+    # incompleto siempre. Un aviso que salta siempre enseña a ignorarlo.
+    BUSINESS_DB_CONTEXT_MAX_CODES: int = Field(default=10, ge=1)
 
     # Whether the block carries the tables a transaction touches, read from
     # `transaction_table_edges`. Off by default until the annotated set of

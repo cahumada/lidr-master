@@ -166,15 +166,38 @@ export function BusinessDbPanel({ context }: { context: BusinessDbContextView })
   }
   const edgesMissing = causes.has("edges_not_built")
 
+  // `dropped_codes` is the one thing that makes the context incomplete WITHOUT
+  // producing a resolution cause: the cap dropped those codes before anything
+  // was resolved for them, so there is no resolution to carry a cause. Reading
+  // only `causes` left the banner saying "quedó algo afuera" for the commonest
+  // case there is.
+  // || `dropped_codes` es lo único que vuelve incompleto el contexto SIN
+  // producir una causa: el tope los descartó antes de resolver nada.
+  const reasons = Array.from(causes).map(causeText)
+  if (context.dropped_codes.length > 0) {
+    reasons.push(
+      `el tope de códigos anclados dejó afuera ${context.dropped_codes.join(", ")}`
+    )
+  }
+
   return (
     <div className="space-y-2">
+      {/* A `complete: false` with nothing to name it is a defect in the service,
+          not a normal state: every incompleteness has a cause in the closed
+          vocabulary, or it is `dropped_codes`. Saying so beats a vague notice
+          that trains the operator to ignore the banner.
+          || Un `complete: false` sin nada que lo nombre es un defecto del
+          servicio, no un estado normal. */}
       {!context.complete && (
         <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs">
-          Contexto de base incompleto:{" "}
-          {causes.size > 0
-            ? Array.from(causes).map(causeText).join("; ")
-            : "quedó algo afuera"}
-          .{" "}
+          {reasons.length > 0 ? (
+            <>Contexto de base incompleto: {reasons.join("; ")}.</>
+          ) : (
+            <>
+              Contexto de base incompleto, y el servicio no nombró la causa. Eso
+              es un defecto: toda incompletitud tiene su causa declarada.
+            </>
+          )}{" "}
           {edgesMissing && (
             <>
               Construí las tablas por dependencia para la corrida activa desde{" "}

@@ -121,3 +121,54 @@ class TestTrim:
         if len(resolution.dependency_tables) < 8:
             assert "dependency_tables_capped" in resolution.causes
             assert rendered.complete is False
+
+
+class TestDroppedCodesAreNamed:
+    """`dropped_codes` is the one incompleteness with no resolution to carry it.
+
+    The block already named it; the console banner did not, and fell back to
+    "quedó algo afuera" for the commonest case there is.
+
+    || `dropped_codes` es la única incompletitud sin resolución que la lleve.
+    """
+
+    def test_the_block_names_the_dropped_codes(self) -> None:
+        context = _context([_table("COVER")])
+        context.dropped_codes = ["GIL215", "POLICIES_GENERAL"]
+        rendered = render_block(context.with_completeness(), budget=4096)
+        text = block_text(rendered) or ""
+
+        assert "GIL215" in text
+        assert "POLICIES_GENERAL" in text
+        assert rendered.complete is False
+
+    def test_dropped_codes_alone_make_the_context_incomplete(self) -> None:
+        # No resolution carries a cause here: the cap dropped the codes before
+        # anything was resolved for them.
+        # || Ninguna resolución lleva causa: el tope los descartó antes.
+        context = _context([_table("COVER")])
+        context.dropped_codes = ["GIL215"]
+
+        recomputed = context.with_completeness()
+
+        assert recomputed.complete is False
+        assert all("dropped_by_budget" not in r.causes for r in recomputed.resolutions)
+
+
+def test_the_code_cap_matches_the_answer_limit() -> None:
+    """A cap below the retrieval default drops codes on every single answer.
+
+    `/answer` defaults to `limit=10` with `max_per_document=1`, so ten hits are
+    ten distinct documents. A cap of 8 marked every context incomplete, and a
+    notice that always fires is a notice nobody reads.
+
+    || Un tope por debajo del default de recuperación recorta códigos en TODAS
+    las respuestas, y un aviso que salta siempre no lo lee nadie.
+    """
+    from app.config import Settings
+    from app.generation.rag.schemas import AnswerRequest
+
+    cap = Settings.model_fields["BUSINESS_DB_CONTEXT_MAX_CODES"].default
+    limit = AnswerRequest.model_fields["limit"].default
+
+    assert cap >= limit
