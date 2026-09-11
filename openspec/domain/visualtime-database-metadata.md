@@ -531,10 +531,47 @@ para filtrar en la extracción era el volumen, y el volumen es ruido.
 **Cerrado por `add-window-status-metadata` (2026-09-09):**
 
 - **`SSTATREGT` en el árbol que consume el servicio.** El CSV de cinco columnas no
-  lo traía; el loader desde `visualtime.business_data` sí, con `BUSINESS_DB_RUN_ID`
-  explícito. El chunk y el hit llevan el **estado declarado** (`Activo`, `Acceso
-  restringido`, …) y el prompt advierte cuando no es activo.
+  lo traía; el loader desde `visualtime.business_data` sí. El chunk y el hit llevan
+  el **estado declarado** (`Activo`, `Acceso restringido`, …) y el prompt advierte
+  cuando no es activo.
 - **Backfill de metadata** sobre los 56.537 chunks ya cargados, sin re-embedding.
+
+**Cerrado por `add-extraction-run-selection` (2026-09-11):**
+
+- **Cuál es la corrida vigente, sin redeploy.** §2 pedía que la corrida se eligiera
+  explícitamente y no por "la más reciente". La elección vive ahora en una tabla del
+  esquema del servicio —nada se escribe en `visualtime.*`—, `BUSINESS_DB_RUN_ID`
+  pasó a ser el **valor por defecto** y no un pin, y una corrida con
+  `loaded_data = false` no se puede activar.
+- **El desfasaje entre lo estampado y lo activo deja de ser invisible.** El
+  estampado registra con qué corrida se hizo, y esa corrida se informa junto a la
+  activa.
+
+**En curso — `add-business-db-context` (planeado el 2026-09-11, todavía sin
+implementar):** lo que sigue NO está cerrado; se anota para que quien lea sepa que
+estos huecos tienen dueño y cuáles no.
+
+- **El punto 3 recibe su insumo, no su respuesta.** El change **mide y reporta** las
+  filas donde los dos mecanismos de vigencia discrepan, que es exactamente el conteo
+  que ese punto pide para decidir; **no** decide la precedencia.
+- **El punto 2 deja de ser un hueco invisible.** El change no reconcilia la
+  allowlist, pero una tabla resuelta desde `NG_IDENTI` que no tiene filas en
+  `business_data` se reporta por consulta como *no cargada*, en vez de leerse como
+  una tabla sin contenido.
+- **El punto 7 pasa a ser un riesgo activo y no solo una pregunta.** El change aplica
+  `SSTATREGT = '1'` como criterio de vigencia a las `TABLE<n>` que resuelve, apoyado
+  en que §4.1 midió que las 722 usan `SSTATREGT` y nada más, sin excepción. Pero
+  **que `1` signifique `Activo` en todas ellas sigue siendo `[HIPÓTESIS]`**: el
+  catálogo es por tabla, `CONFIGECONGROUP` declara su propio `1 ACTIVO - 0 DESACTIVO`,
+  y la descripción de `WINDOWS.SSTATREGT` no remite a ninguna tabla. Si alguna
+  `TABLE<n>` tiene otro catálogo, el filtro deja afuera filas vigentes **y la
+  contabilidad de completitud no lo detecta**, porque desde su punto de vista el
+  filtro funcionó. Resolver el punto 7 es lo que convierte ese supuesto en un hecho.
+- **Los puntos 4 y 6 quedan fuera a propósito**, declarado en el alcance del change:
+  el cruce por nombre de tabla mencionado tiene el hueco de medición del token de 4+
+  caracteres, y el vínculo documento → rutina necesita la guarda de largo y el
+  contraste contra `transaction_type` antes de poder viajar como hecho.
+- **Los puntos 1 y 5 no los toca.**
 
 **Sigue abierto:**
 
@@ -550,7 +587,13 @@ para filtrar en la extracción era el volumen, y el volumen es ruido.
    medir la cobertura por documento (§5.2).
 5. **Los 364 documentos sin ventana**, reintentados contra `SCODISP` y `SPSEUDO`.
 6. **Contrastar los documentos de código largo** (§5.3) contra `transaction_type`.
-7. **El significado de `SSTATREGT` en tablas que no remiten a `TABLE26`**.
+7. **El significado de `SSTATREGT` en tablas que no remiten a `TABLE26`**. Dejó de
+   ser una curiosidad: en cuanto el motor filtra contenido de catálogo por
+   `SSTATREGT = '1'`, cada tabla cuyo catálogo sea otro pierde filas vigentes sin
+   que nada lo señale. El camino barato es leer la **descripción de la columna**
+   `SSTATREGT` tabla por tabla —es de ahí de donde salieron las remisiones a
+   *"tabla 26"*, *"1541"*, *"535"*— y listar las que declaran otro catálogo o
+   ninguno.
 
 ## 14. Relación con las notas previas
 
