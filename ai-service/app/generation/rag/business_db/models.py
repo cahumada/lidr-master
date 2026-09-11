@@ -15,6 +15,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.generation.rag.business_db.roles import TableRole
+
 ResolutionOutcome = Literal[
     "resolved",
     "not_in_run",
@@ -28,6 +30,12 @@ ResolutionOutcome = Literal[
     "rows_capped",
     "date_unparsed",
     "dropped_by_budget",
+    "edges_not_built",
+    "no_dependency_routine",
+    "routine_without_tables",
+    "code_too_short_to_anchor",
+    "dependency_tables_capped",
+    "role_unknown",
 ]
 
 RESOLUTION_OUTCOMES: tuple[ResolutionOutcome, ...] = (
@@ -43,6 +51,12 @@ RESOLUTION_OUTCOMES: tuple[ResolutionOutcome, ...] = (
     "rows_capped",
     "date_unparsed",
     "dropped_by_budget",
+    "edges_not_built",
+    "no_dependency_routine",
+    "routine_without_tables",
+    "code_too_short_to_anchor",
+    "dependency_tables_capped",
+    "role_unknown",
 )
 
 # The base declared there was nothing to bring: not incompleteness.
@@ -55,6 +69,15 @@ DECLARED_ABSENT: frozenset[ResolutionOutcome] = frozenset(
         "ng_identi_ignored_by_type",
         "no_validity_mechanism",
         "validity_discrepancy",
+        # The dependency graph declared there is nothing to bring.
+        # || El grafo declaró que no hay nada que traer.
+        "no_dependency_routine",
+        "routine_without_tables",
+        "code_too_short_to_anchor",
+        # A role the rules could not derive is a declared "I do not know", not
+        # a catalog that arrived short. It is visible, and it is not a loss.
+        # || Un rol que las reglas no derivaron es un «no sé» declarado.
+        "role_unknown",
     }
 )
 
@@ -68,6 +91,12 @@ INCOMPLETE_OUTCOMES: frozenset[ResolutionOutcome] = frozenset(
         "columns_unknown",
         "date_unparsed",
         "dropped_by_budget",
+        # The batch never ran for the active run: there WAS something and it did
+        # not arrive. This is the one an administrator has to see -- activating a
+        # run whose edges were never built cannot degrade an answer in silence.
+        # || El batch nunca corrió para la corrida activa: había algo y no llegó.
+        "edges_not_built",
+        "dependency_tables_capped",
     }
 )
 
@@ -103,6 +132,42 @@ class CatalogRow(BaseModel):
     values: dict[str, str | None] = Field(default_factory=dict)
 
 
+class DependencyTable(BaseModel):
+    """One table a transaction touches, as Oracle's dependency graph declares it.
+
+    ``via_routines`` is the provenance and never gets trimmed: a table asserted
+    without saying why it entered is the same defect as a chunk without its
+    document. ``role`` comes from ordered rules over declared signals and is
+    ``unknown`` -- with its reason -- whenever none applies.
+
+    || Una tabla que toca la transacción, como la declara el grafo de
+    dependencias. ``via_routines`` es la procedencia y no se recorta.
+    """
+
+    table_name: str = Field(description="Table name. || Nombre de la tabla.")
+    role: TableRole = Field(description="Declared role, or unknown. || Rol declarado, o unknown.")
+    role_reason: str = Field(description="Why that role. || Por qué ese rol.")
+    description: str | None = Field(
+        default=None,
+        description="Business prose from the dictionary. || Prosa de negocio del diccionario.",
+    )
+    via_routines: list[str] = Field(
+        default_factory=list,
+        description="Routines the dependency came from. || Rutinas de las que salió la dependencia.",
+    )
+    routine_hits: int = Field(
+        default=0,
+        description="Routines of this code reaching the table. || Rutinas de este código que llegan.",
+    )
+    routine_total: int = Field(
+        default=0, description="Routines this code has. || Rutinas que tiene el código."
+    )
+    fan_in: int = Field(
+        default=0,
+        description="Routines in the whole run depending on it. || Rutinas de toda la corrida que dependen.",
+    )
+
+
 class CodeResolution(BaseModel):
     """What the mirror said about one anchored transaction code.
 
@@ -134,6 +199,12 @@ class CodeResolution(BaseModel):
     validity_discrepancy_count: int = 0
     dropped_column_descriptions: bool = False
     dropped_table_description: bool = False
+    # Ordered by coverage descending: how many of this code's routines reach
+    # each table. Two declared counts, so the order needs no threshold.
+    # || Ordenadas por cobertura descendente. Dos conteos declarados.
+    dependency_tables: list[DependencyTable] = Field(default_factory=list)
+    dependency_tables_total: int = 0
+    dependency_routines: list[str] = Field(default_factory=list)
 
     def model_post_init(self, context: object, /) -> None:
         if not self.causes:

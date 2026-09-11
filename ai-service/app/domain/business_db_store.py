@@ -395,6 +395,65 @@ async def list_mirror_runs(session: AsyncSession, tenant_id: str) -> list[Mirror
     ]
 
 
+@dataclass(frozen=True)
+class TableBuild:
+    """What `build_transaction_tables.py` recorded for one run.
+
+    Its absence is the point: a run with no row here never had the batch run,
+    which is a different fact from a run whose batch produced nothing. Without
+    the distinction an administrator can activate a run and silently get
+    answers with no tables.
+
+    || Lo que registró el batch para una corrida. Su ausencia es lo importante:
+    una corrida sin fila acá nunca tuvo batch, que es distinto de un batch que
+    no produjo nada.
+    """
+
+    env: str
+    run_id: str
+    edge_count: int
+    code_count: int
+    doc_version: str
+    built_at: datetime
+
+
+_BUILDS_SQL = """
+    SELECT env, run_id, edge_count, code_count, doc_version, built_at
+    FROM transaction_table_builds
+    WHERE tenant = :tenant
+"""
+
+
+async def list_table_builds(
+    session: AsyncSession, tenant_id: str
+) -> dict[tuple[str, str], TableBuild]:
+    """Edge builds by ``(env, run_id)``, so a listing can join without N queries.
+
+    A failure to read is reported as "no builds" rather than raised: the run
+    list is still useful without it, and the console shows "sin construir",
+    which is the safe reading.
+
+    || Builds por ``(env, run_id)``, para que un listado no haga N consultas.
+    Un fallo de lectura se reporta como «sin builds», que es la lectura segura.
+    """
+    try:
+        result = await session.execute(text(_BUILDS_SQL), {"tenant": tenant_id})
+    except Exception as error:  # noqa: BLE001 — any failure means "no builds readable".
+        log.warning("transaction_table_builds_unreadable", error=str(error))
+        return {}
+    return {
+        (row.env, row.run_id): TableBuild(
+            env=row.env,
+            run_id=row.run_id,
+            edge_count=int(row.edge_count or 0),
+            code_count=int(row.code_count or 0),
+            doc_version=row.doc_version,
+            built_at=row.built_at,
+        )
+        for row in result
+    }
+
+
 async def find_mirror_run(
     session: AsyncSession, tenant_id: str, run_id: str, env: str | None = None
 ) -> MirrorRun | None:

@@ -78,70 +78,99 @@ como `taxonomy.py`:
    hace que el bloque pueda decir *"no sé qué rol tiene `NOPAYROLL` para `CA014`"*
    en vez de afirmarlo.
 
-### 3.1 Las señales, en orden de autoridad
+### 3.1 No hay rol `core`: la regla que el plan proponía corre al revés
+
+El plan iba a derivar `core` de un fan-in global bajo. **Medido contra las cuatro
+transacciones que el dueño anotó, esa regla está invertida:**
+
+| código | tabla anotada | fan-in | tabla NO anotada | fan-in |
+|---|---|---:|---|---:|
+| `CA014` | `COVER` | 1.037 | `NOPAYROLL` | 44 |
+| `CA025` | `CLIENT` | 1.925 | `CLIALLOPRO` | 42 |
+| `CA025` | `ROLES` | 1.004 | `TAB_COVROL` | 146 |
+| `CA001` | `CERTIFICAT` | 1.989 | `CUR_ALLOW` | 30 |
+
+Tiene sentido en retrospectiva: una póliza, un certificado y un cliente los toca
+casi toda rutina del sistema **porque** son las entidades centrales del negocio.
+La rareza indica periférico, no central.
+
+Tampoco hay otra señal declarada que los aísle. El tipo de rutina los rankea
+alto pero no los separa: en `CA001`, `CERTIFICAT` (anotada) y `ROLES` (no
+anotada) tienen la misma firma `ins?,read` y cobertura 0,50 contra 0,30. Y la
+cobertura sola deja empates —en `CA048`, `PREMIUM` (no anotada) empata 1,00 con
+`CERTIFICAT` y `POLICY_HIS` (anotadas).
+
+**Decisión:** no se emite `core`. Se emiten los roles que el diccionario declara
+—`reference`, `historical`, `message`— más `validation` cuando solo la alcanzan
+rutinas de validación, y todo lo demás queda `unknown` con su razón. Afirmar
+`core` sobre cuatro puntos anotados sería la calibración manual que `retrieval`
+evita a propósito con RRF.
+
+El fan-in **se guarda igual en cada arista**: revisarlo cuando el set anotado
+llegue a 20 casos no puede exigir reconstruir 5.907 aristas.
+
+### 3.2 Las señales, en orden de autoridad
 
 Las señales del **destino** ganan a las del **camino**, porque describen qué es la
 tabla y no cómo se llegó a ella.
 
 | # | señal | fuente | rol |
 |---:|---|---|---|
-| 1 | nombre `TABLE<n>`, o descripción que contiene *(Contenido fijo)* | `business_tables` | `reference` |
-| 2 | `MESSAGE`, `WIN_MESSAG` | `business_tables` | `message` |
-| 3 | sufijo `_HIS`, o descripción que empieza con *Historia* | `business_tables` | `historical` |
-| 4 | alcanzada **solo** por rutinas `INSVAL*` | prefijo de rutina | `validation` |
-| 5 | fan-in global por encima del umbral | grafo completo | `reference` |
-| 6 | alcanzada por rutinas de escritura (`INSPOST*`, `INSPRE*`, `INSEXECUTE*`, `INS*`) **y** por `REA*` | prefijo de rutina | `core` |
+| 1 | nombre `TABLE<n>` | nombre | `reference` |
+| 2 | descripción con *(Contenido fijo)* | `business_tables` | `reference` |
+| 3 | `MESSAGE`, `WIN_MESSAG` | nombre | `message` |
+| 4 | sufijo `_HIS` | nombre | `historical` |
+| 5 | descripción que empieza con *Historia* | `business_tables` | `historical` |
+| 6 | alcanzada **solo** por rutinas `INSVAL*` | prefijo de rutina | `validation` |
 | 7 | nada de lo anterior | — | `unknown` con su razón |
 
-Verificación sobre el caso que el dueño anotó: `CA014` alcanza `COVER` por
-`INSCA014PKG`, `INSPOSTCA014`, `INSVALCA014DB02` **y** `REACA014` — las cuatro
-fases, regla 6 → `core`. Alcanza `NOPAYROLL` solo por `INSVALCA014DB02` y
-`INSVALCA014DB03` — regla 4 → `validation`. Y alcanza `POLICY_HIS` por el sufijo
-— regla 3 → `historical`.
+Verificado sobre el caso anotado: `CA014` alcanza `NOPAYROLL` solo por
+`INSVALCA014DB02` y `INSVALCA014DB03` — regla 6 → `validation`. Alcanza
+`POLICY_HIS` por el sufijo — regla 4 → `historical`. Y alcanza `COVER` por las
+cuatro clases de rutina, sin que ninguna regla aplique — regla 7 → `unknown`.
 
-### 3.2 El fan-in es desempate, y no afirma nada solo
+### 3.3 El orden es la cobertura, y son dos conteos declarados
 
-`CERTIFICAT` aparece en 1.910 rutinas, `CLIENT` en 1.861, `POLICY` en 1.738. Con
-ese fan-in, que una transacción cualquiera las toque no informa: las toca casi
-todo el sistema. En el otro extremo, **1.045 de las 1.906 tablas tienen fan-in ≤
-5** y ahí tocar sí informa.
+Sin `core`, hace falta otra cosa que decida qué va arriba. Es la **cobertura**:
+cuántas rutinas de la transacción llegan a la tabla, sobre cuántas tiene. `COVER`
+es 3/3 para `CA014`; `NOPAYROLL`, 2/3.
 
-La regla 5 está **después** de las señales del destino y **antes** de `core` a
-propósito: evita que `CLIENT` se declare core de `CA025` solo por aparecer en sus
-cuatro fases. Pero el umbral es un parámetro con default medido, no una constante
-mágica, y la arista guarda su fan-in para que la decisión se pueda revisar sin
-reconstruir.
+Es el mismo criterio que hace aceptable a RRF: dos conteos declarados divididos,
+sin umbral que elegir. Un orden malo es entonces un hecho sobre el grafo y no un
+peso mal puesto. El bloque lo dice explícitamente —*"el orden es por cuántas
+rutinas de la transacción llegan a cada una; no es una jerarquía de importancia
+declarada"*— para que el modelo no lea el primer puesto como una afirmación.
 
-**Lo que el fan-in no dice:** que la tabla sea poco importante. Dice que es
-transversal. Por eso emite `reference` y no un descarte.
+### 3.4 `unknown` es la mayoría, y está bien
 
-### 3.3 `unknown` va a ser común, y está bien
+Construido contra la corrida activa: **4.939 de 5.907 aristas (84%) quedan
+`unknown`**, contra 645 `reference`, 167 `validation`, 139 `historical` y 17
+`message`.
 
-Sobre las 1.345 rutinas ancladas: 490 `REA*`, 132 `INSPOST*`, 65 `INSVAL*`, 27
-`INSPRE*`, 3 `INSEXECUTE*`, 2 `INSCOPY*` — y **481 con el prefijo genérico `INS`
-más 145 sin prefijo conocido**. Casi la mitad del camino no se clasifica por su
-nombre.
-
-Una tabla alcanzada solo por rutinas de ese grupo llega a la regla 7. El bloque la
-emite con rol `unknown` y la causa `role_unknown`, y el prompt instruye tratarla
-como *"la transacción la toca, no sé en qué carácter"*. Es menos de lo que
-querríamos y más de lo que hay hoy, que es nada.
+Es mucho, y es el número honesto: 481 de las rutinas ancladas llevan el prefijo
+genérico `INS` y 145 no llevan ninguno conocido. El bloque cierra la sección
+diciendo *"la transacción toca la tabla, pero en qué carácter no está declarado.
+No lo supongas."* Es menos de lo que querríamos y más de lo que hay hoy, que es
+nada.
 
 ## 4. Por qué se mide antes de enchufarlo al prompt
 
-El recall ya está verificado sobre las cuatro transacciones anotadas: las tablas
-que el dueño nombró salen todas. Lo que **no** está medido es la precisión de
-`core`, que es lo único que decide si el bloque ayuda o estorba: con mediana 8 y
-p90 22 tablas por código, un `core` mal asignado pone la tabla equivocada primero
-en un bloque que el modelo lee como autoridad.
+El recall del grafo ya está verificado sobre las cuatro transacciones anotadas:
+las tablas que el dueño nombró salen todas. Lo que **no** está medido es si
+sobreviven al tope del bloque, que es lo único que decide si la respuesta las
+puede citar: con mediana 8 y máximo 185 tablas por código, una tabla recortada
+es una tabla que la respuesta no tiene.
 
-Por eso el eval es una tarea del change y no un extra: `evals/golden_transaction_tables.json`
-con ~20 transacciones anotadas por el dueño, y `eval_transaction_tables.py`
-reportando precisión y recall de `core` y la tasa de `unknown`. El precedente es
-`eval_retrieval.py` sobre el golden set de 35 preguntas.
+Por eso el eval mide **recall@N** y no precisión de `core` —que no existe—:
+`evals/golden_transaction_tables.json` con ~20 transacciones anotadas por el
+dueño, y `eval_transaction_tables.py` reportando cuántas anotadas sobreviven al
+tope, en qué posición las deja la cobertura, y qué proporción del bloque sale
+`unknown`. El precedente es `eval_retrieval.py` sobre el golden set de 35
+preguntas.
 
-**Sin ese número el bloque queda detrás de su flag, apagado.** Es lo mismo que
-hizo `add-business-db-context` con el bloque entero.
+**Sin 20 casos anotados y 90% de recall el bloque queda detrás de su flag,
+apagado.** El umbral vive en el script, no en un comentario. Hoy el set tiene
+los 4 de la semilla, así que el flag arranca en `false`.
 
 ## 5. Por qué una sección dentro de `v3` y no una versión `v4`
 
@@ -154,16 +183,20 @@ Lo que sí cambia es el orden de recorte, y se declara acá porque el orden de
 `add-business-db-context` (filas → descripciones de columna → descripción de
 tabla) no contemplaba esta sección:
 
-1. tablas con rol `unknown`, desde la cola
-2. tablas con rol `reference`
-3. filas de catálogo, desde la cola *(orden existente)*
-4. descripciones de columna *(orden existente)*
-5. descripción de tabla *(orden existente)*
+1. tablas, desde la cola del orden por cobertura
+2. filas de catálogo, desde la cola *(orden existente)*
+3. descripciones de columna *(orden existente)*
+4. descripción de la tabla *(orden existente)*
 
-`core`, `historical`, `validation` y `message` **no se recortan**, y la lista de
-rutinas que justifica cada arista tampoco: sin ella la tabla deja de ser citable y
-pasa a ser una afirmación sin origen. Si el techo no alcanza ni para eso, se
-recorta el código entero y se cuenta como `dropped_by_budget`, que ya existe.
+Sin `core` que proteger, **la cobertura es la protección**: se recorta la tabla
+que menos rutinas de la transacción tocan, y la mejor cubierta sobrevive. Hay un
+piso de una tabla por código: un código que quedara sin ninguna se leería como
+*"no toca tablas"*, que es un hecho distinto y ya tiene su propia causa.
+
+La lista de rutinas que justifica cada tabla **no se recorta nunca**: sin ella la
+tabla deja de ser citable y pasa a ser una afirmación sin origen. Si el techo no
+alcanza ni para eso, se recorta el código entero con `dropped_by_budget`, que ya
+existe.
 
 ## 6. `edges_not_built` es la causa que importa operativamente
 

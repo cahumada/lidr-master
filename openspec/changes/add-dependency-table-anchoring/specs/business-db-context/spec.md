@@ -75,18 +75,22 @@ cuentan en vez de descartarse en silencio.
 - **AND** se registra como `code_too_short_to_anchor`
 
 ### Requirement: Cada tabla DEBE llevar su rol, de un vocabulario cerrado y derivado de reglas ordenadas
-Un código llega a 8 tablas en la mediana, 22 en el p90 y hasta 185. Emitirlas sin
-orden cambia un bloque mudo por uno que dice demasiado, y las dos formas hacen que
-el modelo afirme mal.
-
 El rol SHALL salir de reglas ordenadas expresadas como datos `(patrón, rol)` —el
 mismo patrón que la taxonomía de códigos—, auditables y editables cuando aparezca
 un contraejemplo, nunca de una llamada a un modelo ni del texto del chunk.
 
-El vocabulario es cerrado: `core`, `historical`, `reference`, `validation`,
-`message`, `unknown`. Las señales del destino —lo que `business_tables` dice de la
-tabla— SHALL ganarle a las del camino, porque describen qué es la tabla y no cómo
-se llegó a ella.
+El vocabulario es cerrado: `reference`, `historical`, `message`, `validation`,
+`unknown`. Las señales del destino —lo que `business_tables` dice de la tabla—
+SHALL ganarle a las del camino, porque describen qué es la tabla y no cómo se
+llegó a ella.
+
+**No hay rol `core`, y su ausencia es un resultado de medición.** Contra las
+cuatro transacciones anotadas, la regla que lo derivaría de un fan-in bajo corre
+al revés: las tablas que el analista nombra son las de fan-in más alto del
+sistema —`CERTIFICAT` 1.989, `CLIENT` 1.925, `COVER` 1.037— y las de fan-in bajo
+—`NOPAYROLL` 44, `CUR_ALLOW` 30— no lo son. Una entidad central la toca todo
+**porque** es central. Ninguna otra señal declarada la aísla, así que el servicio
+SHALL NOT afirmar `core`.
 
 #### Scenario: Catálogo de contenido fijo
 - **WHEN** la tabla se llama `TABLE<n>` o su descripción declara contenido fijo
@@ -104,46 +108,66 @@ se llegó a ella.
 - **WHEN** todas las rutinas que alcanzan la tabla llevan prefijo de validación
 - **THEN** el rol es `validation`
 
-#### Scenario: Alcanzada por escritura y por lectura
-- **WHEN** la tabla se alcanza por rutinas de escritura y también por rutinas de lectura
-- **AND** su fan-in está por debajo del umbral
-- **THEN** el rol es `core`
+#### Scenario: Alcanzada también por otra clase de rutina
+- **WHEN** la alcanzan rutinas de validación y también de escritura o de lectura
+- **THEN** el rol NO es `validation`
 
 #### Scenario: Ninguna regla aplica
 - **WHEN** la tabla no matchea ninguna regla
 - **THEN** el rol es `unknown`
-- **AND** se registra la razón
+- **AND** se registra la razón, nombrando las clases de rutina vistas
 - **AND** se registra la causa `role_unknown`
 
 #### Scenario: El orden separa lo específico de lo genérico
 - **WHEN** una tabla matchea una señal del destino y también una del camino
 - **THEN** gana la del destino, porque las reglas se recorren en orden
 
-### Requirement: El fan-in DEBE ser desempate y NO DEBE afirmar nada por sí solo
-`CERTIFICAT` aparece en 1.910 rutinas, `CLIENT` en 1.861, `POLICY` en 1.738: que
-una transacción las toque no informa, porque las toca casi todo el sistema. En el
-otro extremo, 1.045 de las 1.906 tablas tienen fan-in menor o igual a 5.
+#### Scenario: El vocabulario no tiene core
+- **WHEN** se consulta el vocabulario de roles
+- **THEN** `core` no está en él
 
-Una tabla por encima del umbral SHALL emitirse como `reference` en vez de `core`,
-y el umbral SHALL ser un parámetro con default medido, no una constante en el
-código. Cada arista SHALL guardar su fan-in, para que esa decisión se pueda
-revisar sin reconstruir las aristas.
+### Requirement: Las tablas SE DEBEN ordenar por cobertura, y el orden NO DEBE leerse como jerarquía
+Un código llega a 8 tablas en la mediana y hasta 185. Emitirlas sin orden cambia
+un bloque mudo por uno que dice demasiado.
 
-Un fan-in alto SHALL NOT leerse como que la tabla es poco importante: dice que es
-transversal, y por eso emite un rol y no un descarte.
+El orden SHALL ser la **cobertura**: cuántas rutinas de la transacción alcanzan la
+tabla, sobre cuántas tiene. Son dos conteos declarados divididos, sin umbral que
+elegir — la misma razón por la que la fusión del retrieval usa posiciones y no
+puntajes calibrados. Los dos conteos SHALL viajar con la tabla.
 
-#### Scenario: Tabla ubicua
-- **WHEN** la tabla supera el umbral de fan-in
-- **THEN** el rol es `reference`
-- **AND** no es `core` aunque la alcancen rutinas de escritura y de lectura
+El bloque SHALL decir que ese orden no es una jerarquía de importancia declarada,
+para que el modelo no lea el primer puesto como una afirmación de la base.
+
+#### Scenario: Mayor cobertura primero
+- **WHEN** una tabla la alcanzan 3 de 3 rutinas y otra 1 de 3
+- **THEN** la primera va antes
+
+#### Scenario: Los conteos viajan
+- **WHEN** se emite una tabla
+- **THEN** lleva cuántas rutinas la alcanzan y cuántas tiene la transacción
+
+#### Scenario: El bloque desarma la lectura de jerarquía
+- **WHEN** se renderiza la sección de tablas
+- **THEN** el texto dice que el orden es por cobertura y no una jerarquía declarada
+
+### Requirement: El fan-in SE DEBE guardar y NO SE DEBE usar para degradar una tabla
+Cada arista SHALL guardar cuántas rutinas de toda la corrida dependen de esa
+tabla, para que la decisión de rol se pueda revisar cuando el set anotado crezca
+sin reconstruir las aristas.
+
+Ese número SHALL NOT degradar ni descartar una tabla. Medido, corre al revés de
+lo que la intuición sugiere: las tablas que el analista nombra son las de fan-in
+más alto. Un fan-in alto dice que la tabla es transversal, y no que sea menos
+importante.
 
 #### Scenario: El fan-in viaja con la arista
 - **WHEN** se emite una tabla por dependencia
-- **THEN** lleva el fan-in con el que se decidió su rol
+- **THEN** lleva su fan-in
 
-#### Scenario: Una tabla ubicua no se descarta
-- **WHEN** una tabla supera el umbral
-- **THEN** igual se emite en el bloque
+#### Scenario: Una tabla ubicua no se degrada
+- **WHEN** una tabla tiene el fan-in más alto de la lista
+- **THEN** igual se emite
+- **AND** su posición la decide la cobertura, no el fan-in
 
 ### Requirement: Cada tabla emitida DEBE nombrar las rutinas que la justifican
 Una tabla afirmada sin decir por qué entró no se puede verificar, y es el mismo
@@ -191,14 +215,16 @@ que el bloque de base es el único de los tres que puede declarar su propio
 recorte.
 
 El orden de recorte se declara y no se improvisa. Con la sección de tablas por
-dependencia, el orden completo es: primero las tablas de rol `unknown` desde la
-cola, después las de rol `reference`, después las filas de catálogo desde la cola,
-después las descripciones de columna, después la descripción de la tabla.
+dependencia, el orden completo es: primero las tablas desde la cola del orden por
+cobertura, después las filas de catálogo desde la cola, después las descripciones
+de columna, después la descripción de la tabla.
 
-Las tablas de rol `core`, `historical`, `validation` y `message` no se recortan, y
-la declaración de la ventana tampoco. Una fila nunca se parte al medio, y una
-tabla emitida nunca pierde las rutinas que la justifican: si el techo no alcanza
-para eso, se recorta el código entero.
+Sin un rol `core` que proteger, **la cobertura es la protección**: se recorta la
+tabla que menos rutinas de la transacción alcanzan. Hay un piso de una tabla por
+código —un código sin ninguna se leería como *"no toca tablas"*, que es un hecho
+distinto con su propia causa—, la declaración de la ventana no se recorta, una
+fila nunca se parte al medio, y una tabla emitida nunca pierde las rutinas que la
+justifican: si el techo no alcanza para eso, se recorta el código entero.
 
 #### Scenario: La base no le saca presupuesto a la evidencia
 - **WHEN** la evidencia consume todo el presupuesto
@@ -210,15 +236,14 @@ para eso, se recorta el código entero.
 
 #### Scenario: Recorte en el orden declarado
 - **WHEN** el bloque no entra en su techo
-- **THEN** se recortan primero las tablas de rol `unknown` desde la cola
-- **AND** después las de rol `reference`
+- **THEN** se recortan primero las tablas desde la cola del orden por cobertura
 - **AND** después las filas de catálogo
 - **AND** la declaración de la ventana se conserva
 
-#### Scenario: Los roles que informan no se recortan
-- **WHEN** el recorte llega a las tablas de rol `core`
-- **THEN** se descarta el código entero con `dropped_by_budget`
-- **AND** no se emite una lista de tablas a la que le falte su `core`
+#### Scenario: La mejor cubierta sobrevive
+- **WHEN** el recorte de tablas llega al final
+- **THEN** queda al menos una tabla por código
+- **AND** es la de mayor cobertura
 
 #### Scenario: Una lista de tablas recortada se cuenta
 - **WHEN** la sección de tablas se recorta por presupuesto

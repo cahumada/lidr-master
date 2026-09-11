@@ -379,12 +379,75 @@ def graph_flow() -> dict:
         "nodes": nodes,
         "edges": edges,
         "ladder": list(FALLBACK_LADDER),
+        "context_steps": context_steps(),
         "example": {
             "question": EXAMPLE_QUESTION,
             "source": EXAMPLE_SOURCE,
             "note": EXAMPLE_NOTE,
         },
     }
+
+
+def context_steps() -> list[dict]:
+    """Resolution steps that are NOT graph nodes, so the flow screen can say so.
+
+    The business-db anchoring runs while the prompt is being built: it takes the
+    codes of the hits that entered and leaves the tables the mirror declares. It
+    has no agent, no tool and no edge back to the orchestrator, so drawing it as
+    a specialist would assert a topology the compiled graph does not have --
+    which is exactly what `web-console` forbids the screen from inventing.
+
+    Declared only when the feature is on. A screen that drew it while the flag
+    was off would describe a step that does not run.
+
+    || Pasos de la resolución que NO son nodos del grafo. El anclaje de base
+    corre mientras se arma el prompt: recibe los códigos de los hits que
+    entraron y deja las tablas que declara el mirror. No tiene agente, ni tool,
+    ni vuelta al orquestador. Se declara solo cuando la feature está prendida.
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    if not settings.BUSINESS_DB_CONTEXT_ENABLED:
+        return []
+    receives = "Los `document_id` de los hits que entraron al prompt."
+    leaves = (
+        "Lo que la corrida activa declara para cada código: la ventana, su "
+        "estado, y la tabla que mantiene cuando es de tipo 10."
+    )
+    detail = [
+        "El ancla es un dato declarado, no una inferencia sobre la pregunta.",
+        "Sin corrida activa no se arma bloque, y la respuesta dice por qué.",
+    ]
+    if settings.BUSINESS_DB_DEPENDENCY_TABLES_ENABLED:
+        leaves += (
+            " Más las tablas que toca, del grafo de dependencias de Oracle, "
+            "con las rutinas que justifican cada una."
+        )
+        detail.append(
+            "Las tablas salen de `transaction_table_edges`, materializadas por "
+            "corrida: si el batch no corrió, el bloque lo declara."
+        )
+    return [
+        {
+            "key": "business_db_anchoring",
+            "label": "Anclaje de base",
+            "kind": "context",
+            "role": "Trae lo que la base declara para los códigos de los hits.",
+            "explanation": (
+                "No es un nodo del grafo: corre al armar el prompt, no tiene "
+                "agente ni tool, y no vuelve al orquestador. Se cobra adentro "
+                "del presupuesto de contexto, después de la evidencia y de la "
+                "memoria."
+            ),
+            "example": {
+                "receives": receives,
+                "leaves": leaves,
+                "detail": detail,
+                "caveat": None,
+            },
+        }
+    ]
 
 
 # Descriptions for the privilege table's tools. A name without an entry

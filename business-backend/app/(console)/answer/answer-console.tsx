@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 
 import { AnswerMarkdown } from "./answer-markdown"
+import { BusinessDbPanel } from "./business-db-panel"
 import { LiveFlowPanel } from "./live-flow-panel"
 import { WindowStatusBadge } from "@/components/window-status-badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -401,6 +402,8 @@ function AwaitingReviewPanel({
           </div>
         )}
 
+        {paused.business_db && <BusinessDbPanel context={paused.business_db} />}
+
         <div className="flex flex-col gap-2">
           <Label htmlFor={`review-note-${paused.thread_id}`} className="text-xs">
             Nota para el registro (opcional)
@@ -692,6 +695,7 @@ function AssistantBody({
             <CitationList hits={citations} />
           </div>
         </details>
+        {result.business_db && <BusinessDbPanel context={result.business_db} />}
         {!turn.reopened && <RoutingTrace history={result.routing_history} />}
       </div>
     )
@@ -1246,6 +1250,7 @@ export function AnswerConsole({
               dropped_hits: body.dropped_hits ?? 0,
               answer_truncated: body.answer_truncated ?? false,
               usage: body.usage,
+              business_db: body.business_db ?? null,
             },
             usage: body.usage,
           })
@@ -1271,6 +1276,7 @@ export function AnswerConsole({
               dropped_hits: body.dropped_hits ?? 0,
               answer_truncated: body.answer_truncated ?? false,
               usage: body.usage,
+              business_db: body.business_db ?? null,
             },
           })
         } else {

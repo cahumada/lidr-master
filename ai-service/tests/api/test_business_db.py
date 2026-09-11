@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from app.domain.business_db_store import ActiveRun, MirrorRun, RunNotLoaded
+from app.domain.business_db_store import ActiveRun, MirrorRun, RunNotLoaded, TableBuild
 from app.foundation.persistence.database import get_async_session
 from app.main import app
 
@@ -67,6 +67,19 @@ class FakeStore:
         self.runs = list(MIRROR)
         self.stamp = None
         self.activations: list[tuple[str, str | None]] = []
+        # Only the active run has its edges built. That asymmetry is the point:
+        # the listing has to make the other two distinguishable.
+        # || Solo la corrida activa tiene aristas. Esa asimetría es el punto.
+        self.builds: dict[tuple[str, str], TableBuild] = {
+            ("PROD", LOADED): TableBuild(
+                env="PROD",
+                run_id=LOADED,
+                edge_count=4873,
+                code_count=460,
+                doc_version="DW Funtionals 2026.1",
+                built_at=datetime(2026, 9, 11, tzinfo=UTC),
+            )
+        }
 
     async def resolve(self, session, settings, tenant_id=None) -> ActiveRun:
         return self.active
@@ -93,6 +106,9 @@ class FakeStore:
     async def stamp_of(self, session, tenant_id, doc_version):
         return self.stamp
 
+    async def table_builds(self, session, tenant_id):
+        return dict(self.builds)
+
 
 @pytest.fixture
 def store(monkeypatch) -> FakeStore:
@@ -102,6 +118,7 @@ def store(monkeypatch) -> FakeStore:
     monkeypatch.setattr("app.api.business_db.find_mirror_run", fake.find)
     monkeypatch.setattr("app.api.business_db.activate_run", fake.activate)
     monkeypatch.setattr("app.api.business_db.get_stamp", fake.stamp_of)
+    monkeypatch.setattr("app.api.business_db.list_table_builds", fake.table_builds)
     return fake
 
 
@@ -248,3 +265,52 @@ def test_no_stamp_at_all_is_absent_rather_than_false(client, store):
     body = client.get("/business-db/runs").json()
 
     assert body["stamp"] is None
+
+
+def test_the_listing_says_which_runs_have_their_table_edges_built(client, store):
+    # Activating a run whose batch never ran leaves the block with no tables,
+    # and nothing else would say why.
+    # || Activar una corrida sin batch deja el bloque sin tablas, y nada más lo
+    # diría.
+    body = client.get("/business-db/runs").json()
+
+    built = {run["run_id"]: run["tables_built"] for run in body["runs"]}
+    assert built == {LOADED: True, NOT_LOADED: False, DEV_RUN: False}
+
+
+def test_a_built_run_reports_what_the_batch_produced(client, store):
+    body = client.get("/business-db/runs").json()
+    row = next(run for run in body["runs"] if run["run_id"] == LOADED)
+
+    assert row["table_edge_count"] == 4873
+    assert row["tables_built_at"] is not None
+
+
+def test_an_unbuilt_run_reports_zero_without_claiming_a_build(client, store):
+    body = client.get("/business-db/runs").json()
+    row = next(run for run in body["runs"] if run["run_id"] == NOT_LOADED)
+
+    assert row["tables_built"] is False
+    assert row["table_edge_count"] == 0
+    assert row["tables_built_at"] is None
+
+
+def test_a_build_with_no_edges_is_still_a_build(client, store):
+    # Zero edges from a batch that ran is a fact about the run; zero because the
+    # batch never ran is a deployment gap. The flag is the row, not the count.
+    # || Cero aristas de un batch que corrió es un hecho; cero porque nunca
+    # corrió es un hueco de despliegue.
+    store.builds[("PROD", NOT_LOADED)] = TableBuild(
+        env="PROD",
+        run_id=NOT_LOADED,
+        edge_count=0,
+        code_count=0,
+        doc_version="DW Funtionals 2026.1",
+        built_at=datetime(2026, 9, 11, tzinfo=UTC),
+    )
+
+    body = client.get("/business-db/runs").json()
+    row = next(run for run in body["runs"] if run["run_id"] == NOT_LOADED)
+
+    assert row["tables_built"] is True
+    assert row["table_edge_count"] == 0

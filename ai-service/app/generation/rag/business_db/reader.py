@@ -23,6 +23,7 @@ import structlog
 from app.generation.rag.business_db.models import (
     CatalogRow,
     ColumnDictionary,
+    DependencyTable,
     TableDictionary,
 )
 
@@ -228,8 +229,105 @@ def read_run_created_at(
     return row.get("created_at_utc")
 
 
+@lru_cache(maxsize=8)
+def run_has_edges(
+    database_url: str,
+    tenant: str,
+    env: str,
+    run_id: str,
+) -> bool:
+    """Whether the batch ever ran for this run.
+
+    Asked of ``transaction_table_builds`` and NOT by counting edges: zero edges
+    from a build that ran is a fact about the run, while zero edges because the
+    batch never ran is a deployment gap. Collapsing them would let an
+    administrator activate a run and silently get answers with no tables.
+
+    || Si el batch alguna vez corrió para esta corrida. Se le pregunta a
+    ``transaction_table_builds`` y NO contando aristas: cero aristas de un batch
+    que corrió es un hecho; cero porque nunca corrió es un hueco de despliegue.
+    """
+    import psycopg
+
+    sql = """
+        SELECT 1
+        FROM transaction_table_builds
+        WHERE tenant = %s AND env = %s AND run_id = %s
+        LIMIT 1
+    """
+    with (
+        psycopg.connect(_psycopg_url(database_url)) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(sql, (tenant, env, run_id))
+        return cursor.fetchone() is not None
+
+
+@lru_cache(maxsize=512)
+def read_dependency_tables(
+    database_url: str,
+    tenant: str,
+    env: str,
+    run_id: str,
+    transaction_code: str,
+    limit: int,
+) -> tuple[tuple[DependencyTable, ...], int, tuple[str, ...]]:
+    """The tables one code touches, highest coverage first, plus the real total.
+
+    The total is the count BEFORE the cap, so a capped list can report what it
+    is hiding instead of presenting itself as the whole set.
+
+    || Las tablas que toca un código, mayor cobertura primero, más el total
+    real. El total es el conteo ANTES del tope.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+
+    where = "WHERE tenant = %s AND env = %s AND run_id = %s AND transaction_code = %s"
+    params = (tenant, env, run_id, transaction_code)
+    with (
+        psycopg.connect(_psycopg_url(database_url), row_factory=dict_row) as connection,
+        connection.cursor() as cursor,
+    ):
+        cursor.execute(f"SELECT count(*) AS n FROM transaction_table_edges {where}", params)
+        total = int((cursor.fetchone() or {}).get("n") or 0)
+        cursor.execute(
+            f"""
+            SELECT table_name, role, role_reason, via_routines,
+                   routine_hits, routine_total, fan_in
+            FROM transaction_table_edges
+            {where}
+            ORDER BY routine_hits DESC, table_name ASC
+            LIMIT %s
+            """,
+            (*params, max(limit, 0)),
+        )
+        rows = cursor.fetchall()
+    routines: list[str] = []
+    tables: list[DependencyTable] = []
+    for row in rows:
+        via = [name for name in (row.get("via_routines") or "").split(",") if name]
+        for name in via:
+            if name not in routines:
+                routines.append(name)
+        tables.append(
+            DependencyTable(
+                table_name=row["table_name"],
+                role=row["role"],
+                role_reason=row["role_reason"],
+                via_routines=via,
+                routine_hits=int(row.get("routine_hits") or 0),
+                routine_total=int(row.get("routine_total") or 0),
+                fan_in=int(row.get("fan_in") or 0),
+            )
+        )
+    return tuple(tables), total, tuple(sorted(routines))
+
+
 def clear_reader_cache() -> None:
     """Drop cached reads (tests). || Tira las lecturas cacheadas (tests)."""
     read_table_dictionary.cache_clear()
     read_catalog_rows.cache_clear()
     read_run_created_at.cache_clear()
+    read_dependency_tables.cache_clear()
+    run_has_edges.cache_clear()

@@ -296,6 +296,21 @@ class Settings(BaseSettings):
     # || Cuántos `document_id` distintos de los hits resolver. Un 0 no resuelve nada.
     BUSINESS_DB_CONTEXT_MAX_CODES: int = Field(default=8, ge=1)
 
+    # Whether the block carries the tables a transaction touches, read from
+    # `transaction_table_edges`. Off by default until the annotated set of
+    # `evals/golden_transaction_tables.json` says the ordering holds: a code
+    # reaches 8 tables at the median and 185 at the worst, and an unmeasured
+    # order is a block that says too much.
+    # || Si el bloque lleva las tablas que toca la transacción. Apagado hasta
+    # que el set anotado diga que el orden se sostiene.
+    BUSINESS_DB_DEPENDENCY_TABLES_ENABLED: bool = False
+
+    # How many tables per code the block may carry, highest coverage first. A 0
+    # carries none; the overflow is reported as `dependency_tables_capped`.
+    # || Cuántas tablas por código puede llevar el bloque, mayor cobertura
+    # primero. Un 0 no lleva ninguna; el desborde se reporta.
+    BUSINESS_DB_DEPENDENCY_MAX_TABLES: int = Field(default=12, ge=0)
+
     # Reference date for the period predicate, ISO calendar date. Empty = the
     # active run's `created_at_utc`. Never falls through to `now()`: a snapshot
     # from three months ago evaluated against today asserts a validity the

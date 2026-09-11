@@ -876,3 +876,36 @@ class TestModelRefresh:
         response = client.post("/config/providers/openai/models/refresh")
 
         assert response.status_code == 502
+
+
+def test_the_flow_declares_the_business_db_anchoring_step(client):
+    """The step runs while the prompt is built: no agent, no tool, no edge back.
+
+    The console draws it only because the service declares it -- `web-console`
+    forbids that screen from writing nodes of its own.
+
+    || El paso corre al armar el prompt. La consola lo dibuja solo porque el
+    servicio lo declara.
+    """
+    flow = client.get("/config").json()["flow"]
+
+    steps = {step["key"]: step for step in flow.get("context_steps", [])}
+    assert "business_db_anchoring" in steps
+    step = steps["business_db_anchoring"]
+    assert step["kind"] == "context"
+    assert step["example"]["receives"]
+    assert step["example"]["leaves"]
+
+
+def test_the_anchoring_step_is_not_a_node_of_the_graph(client):
+    """Drawing it as a specialist would assert a topology the graph lacks.
+
+    || Dibujarlo como especialista afirmaría una topología que el grafo no tiene.
+    """
+    flow = client.get("/config").json()["flow"]
+
+    assert "business_db_anchoring" not in {node["key"] for node in flow["nodes"]}
+    touched = {edge["source"] for edge in flow["edges"]} | {
+        edge["target"] for edge in flow["edges"]
+    }
+    assert "business_db_anchoring" not in touched

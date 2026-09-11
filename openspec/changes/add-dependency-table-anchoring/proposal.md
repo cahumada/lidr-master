@@ -72,26 +72,46 @@ justamente lo que hace auditable la respuesta.
   Gana el código más largo que matchea; el corto no se lleva esa rutina.
 - **Cada arista lleva su rol, derivado de reglas ordenadas y auditables**, con el
   mismo patrón que `taxonomy.py`: datos `(patrón, rol)`, no ramas de código. El
-  vocabulario es cerrado —`core`, `historical`, `reference`, `validation`,
-  `message`, `unknown`— y un caso que no matchea ninguna regla es `unknown` **con
-  su razón**, nunca un default. Tres familias de señal, todas declaradas: la ficha
-  de la tabla en `business_tables` (`TABLE<n>` y *(Contenido fijo)* → referencia;
-  `_HIS` e *"Historia de…"* → histórica; `MESSAGE` / `WIN_MESSAG` → mensajes), el
-  prefijo de la rutina que la alcanza (`INSVAL*` → validación, `REA*` → lectura,
-  `INSPOST*` / `INSPRE*` / `INSEXECUTE*` → escritura), y el fan-in global como
-  **desempate** — `CERTIFICAT` toca 1.910 rutinas y `CLIENT` 1.861: son ubicuas
-  por construcción.
-- **El rol `unknown` va a ser común y se declara así.** Sobre las 1.345 rutinas
-  ancladas, 481 llevan el prefijo genérico `INS` y 145 no llevan ninguno conocido.
-  La regla no las va a clasificar y el bloque lo dice, en vez de inventarles un rol.
+  vocabulario es cerrado —`reference`, `historical`, `message`, `validation`,
+  `unknown`— y un caso que no matchea ninguna regla es `unknown` **con su razón**,
+  nunca un default. Las señales del destino (la ficha en `business_tables`:
+  `TABLE<n>` y *(Contenido fijo)* → referencia; `_HIS` e *"Historia de…"* →
+  histórica; `MESSAGE` / `WIN_MESSAG` → mensajes) le ganan a las del camino
+  (alcanzada solo por `INSVAL*` → validación).
+- **No hay rol `core`, y eso es un resultado de medición, no un recorte.** El
+  plan original lo iba a derivar de un fan-in bajo. Medido contra las cuatro
+  transacciones anotadas, esa regla **corre al revés**:
+
+  | código | tabla anotada | fan-in | tabla NO anotada | fan-in |
+  |---|---|---:|---|---:|
+  | `CA014` | `COVER` | 1.037 | `NOPAYROLL` | 44 |
+  | `CA025` | `CLIENT` | 1.925 | `CLIALLOPRO` | 42 |
+  | `CA001` | `CERTIFICAT` | 1.989 | `CUR_ALLOW` | 30 |
+
+  Una póliza, un certificado y un cliente los toca casi todo el sistema
+  **porque** son las entidades centrales: la rareza indica periférico, no
+  central. Ninguna otra señal declarada los aísla tampoco. Afirmar `core` sobre
+  cuatro puntos anotados sería la calibración manual que este repo evita en
+  `retrieval`. El fan-in **se guarda en cada arista** para poder revisarlo, y no
+  se usa para degradar nada.
+- **El orden es la cobertura: cuántas rutinas de la transacción llegan a cada
+  tabla, sobre cuántas tiene.** Dos conteos declarados divididos, sin umbral que
+  calibrar — es lo que hace que sirva como orden sin afirmar una jerarquía.
+- **El rol `unknown` es la mayoría y se declara así.** Construido contra la
+  corrida activa: **4.939 de 5.907 aristas (84%)** quedan `unknown`. El bloque lo
+  dice con todas las letras —*"la transacción toca la tabla, pero en qué carácter
+  no está declarado. No lo supongas."*— en vez de inventarles un rol.
 - **Se mide contra un set anotado antes de entrar al prompt.** Las cuatro
   transacciones anotadas por el dueño son la semilla; el change las lleva a ~20 en
-  `evals/golden_transaction_tables.json` y reporta precisión y recall de `core`.
-  Sin esa medición el bloque no se habilita.
+  `evals/golden_transaction_tables.json` y reporta **recall@N** —si la tabla que
+  el analista nombra sobrevive al tope, que es lo único que decide si la respuesta
+  la puede citar— más la posición bajo el orden por cobertura y la proporción de
+  `unknown`. Sin 20 casos y 90% de recall el flag queda apagado.
 - **El bloque de base gana una sección por código anclado** dentro de `v3` — no
-  hay `v4`: la sección es contenido del bloque que `business-db-context` ya
-  gobierna. Las tablas entran ordenadas por rol, y la declaración de cada una dice
-  **por qué rutinas** entró, para que la respuesta pueda citarlo.
+  hay `v4` ni cambio de plantilla: la sección es contenido del bloque que
+  `business-db-context` ya gobierna y que `render.py` compone. Las tablas entran
+  ordenadas por cobertura, y la declaración de cada una dice **por qué rutinas**
+  entró, para que la respuesta pueda citarlo.
 - **El vocabulario de completitud se extiende**, siempre cerrado y sin cajón de
   sastre: `edges_not_built`, `no_dependency_routine`, `routine_without_tables`,
   `code_too_short_to_anchor`, `dependency_tables_capped`, `role_unknown`. El

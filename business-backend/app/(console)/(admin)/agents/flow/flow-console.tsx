@@ -375,6 +375,56 @@ export function FlowConsole({ flow }: { flow: GraphFlow }) {
         ))}
       </section>
 
+      {(flow.context_steps ?? []).length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-sm font-semibold tracking-tight">
+              Pasos que no son nodos del grafo
+            </h2>
+            <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+              Corren mientras se arma el prompt: sin agente, sin tool y sin
+              vuelta al orquestador. Por eso no aparecen en el diagrama de
+              arriba — dibujarlos ahí afirmaría una topología que el grafo
+              compilado no tiene. Salen de <code>flow.context_steps</code>; si
+              el servicio no los declara, esta sección no existe.
+            </p>
+          </div>
+          {(flow.context_steps ?? []).map((step) => (
+            <Card key={step.key}>
+              <CardContent className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-sm font-semibold">{step.label}</span>
+                  <code className="text-muted-foreground text-[10px]">
+                    {step.key}
+                  </code>
+                </div>
+                <p className="text-xs leading-relaxed">{step.role}</p>
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  {step.explanation}
+                </p>
+                <dl className="mt-1 flex flex-col gap-1 text-xs">
+                  <div className="flex gap-2">
+                    <dt className="text-muted-foreground w-14 shrink-0">entra</dt>
+                    <dd>{step.example.receives}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="text-muted-foreground w-14 shrink-0">sale</dt>
+                    <dd>{step.example.leaves}</dd>
+                  </div>
+                </dl>
+                {step.example.detail.length > 0 && (
+                  <ul className="text-muted-foreground flex flex-col gap-1 text-[11px]">
+                    {step.example.detail.map((line) => (
+                      <li key={line}>· {line}</li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </section>
+      )}
+
       <section className="flex flex-col gap-3">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">Escalera de fallback</h2>

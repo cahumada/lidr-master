@@ -336,6 +336,100 @@ export interface TokenUsage {
   reported: boolean;
 }
 
+/** Role a table plays for a transaction. Closed vocabulary, mirrored from the
+ * service. There is deliberately no `core`: measured against the annotated set,
+ * no declared signal isolates it.
+ * || Rol de una tabla para una transacción. Vocabulario cerrado. No hay `core`
+ * a propósito. */
+export type TableRole =
+  | "reference"
+  | "historical"
+  | "message"
+  | "validation"
+  | "unknown";
+
+/** Why a resolution is what it is. Closed vocabulary with no catch-all: an
+ * unknown value here means the console is behind the service, not that the user
+ * did something wrong, so it is shown verbatim.
+ * || Vocabulario cerrado sin cajón de sastre: un valor desconocido significa
+ * consola desfasada, y se muestra tal cual. */
+export type ResolutionOutcome =
+  | "resolved"
+  | "not_in_run"
+  | "no_maintained_table"
+  | "ng_identi_ignored_by_type"
+  | "table_not_in_dictionary"
+  | "table_not_loaded"
+  | "columns_unknown"
+  | "no_validity_mechanism"
+  | "validity_discrepancy"
+  | "rows_capped"
+  | "date_unparsed"
+  | "dropped_by_budget"
+  | "edges_not_built"
+  | "no_dependency_routine"
+  | "routine_without_tables"
+  | "code_too_short_to_anchor"
+  | "dependency_tables_capped"
+  | "role_unknown";
+
+/** One table a transaction touches, from Oracle's dependency graph.
+ * `via_routines` is the provenance and is never trimmed by the service.
+ * || Una tabla que toca la transacción. `via_routines` es la procedencia. */
+export interface DependencyTable {
+  table_name: string;
+  role: TableRole;
+  role_reason: string;
+  description?: string | null;
+  via_routines: string[];
+  /** Routines of this code that reach the table, over how many it has. Two
+   * declared counts: the order comes from them, not from a fitted score.
+   * || Dos conteos declarados: de ahí sale el orden. */
+  routine_hits: number;
+  routine_total: number;
+  /** Routines in the WHOLE run depending on it. Shown as context, never used to
+   * rank: measured, it runs backwards. || Nunca se usa para rankear. */
+  fan_in: number;
+}
+
+/** What the mirror said about one anchored transaction code.
+ * || Lo que dijo el mirror sobre un código anclado. */
+export interface CodeResolution {
+  code: string;
+  outcome: ResolutionOutcome;
+  causes: ResolutionOutcome[];
+  table_name?: string | null;
+  window_description?: string | null;
+  window_type_name?: string | null;
+  window_status?: string | null;
+  rows_valid: number;
+  rows_shown: number;
+  dependency_tables: DependencyTable[];
+  /** Count BEFORE the cap, so a capped list can say what it hides.
+   * || Conteo ANTES del tope. */
+  dependency_tables_total: number;
+  dependency_routines: string[];
+}
+
+/** The run an answer leaned on, and whether everything that existed arrived.
+ * The service has returned this since `add-business-db-context`; until now the
+ * console dropped it.
+ * || La corrida en la que se apoyó una respuesta, y si llegó todo. */
+export interface BusinessDbContextView {
+  run_id: string | null;
+  env: string | null;
+  as_of: string | null;
+  resolutions: CodeResolution[];
+  complete: boolean;
+  absent_reason?: "no_active_run" | "disabled" | null;
+  absent_detail?: string | null;
+  dropped_codes: string[];
+  tokens_used: number;
+  /** False means no block reached the prompt. Not the same as an empty block.
+   * || False significa que no llegó bloque al prompt. */
+  block_emitted: boolean;
+}
+
 export interface AnswerAgenticCompleted {
   status: "completed";
   thread_id: string;
@@ -364,6 +458,9 @@ export interface AnswerAgenticCompleted {
   answer_truncated: boolean;
   /** Last completion of this run. Absent on a service that predates usage. */
   usage?: TokenUsage;
+  /** What the source database declared for the codes that entered the prompt.
+   * Absent on a service that predates it. || Lo que declaró la base. */
+  business_db?: BusinessDbContextView | null;
 }
 
 export interface AnswerAgenticPaused {
@@ -382,6 +479,7 @@ export interface AnswerAgenticPaused {
   dropped_hits: number;
   answer_truncated: boolean;
   usage?: TokenUsage;
+  business_db?: BusinessDbContextView | null;
 }
 
 export type AnswerAgenticResponse = AnswerAgenticCompleted | AnswerAgenticPaused;
@@ -563,6 +661,27 @@ export interface GraphFlow {
    * porque un servicio viejo no la manda; la pantalla la omite, no la inventa.
    */
   example?: FlowExample;
+  /**
+   * Steps of the resolution that are NOT graph nodes — they run while the
+   * prompt is built, with no agent, no tool and no edge back to the
+   * orchestrator. Optional and possibly empty: when the service declares none
+   * the screen draws none, never a step written in the client.
+   * || Pasos de la resolución que NO son nodos del grafo. Si el servicio no
+   * declara ninguno, la pantalla no dibuja ninguno.
+   */
+  context_steps?: FlowContextStep[];
+}
+
+/** A resolution step that runs outside the graph. Carries no tools and no
+ * edges on purpose: it is not a specialist.
+ * || Un paso que corre fuera del grafo. Sin tools ni aristas, a propósito. */
+export interface FlowContextStep {
+  key: string;
+  label: string;
+  kind: string;
+  role: string;
+  explanation: string;
+  example: FlowNodeExample;
 }
 
 export interface FlowExample {
@@ -714,6 +833,9 @@ export interface AnswerAgenticProgress {
   answer_truncated: boolean | null;
   error: string | null;
   usage?: TokenUsage;
+  /** What the source database declared for this turn. Absent on an older
+   * service. || Lo que declaró la base para este turno. */
+  business_db?: BusinessDbContextView | null;
 }
 
 // --- Corridas del mirror || Mirror extraction runs ---------------------------
@@ -733,6 +855,12 @@ export interface ExtractionRunItem {
   is_active: boolean;
   /** False when `loaded_data` is false. || False cuando `loaded_data` es false. */
   can_activate: boolean;
+  /** Whether the transaction-table edges were built for this run. False means
+   * answers from it carry no tables. Absent on an older service.
+   * || Si se construyeron las aristas de tablas para esta corrida. */
+  tables_built?: boolean;
+  tables_built_at?: string | null;
+  table_edge_count?: number;
 }
 
 /** The run in force and where it came from. || La corrida en vigor y de dónde salió. */
