@@ -93,10 +93,12 @@
       "dw-insu"`— aunque en la connection string va tal cual.
       **Verificado el 2026-09-06 y NO se cumple, aunque el riesgo que este
       punto quería evitar sí está evitado.** `AUTH_DATABASE_URL` apunta a
-      `altaria.proxy.rlwy.net:37392/railway`, y el corpus vive en
-      `altaria.proxy.rlwy.net:31812/railway`: mismo proxy de Railway, puertos
+      la base `railway` de una instancia de Railway, y el corpus vive en la
+      base `railway` de **otra**: mismo proxy TCP de Railway, puertos
       distintos, o sea **dos instancias de Postgres separadas**, no dos bases
-      de la misma. Confirmado consultando `pg_database` en la instancia de
+      de la misma. (Los host:puerto reales no van acá: el repo es público y
+      un endpoint de Postgres escrito en un `.md` es un blanco gratis. Están
+      en `.env.local`, que no se commitea.) Confirmado consultando `pg_database` en la instancia de
       identidad: contiene `postgres` y `railway`, y `railway` tiene
       exactamente `User`, `Account`, `Session`, `VerificationToken` y
       `_prisma_migrations` — ninguna tabla del corpus. El aislamiento es mayor
@@ -235,11 +237,12 @@
       (sesión, csrf, callback, pkce/state y el resto del origen). Auth.js
       solo vence la de sesión; un intento fallido de Google dejaba las
       otras a la vista. El redirect a `/login` lo hacemos nosotros.
-- [ ] 4.3 **El filtro de la nav no autoriza.** Verificar explícitamente que
+- [x] 4.3 **El filtro de la nav no autoriza.** Verificar explícitamente que
       pedir `/models` a mano con rol `usuario` sigue dando 403 con el filtro
       desactivado.
-      **La mitad estructural está verificada; la del browser necesita una
-      sesión con rol `usuario` y queda para el dueño del repo.**
+      **Confirmado por el dueño del repo el 2026-09-11**, que es quien tiene la
+      sesión con rol `usuario`. Queda anotado como confirmación declarada: la
+      corrió una persona en su browser, no un test de esta suite.
       Lo estructural, comprobado por inspección el 2026-09-10: el filtro y el
       gate **no comparten ni una línea**. `canAccess` / `isAdminOnly` /
       `ADMIN_ONLY` (`lib/auth/roles.ts`) los importa **solo su propio test** —
@@ -483,12 +486,14 @@ el runner de la tarea 7.1 dejó desactualizado el paso «Verificar» de ahí.
 - [x] 8.1 `pnpm lint` y `pnpm build` desde `business-backend/`: los dos
       limpios. El build lista `/login` y las rutas de siempre, todas
       dinámicas, más `ƒ Proxy (Middleware)`.
-- [ ] 8.2 En el browser: login con Google, login con email y contraseña,
+- [x] 8.2 En el browser: login con Google, login con email y contraseña,
       logout, y el 403 con rol `usuario` sobre `/models`.
-- [ ] 8.2b En el browser, el ciclo completo de una cuenta: registrarse,
+      **Confirmado por el dueño del repo el 2026-09-11.**
+- [x] 8.2b En el browser, el ciclo completo de una cuenta: registrarse,
       no poder entrar, ser habilitada, entrar, ser promovida, alcanzar
       `/models`, ser deshabilitada y quedar afuera **sin cerrar sesión a
       mano** — ese último paso es el que prueba 5b.15.
+      **Confirmado por el dueño del repo el 2026-09-11.**
 - [x] 8.3 Sin sesión, cada página protegida redirige a `/login`, y después
       del login se vuelve al destino pedido.
       **La primera mitad, verificada en producción** (`https://lidr-master.vercel.app`,
@@ -549,3 +554,33 @@ el runner de la tarea 7.1 dejó desactualizado el paso «Verificar» de ahí.
       da por verificada. El paso que prueba 5b.15 es el último de 8.2b: que una
       cuenta deshabilitada quede afuera **sin** cerrar sesión a mano, o sea que
       el gate revalide contra la base y no se conforme con el JWT.
+
+## 9. Cierre (2026-09-11)
+
+- [x] 9.1 Las cuatro verificaciones de browser del punto 8.6 las **confirmó el
+      dueño del repo el 2026-09-11**: 4.3, 8.2, 8.2b y la segunda mitad de 8.3.
+      Quedan anotadas como **confirmación declarada de una persona**, no como
+      salida de un test de esta suite — es la misma distinción que el change
+      hace para `activated_by`: quien puede verificar no es quien escribe el
+      checklist.
+- [x] 9.2 Recuperado el commit `3c8a69a`, que había quedado huérfano en la rama
+      desde el 2026-09-06 mientras `main` avanzaba 57 commits: los fixtures de
+      `lib/auth/password.test.ts` se arman en tiempo de ejecución en vez de ir
+      como literales con pinta de contraseña. `pnpm test` da **28 passed, 0
+      failed**, y `pnpm lint` limpio.
+- [x] 9.3 Redactado el host:puerto real de las dos instancias de Postgres de
+      Railway, que seguía commiteado en `design.md` — el commit huérfano había
+      arreglado solo `tasks.md`, y la nota de `design.md` es posterior
+      (2026-09-10). **Esto acota la exposición futura, no la pasada**: los
+      endpoints están en el historial del repo público y ahí siguen. La
+      remediación real es rotar o restringir esos endpoints en Railway, y es
+      del dueño del repo.
+- [x] 9.4 Al integrar el delta apareció un conflicto que había que resolver y no
+      promover: el `MODIFIED` de «La respuesta es un chat de sesión» traía el
+      texto **anterior** a `add-answer-history-console`, que lo superseded el
+      2026-09-10. Decía que empezar un hilo nuevo descarta la sesión en el
+      servicio; la spec vigente dice lo contrario, que descartar es una acción
+      explícita sobre la lista. Promoverlo tal cual **habría hecho retroceder la
+      spec**. Se conservó el texto vigente y se le sumó lo único que este change
+      aporta: que la sesión de conversación no es la sesión de identidad, con su
+      escenario. El delta archivado lleva la corrección y la nota de por qué.
