@@ -162,6 +162,25 @@ def stub_active_run(monkeypatch):
     for module in ("app.api.answer", "app.domain.graph.agents.answer_synthesizer"):
         monkeypatch.setattr(f"{module}.resolve_navigation_tree", lambda *_args: None)
 
+    # The business-db reader talks to `visualtime.*`. These tests assert the
+    # HTTP contract, so the seam is stubbed: no resolutions means no block,
+    # and the prompt stays the version the existing assertions were written
+    # against. Tests that care about the block patch this again.
+    # || El reader habla con `visualtime.*`. Estos tests afirman el contrato
+    # HTTP, así que la costura se stubbea: sin resoluciones no hay bloque.
+    from app.generation.rag.business_db.models import BusinessDbContext
+
+    def _context(env, run_id, codes):
+        if not run_id:
+            return BusinessDbContext.absent("no_active_run", env=env)
+        return BusinessDbContext(
+            run_id=run_id, env=env, complete=True, block_emitted=False
+        )
+
+    monkeypatch.setattr(
+        "app.dependencies.resolve_business_db_context", _context
+    )
+
 
 @pytest.fixture(autouse=True)
 def skip_usage_ledger(monkeypatch):

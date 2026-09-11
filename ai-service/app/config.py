@@ -263,6 +263,63 @@ class Settings(BaseSettings):
     # desplazado cuesta una frase repetida, un chunk desplazado cuesta una cita.
     CONVERSATION_MEMORY_MAX_TOKENS: int = Field(default=1024, ge=1)
 
+    # --- Contexto de la base fuente || Source-database context --------------
+
+    # Whether the answer prompt carries the business-db block. Exists for the
+    # eval — a run WITH the block and a run WITHOUT it are two different
+    # prompts, and the eval has to be able to run both. It is NOT an emergency
+    # kill switch; leaving it off "just in case" silently drops the second
+    # authority the service already paid to load.
+    #
+    # || Si el prompt de respuesta lleva el bloque de la base. Existe para el
+    # eval: una corrida CON bloque y una SIN él son dos prompts distintos, y
+    # el eval tiene que poder correr las dos. NO es un interruptor de
+    # emergencia; dejarlo apagado «por las dudas» tira en silencio la segunda
+    # autoridad que el servicio ya pagó por cargar.
+    BUSINESS_DB_CONTEXT_ENABLED: bool = True
+
+    # Ceiling for the business-db block, charged INSIDE
+    # ANSWER_MAX_CONTEXT_TOKENS and never on top of it. Fitted last: evidence,
+    # then memory, then this. A 0 does NOT mean "no limit" — it would mean an
+    # empty block, and Settings rejects it.
+    # || Techo del bloque de base, cobrado ADENTRO de ANSWER_MAX_CONTEXT_TOKENS
+    # y nunca encima. Se ajusta último. Un 0 NO significa «sin límite».
+    BUSINESS_DB_CONTEXT_MAX_TOKENS: int = Field(default=2048, ge=1)
+
+    # How many catalog rows to fetch per table (the query asks for this + 1
+    # so overflow is visible). A 0 is an empty catalog, not "no limit".
+    # || Cuántas filas de catálogo traer por tabla (la consulta pide esta + 1
+    # para que el desborde se vea). Un 0 es un catálogo vacío, no «sin límite».
+    BUSINESS_DB_CONTEXT_MAX_ROWS: int = Field(default=50, ge=1)
+
+    # How many distinct hit `document_id`s to resolve. A 0 resolves nothing.
+    # || Cuántos `document_id` distintos de los hits resolver. Un 0 no resuelve nada.
+    BUSINESS_DB_CONTEXT_MAX_CODES: int = Field(default=8, ge=1)
+
+    # Reference date for the period predicate, ISO calendar date. Empty = the
+    # active run's `created_at_utc`. Never falls through to `now()`: a snapshot
+    # from three months ago evaluated against today asserts a validity the
+    # data does not support, and breaks evals against the wall clock.
+    # || Fecha de referencia del predicado de período, ISO. Vacío = el
+    # `created_at_utc` de la corrida activa. Nunca cae a `now()`.
+    BUSINESS_DB_CONTEXT_AS_OF: str = ""
+
+    @model_validator(mode="after")
+    def _business_db_as_of_is_a_date_or_empty(self) -> Settings:
+        text = self.BUSINESS_DB_CONTEXT_AS_OF.strip()
+        if not text:
+            return self
+        from datetime import date
+
+        try:
+            date.fromisoformat(text[:10])
+        except ValueError as error:
+            raise ValueError(
+                "BUSINESS_DB_CONTEXT_AS_OF must be an ISO date (YYYY-MM-DD) or empty. "
+                "|| BUSINESS_DB_CONTEXT_AS_OF debe ser una fecha ISO o vacío."
+            ) from error
+        return self
+
     # How long a conversation stays readable. An expired session is treated as
     # absent -- the turn is answered without memory and says so -- instead of
     # failing with a 404 in the middle of a conversation.

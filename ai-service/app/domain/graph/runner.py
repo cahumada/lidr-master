@@ -298,6 +298,7 @@ def completed_result(values: dict, fallback_question: str) -> dict:
         "dropped_hits": int(values.get("dropped_hits") or 0),
         "answer_truncated": bool(values.get("answer_truncated")),
         "usage": values.get("usage") or usage_payload(),
+        "business_db": values.get("business_db"),
     }
 
 
@@ -323,6 +324,7 @@ def paused_result(values: dict, fallback_question: str, reasons: list[str]) -> d
         "dropped_hits": int(values.get("dropped_hits") or 0),
         "answer_truncated": bool(values.get("answer_truncated")),
         "usage": values.get("usage") or usage_payload(),
+        "business_db": values.get("business_db"),
     }
 
 

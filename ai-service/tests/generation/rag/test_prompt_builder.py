@@ -6,7 +6,15 @@
 from __future__ import annotations
 
 from app.foundation.prompts import render_prompt
-from app.generation.rag.prompt_builder import build_context, build_messages
+from app.generation.rag.business_db.models import BusinessDbContext, CodeResolution
+from app.generation.rag.business_db.render import render_block
+from app.generation.rag.chunking.base import count_tokens
+from app.generation.rag.prompt_builder import (
+    PROMPT_VERSION_WITH_BUSINESS_DB,
+    build_budgeted_messages,
+    build_context,
+    build_messages,
+)
 from app.generation.rag.schemas import SearchHit
 
 
@@ -216,3 +224,124 @@ def test_persona_comes_before_operator_guardrails():
     assert system.index("Respondé como un analista funcional.") < system.index(
         "No recomiendes un workaround."
     )
+
+
+def test_v3_without_the_block_matches_v2_byte_for_byte():
+    """The test that catches editing one template and not the other.
+
+    || El test que detecta que alguien editó uno y no el otro.
+    """
+    memory = "- Módulos en juego: CA"
+    v2, _ = build_messages("pregunta", [_hit()], memory=memory)
+    v3 = render_prompt(
+        "answer",
+        PROMPT_VERSION_WITH_BUSINESS_DB,
+        "system",
+        persona=None,
+        guardrails=None,
+        memory=memory,
+    )
+    assert v3 == v2
+
+
+def test_the_block_chooses_v3_and_stays_outside_the_evidence():
+    system, user = build_messages(
+        "pregunta",
+        [_hit()],
+        business_db="## Lo que declara la base\nCorrida: r",
+    )
+
+    assert "Lo que declara la base" in system
+    assert "otra autoridad" in system
+    assert "reportala" in system
+    assert "NO es documentación funcional" in system
+    assert "[CA014 · Validaciones]" in user
+    assert "Lo que declara la base" not in user
+    assert system.index("Reglas, todas obligatorias") < system.index("Lo que declara la base")
+
+
+def test_adjustment_order_is_evidence_then_memory_then_base():
+    """The base block never takes budget away from a chunk or a memory turn.
+
+    || El bloque de base nunca le saca presupuesto a un chunk ni a un turno.
+    """
+    hits = [_hit(text="evidencia " * 40)]
+    evidence_cost = count_tokens(
+        __import__(
+            "app.generation.rag.context_budget", fromlist=["render_hit_block"]
+        ).render_hit_block(1, hits[0])
+    )
+    memory_text = "- Turno 1:\n  Pregunta: hola\n  Respuesta: " + ("memoria " * 30)
+    seen: list[int] = []
+
+    def memory_for(remaining: int) -> str:
+        seen.append(remaining)
+        return memory_text
+
+    def business_db_for(kept, remaining):
+        seen.append(remaining)
+        return render_block(
+            BusinessDbContext(
+                run_id="r",
+                env="PROD",
+                resolutions=[
+                    CodeResolution(
+                        code="MA0007",
+                        outcome="no_maintained_table",
+                        window_description="Bancos",
+                    )
+                ],
+            ),
+            budget=remaining,
+        )
+
+    budget = evidence_cost + count_tokens(memory_text) + 80
+    system, _user, budgeted, db_context = build_budgeted_messages(
+        "pregunta",
+        hits,
+        budget=budget,
+        memory_for=memory_for,
+        business_db_for=business_db_for,
+    )
+
+    assert budgeted.kept == hits
+    assert seen[0] == budget - evidence_cost
+    assert seen[1] == budget - evidence_cost - count_tokens(memory_text)
+    assert db_context is not None
+    assert db_context.block_emitted is True
+    assert "Lo que ya pasó" in system
+    assert "Lo que declara la base" in system
+
+
+def test_a_full_evidence_budget_does_not_drop_a_chunk_for_the_base():
+    hits = [_hit(text="evidencia " * 80)]
+    evidence_cost = count_tokens(
+        __import__(
+            "app.generation.rag.context_budget", fromlist=["render_hit_block"]
+        ).render_hit_block(1, hits[0])
+    )
+
+    def business_db_for(kept, remaining):
+        return render_block(
+            BusinessDbContext(
+                run_id="r",
+                env="PROD",
+                resolutions=[
+                    CodeResolution(code="MA0007", outcome="resolved", window_description="Bancos")
+                ],
+            ),
+            budget=remaining,
+        )
+
+    _system, _user, budgeted, db_context = build_budgeted_messages(
+        "pregunta",
+        hits,
+        budget=evidence_cost,
+        business_db_for=business_db_for,
+    )
+
+    assert budgeted.kept == hits
+    assert budgeted.dropped == []
+    assert db_context is not None
+    assert db_context.block_emitted is False
+    assert "dropped_by_budget" in db_context.resolutions[0].causes

@@ -15,7 +15,9 @@ from __future__ import annotations
 import structlog
 
 from app.config import get_settings
+from app.dependencies import business_db_for_run
 from app.foundation.llm.wrapper import LLM, Usage
+from app.generation.rag.business_db.models import BusinessDbContext
 from app.generation.rag.context_budget import StatusResolver
 from app.generation.rag.guardrails import check_grounding
 from app.generation.rag.prompt_builder import build_budgeted_messages
@@ -50,6 +52,8 @@ async def generate_answer(
     persona: str | None = None,
     guardrails: str | None = None,
     status_of: StatusResolver | None = None,
+    active_run_env: str | None = None,
+    active_run_id: str | None = None,
 ) -> AnswerResponse:
     """Retrieve, generate, and mark whether the prose stayed inside the hits.
 
@@ -63,6 +67,10 @@ async def generate_answer(
     resolving the active run is a query and this function does not own a
     session — whoever does owns the decision. Passing nothing falls back to the
     stamped `window_status` column, which is what the eval scripts get.
+
+    ``active_run_id`` / ``active_run_env`` are the same run, for the
+    business-db block. Without a run there is no block — no fallback to the
+    latest run or the CSV.
 
     || Recupera, genera, y marca si la prosa se quedó dentro de los hits.
     ``persona`` y ``guardrails`` vienen del perfil y se appendean al system
@@ -83,6 +91,8 @@ async def generate_answer(
     )
     citations = search_hits_from_chunks(result.chunks)
 
+    db_for = business_db_for_run(active_run_env, active_run_id)
+
     if not citations:
         log.info("answer_insufficient_context", query=question)
         return AnswerResponse(
@@ -90,14 +100,16 @@ async def generate_answer(
             answer=INSUFFICIENT_CONTEXT_MESSAGE,
             citations=[],
             grounded=True,
+            business_db=_empty_business_db(active_run_env, active_run_id),
         )
 
-    system, user, budgeted = build_budgeted_messages(
+    system, user, budgeted, db_context = build_budgeted_messages(
         question,
         citations,
         budget=get_settings().ANSWER_MAX_CONTEXT_TOKENS,
         persona=persona,
         guardrails=guardrails,
+        business_db_for=db_for,
         status_of=status_of,
     )
 
@@ -122,6 +134,7 @@ async def generate_answer(
             grounded=True,
             context_truncated=True,
             dropped_hits=budgeted.dropped_count,
+            business_db=db_context or _empty_business_db(active_run_env, active_run_id),
         )
 
     completion = llm.complete(system=system, user=user)
@@ -150,7 +163,18 @@ async def generate_answer(
         dropped_hits=budgeted.dropped_count,
         answer_truncated=completion.truncated,
         usage=_token_usage(completion.usage),
+        business_db=db_context,
     )
+
+
+def _empty_business_db(env: str | None, run_id: str | None) -> BusinessDbContext:
+    """Accounting when there were no codes to resolve.
+
+    || Contabilidad cuando no hubo códigos que resolver.
+    """
+    if not run_id:
+        return BusinessDbContext.absent("no_active_run", env=env)
+    return BusinessDbContext(run_id=run_id, env=env, complete=True, block_emitted=False)
 
 
 def _token_usage(usage: Usage) -> TokenUsage:

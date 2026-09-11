@@ -259,7 +259,7 @@ class _FakeMirrorConnection:
 def test_mirror_loader_builds_a_tree_from_windows_rows():
     cursor = _FakeMirrorCursor(
         count=1,
-        rows=[("CA001", "MENU", "Pólizas", "1", "Corto", "3")],
+        rows=[("CA001", "MENU", "Pólizas", "1", "Corto", "3", "7")],
     )
     tree = load_navigation_tree_from_mirror(
         _FakeMirrorConnection(cursor),
@@ -282,3 +282,37 @@ def test_mirror_loader_fails_when_the_run_has_no_windows_rows():
             env="PROD",
             run_id="missing_run",
         )
+
+
+def test_ng_identi_loads_from_the_mirror_and_not_from_the_csv(tree):
+    """The CSV never carried the column; a tree built from it stays unresolved.
+
+    || El CSV no trae la columna; un árbol armado de ahí queda sin resolver.
+    """
+    assert tree.ng_identi("MA0007") is None
+    assert tree.ng_identi("CA001") is None
+
+    from_mirror = NavigationTree(
+        [("MA0007", "MENU", "Bancos", "10", "", "1", "7")]
+    )
+    assert from_mirror.ng_identi("MA0007") == 7
+    assert from_mirror.ng_identi("CA001") is None
+
+
+def test_navigation_location_does_not_gain_fields():
+    """A new field here would force another 56,537-row backfill.
+
+    || Un campo nuevo acá obligaría a otro backfill de 56.537 filas.
+    """
+    from app.generation.rag.navigation import NavigationLocation
+
+    assert set(NavigationLocation.model_fields) == {
+        "module_code",
+        "module_name",
+        "submodule_code",
+        "submodule_name",
+        "navigation_path",
+        "is_menu_node",
+        "window_type_name",
+        "window_status",
+    }

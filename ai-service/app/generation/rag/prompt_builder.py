@@ -12,9 +12,12 @@ lado del chunk es una invitación a inventar uno.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from app.foundation.prompts import render_prompt
+from app.generation.rag.business_db.models import BusinessDbContext
+from app.generation.rag.business_db.render import block_text
+from app.generation.rag.chunking.base import count_tokens
 from app.generation.rag.context_budget import (
     BudgetedContext,
     StatusResolver,
@@ -36,6 +39,16 @@ PROMPT_VERSION = "v1"
 # memoria no es comparable con una producida sin ella, y el eval de fidelidad
 # tiene que poder distinguir dos corridas por algo más que una esperanza.
 PROMPT_VERSION_WITH_MEMORY = "v2"
+
+# The version that carries the business-db block. A run WITHOUT the block
+# keeps rendering `v1` or `v2` byte for byte — `v3` without the block is
+# tested to match `v2`, so an accidental edit of one and not the other is
+# visible. A run WITH the block is `v3` whether or not there is memory.
+# || La versión que lleva el bloque de la base. Una corrida SIN el bloque
+# sigue renderizando `v1` o `v2` byte a byte.
+PROMPT_VERSION_WITH_BUSINESS_DB = "v3"
+
+BusinessDbFor = Callable[[Sequence[SearchHit], int], BusinessDbContext | None]
 
 
 def build_context(
@@ -65,6 +78,7 @@ def build_messages(
     persona: str | None = None,
     guardrails: str | None = None,
     memory: str | None = None,
+    business_db: str | None = None,
     status_of: StatusResolver | None = None,
 ) -> tuple[str, str]:
     """Render the versioned system + user pair for this question.
@@ -80,19 +94,28 @@ def build_messages(
     one addition of its own: it is explicitly not provenance. What an earlier
     turn cited does not back this answer.
 
-    Without ``memory`` this renders ``v1`` exactly as before; with it, ``v2``.
+    Without ``memory`` this renders ``v1`` exactly as before; with it and
+    without ``business_db``, ``v2``; with ``business_db``, ``v3``.
 
     || Renderiza el par system + user versionado para esta pregunta.
     ``persona`` y ``guardrails`` salen del perfil y se appendean después de
     las reglas, subordinados a ellas. ``memory`` es el bloque de conversación
-    y entra ÚLTIMO, con la misma subordinación más una propia: explícitamente
-    no es procedencia. Sin ``memory`` renderiza ``v1`` igual que antes; con
-    ella, ``v2``.
+    y entra ÚLTIMO entre los opcionales viejos, con la misma subordinación
+    más una propia: explícitamente no es procedencia. ``business_db`` es otra
+    autoridad y elige ``v3``. Sin ``memory`` renderiza ``v1``; con ella y
+    sin base, ``v2``.
     """
-    version = PROMPT_VERSION_WITH_MEMORY if memory else PROMPT_VERSION
+    if business_db:
+        version = PROMPT_VERSION_WITH_BUSINESS_DB
+    elif memory:
+        version = PROMPT_VERSION_WITH_MEMORY
+    else:
+        version = PROMPT_VERSION
     system_values: dict[str, object] = {"persona": persona, "guardrails": guardrails}
     if memory:
         system_values["memory"] = memory
+    if business_db:
+        system_values["business_db"] = business_db
 
     system = render_prompt(PROMPT_NAME, version, "system", **system_values)
     user = render_prompt(
@@ -113,8 +136,9 @@ def build_budgeted_messages(
     persona: str | None = None,
     guardrails: str | None = None,
     memory_for: Callable[[int], str | None] | None = None,
+    business_db_for: BusinessDbFor | None = None,
     status_of: StatusResolver | None = None,
-) -> tuple[str, str, BudgetedContext]:
+) -> tuple[str, str, BudgetedContext, BusinessDbContext | None]:
     """Fit the evidence to ``budget``, then render the prompt from what fit.
 
     The composed entry point every synthesis path uses. It exists so that no
@@ -127,34 +151,38 @@ def build_budgeted_messages(
     reported so the trim is visible rather than silent.
 
     ``memory_for`` is called with the tokens the evidence left unused and
-    returns the conversation-memory block, or ``None``. A callable rather
-    than a string because the ORDER matters: evidence is fitted first and
-    memory takes the remainder, never the other way round.
+    returns the conversation-memory block, or ``None``. ``business_db_for``
+    is called after that, with the kept hits and whatever is still unused.
+    Callables rather than strings because the ORDER is the invariant:
+    evidence → memory → base. None of the later blocks can take budget
+    away from an earlier one. That order lives here so no call site can
+    get it wrong one at a time.
 
     || Ajusta la evidencia a ``budget`` y arma el prompt con lo que entró.
     Es el punto de entrada que usa cada camino de síntesis, para que nadie
-    pueda renderizar un prompt y olvidarse del presupuesto. El
-    :class:`BudgetedContext` que devuelve no es un diagnóstico: ``kept`` es
-    lo que la respuesta puede citar —un chunk que nunca llegó al prompt no
-    respalda nada— y ``dropped`` es lo que hay que reportar para que el
-    recorte se vea en vez de pasar en silencio.
+    pueda renderizar un prompt y olvidarse del presupuesto. El orden de
+    ajuste es evidencia → memoria → base, y vive acá.
     """
-    # Evidence is fitted FIRST, against the whole budget; the conversation
-    # memory then gets whatever is left. That order is the invariant, and it
-    # lives here rather than in the caller so it cannot be got wrong one call
-    # site at a time: memory can never take budget away from a chunk.
-    # || La evidencia se ajusta PRIMERO contra el presupuesto entero; la
-    # memoria se queda con lo que sobre. Ese orden es el invariante y vive acá
-    # y no en quien llama, para que no se pueda equivocar de a un call site por
-    # vez: la memoria nunca puede sacarle presupuesto a un chunk.
+    # Evidence first against the whole budget; memory takes the remainder;
+    # the business-db block takes what is still left. The base block is last
+    # because it is the only one that can declare its own trim inside itself.
+    # || La evidencia primero; la memoria se queda con lo que sobre; la base,
+    # con lo que quede. La base va última porque es la única que puede
+    # declarar adentro suyo lo que perdió.
     budgeted = fit_to_budget(hits, budget, status_of=status_of)
-    memory = memory_for(budget - budgeted.tokens_used) if memory_for else None
+    remaining = budget - budgeted.tokens_used
+    memory = memory_for(remaining) if memory_for else None
+    if memory:
+        remaining -= count_tokens(memory)
+    db_context = business_db_for(budgeted.kept, remaining) if business_db_for else None
+    db_text = block_text(db_context) if db_context is not None else None
     system, user = build_messages(
         question,
         budgeted.kept,
         persona=persona,
         guardrails=guardrails,
         memory=memory,
+        business_db=db_text,
         status_of=status_of,
     )
-    return system, user, budgeted
+    return system, user, budgeted, db_context

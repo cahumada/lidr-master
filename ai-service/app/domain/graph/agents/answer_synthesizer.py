@@ -12,7 +12,7 @@ import structlog
 from langchain_core.runnables import RunnableConfig
 
 from app.config import get_settings
-from app.dependencies import resolve_navigation_tree
+from app.dependencies import business_db_for_run, resolve_navigation_tree
 from app.domain.graph.privilege import record_model_action
 from app.domain.schemas import AnswerAgentState
 from app.foundation.llm.wrapper import usage_payload
@@ -24,6 +24,7 @@ from app.generation.conversation.models import (
     Turn,
 )
 from app.generation.rag.answer import INSUFFICIENT_CONTEXT_MESSAGE
+from app.generation.rag.business_db.models import BusinessDbContext
 from app.generation.rag.context_budget import StatusResolver
 from app.generation.rag.prompt_builder import build_budgeted_messages
 from app.generation.rag.schemas import SearchHit
@@ -127,6 +128,10 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
     hits = [SearchHit.model_validate(hit) for hit in (state.get("hits") or [])]
     was_resynthesis = bool(state.get("pending_resynthesis"))
 
+    run_id = state.get("active_run_id")
+    run_env = state.get("active_run_env")
+    db_for = business_db_for_run(run_env, str(run_id) if run_id else None)
+
     if not hits:
         contribution = record_model_action(
             "answer_synthesizer",
@@ -140,18 +145,20 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
             "citations": [],
             "context_truncated": False,
             "dropped_hits": 0,
+            "business_db": _empty_business_db(run_env, run_id),
             "agent_contributions": [contribution],
         }
 
     started = perf_counter()
     settings = get_settings()
-    system, user, budgeted = build_budgeted_messages(
+    system, user, budgeted, db_context = build_budgeted_messages(
         query,
         hits,
         budget=settings.ANSWER_MAX_CONTEXT_TOKENS,
         persona=persona,
         guardrails=guardrails,
         memory_for=_memory_for(state, settings),
+        business_db_for=db_for,
         status_of=_status_of(state),
     )
 
@@ -179,6 +186,11 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
             "citations": [],
             "context_truncated": True,
             "dropped_hits": budgeted.dropped_count,
+            "business_db": (
+                db_context.model_dump(mode="json")
+                if db_context
+                else _empty_business_db(run_env, run_id)
+            ),
             "agent_contributions": [contribution],
         }
 
@@ -218,8 +230,21 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
         "context_truncated": budgeted.truncated,
         "dropped_hits": budgeted.dropped_count,
         "answer_truncated": completion.truncated,
+        "business_db": (db_context.model_dump(mode="json") if db_context else None),
         "pending_resynthesis": False,
         "pending_revalidation": was_resynthesis,
         "usage": usage_payload(completion.usage),
         "agent_contributions": [contribution],
     }
+
+
+def _empty_business_db(env: str | None, run_id: object) -> dict:
+    """Accounting when there were no codes to resolve.
+
+    || Contabilidad cuando no hubo códigos que resolver.
+    """
+    if not run_id:
+        return BusinessDbContext.absent("no_active_run", env=env).model_dump(mode="json")
+    return BusinessDbContext(
+        run_id=str(run_id), env=env, complete=True, block_emitted=False
+    ).model_dump(mode="json")
