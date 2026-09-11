@@ -32,6 +32,11 @@ export interface SearchHit {
   bullet_path: string | null;
   module_code: string | null;
   /**
+   * `content` answers something; `index` is a navigation node.
+   * || `content` responde algo; `index` es un nodo de navegación.
+   */
+  document_kind: string | null;
+  /**
    * Declared record status from `TABLE26` when the tree resolved it.
    * || Estado declarado del registro según `TABLE26` cuando el árbol lo resolvió.
    */
