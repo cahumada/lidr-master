@@ -362,12 +362,14 @@ function AwaitingReviewPanel({
   onNoteChange,
   onResume,
   pending,
+  role,
 }: {
   paused: AnswerAgenticPaused
   note: string
   onNoteChange: (value: string) => void
   onResume: (decision: "approve" | "reject") => void
   pending: boolean
+  role?: Role
 }) {
   return (
     <Alert className="border-amber-500/40 bg-amber-500/5">
@@ -410,6 +412,9 @@ function AwaitingReviewPanel({
         )}
 
         {paused.business_db && <BusinessDbPanel context={paused.business_db} />}
+        {paused.prompt_id && role === "administrador" && (
+          <PromptModal promptId={paused.prompt_id} />
+        )}
 
         <div className="flex flex-col gap-2">
           <Label htmlFor={`review-note-${paused.thread_id}`} className="text-xs">
@@ -629,6 +634,7 @@ function AssistantBody({
           onNoteChange={onNoteChange}
           onResume={onResume}
           pending={turn.pending}
+          role={role}
         />
         {turn.paused.citations.length > 0 && (
           <details className="rounded-lg border">
@@ -1282,6 +1288,7 @@ export function AnswerConsole({
               answer_truncated: body.answer_truncated ?? false,
               usage: body.usage,
               business_db: body.business_db ?? null,
+              prompt_id: body.prompt_id ?? null,
             },
             usage: body.usage,
           })
@@ -1308,6 +1315,7 @@ export function AnswerConsole({
               answer_truncated: body.answer_truncated ?? false,
               usage: body.usage,
               business_db: body.business_db ?? null,
+              prompt_id: body.prompt_id ?? null,
             },
           })
         } else {
