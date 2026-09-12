@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.dependencies import resolve_console_user
 from app.foundation.persistence.database import get_async_session
 from app.generation.conversation.models import (
     AnchorKind,
@@ -142,8 +143,21 @@ class SessionRename(BaseModel):
         return collapsed
 
 
-def _store(session: AsyncSession) -> SessionStore:
-    return SessionStore(session, ttl_days=get_settings().CONVERSATION_SESSION_TTL_DAYS)
+def _store(session: AsyncSession, owner_id: str | None) -> SessionStore:
+    """The store scoped to whoever is asking.
+
+    ``owner_id`` is positional and has no default on purpose: a route added
+    tomorrow cannot forget it, because forgetting it does not compile.
+
+    || El store acotado a quien pregunta. ``owner_id`` es posicional y sin
+    default a propósito: una ruta nueva no puede olvidarlo, porque olvidarlo
+    no compila.
+    """
+    return SessionStore(
+        session,
+        ttl_days=get_settings().CONVERSATION_SESSION_TTL_DAYS,
+        owner_id=owner_id,
+    )
 
 
 def _to_view(conversation: ConversationSession) -> SessionView:
@@ -196,9 +210,10 @@ def _to_view(conversation: ConversationSession) -> SessionView:
 @router.post("", response_model=SessionCreated, status_code=status.HTTP_201_CREATED)
 async def create_session(
     session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
+    owner_id: str | None = Depends(resolve_console_user),
 ) -> SessionCreated:
     """Start a conversation. || Arranca una conversación."""
-    conversation = await _store(session).create()
+    conversation = await _store(session, owner_id).create()
     return SessionCreated(session_id=conversation.session_id)
 
 
@@ -207,13 +222,19 @@ async def list_sessions(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
+    owner_id: str | None = Depends(resolve_console_user),
 ) -> list[SessionSummary]:
-    """Conversations the operator can reopen. Tenant-wide: the service has no user.
+    """The caller's own conversations, the ones they can reopen.
 
-    || Conversaciones que el operador puede reabrir. Del tenant: el servicio
-    no tiene usuario.
+    Not the tenant's. The caller arrives in ``X-Console-User``, which only the
+    BFF can send. A request without it sees the conversations that have no
+    owner either — absence of identity is its own bucket and never a wildcard.
+
+    || Las conversaciones propias de quien llama, las que puede reabrir. No las
+    del tenant. Quien llama viaja en ``X-Console-User``, que solo el BFF puede
+    mandar. Un request sin ese header ve las que tampoco tienen dueño.
     """
-    conversations = await _store(session).list_recent(limit=limit, offset=offset)
+    conversations = await _store(session, owner_id).list_recent(limit=limit, offset=offset)
     return [
         SessionSummary(
             session_id=item.session_id,
@@ -230,12 +251,13 @@ async def list_sessions(
 async def read_session(
     session_id: str,
     session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
+    owner_id: str | None = Depends(resolve_console_user),
 ) -> SessionView:
     """What this conversation remembers, and its transcript.
 
     || Lo que recuerda esta conversación, y su transcript.
     """
-    conversation = await _store(session).get(session_id)
+    conversation = await _store(session, owner_id).get(session_id)
     if conversation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_UNKNOWN)
     return _to_view(conversation)
@@ -246,9 +268,10 @@ async def rename_session(
     session_id: str,
     body: SessionRename,
     session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
+    owner_id: str | None = Depends(resolve_console_user),
 ) -> SessionView:
     """Rename a live session. || Renombra una sesión viva."""
-    conversation = await _store(session).rename(session_id, body.title)
+    conversation = await _store(session, owner_id).rename(session_id, body.title)
     if conversation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_UNKNOWN)
     return _to_view(conversation)
@@ -258,6 +281,7 @@ async def rename_session(
 async def delete_session(
     session_id: str,
     session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
+    owner_id: str | None = Depends(resolve_console_user),
 ) -> None:
     """Discard a conversation.
 
@@ -269,7 +293,7 @@ async def delete_session(
     está es el resultado que quería quien llama, no un error. «Empezar un hilo
     nuevo» no puede fallar porque el hilo anterior ya hubiera vencido.
     """
-    await _store(session).delete(session_id)
+    await _store(session, owner_id).delete(session_id)
 
 
 @router.delete("/{session_id}/anchors/{kind}/{value}", response_model=SessionView)
@@ -278,12 +302,19 @@ async def unpin_anchor(
     kind: AnchorKind,
     value: str,
     session: AsyncSession = Depends(get_async_session),  # noqa: B008 - FastAPI's required DI idiom.
+    owner_id: str | None = Depends(resolve_console_user),
 ) -> SessionView:
     """Remove one pinned constraint. || Quita una restricción fijada."""
-    store = _store(session)
+    store = _store(session, owner_id)
     conversation = await store.get(session_id)
     if conversation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_UNKNOWN)
     if conversation.unpin(kind, value):
         await store.save(conversation)
-    return await read_session(session_id, session)
+    # The owner is passed explicitly: calling the handler as a plain function
+    # bypasses FastAPI, so an omitted argument would arrive as the `Depends`
+    # object itself and match no owner at all.
+    # || El dueño va explícito: llamar al handler como función común saltea a
+    # FastAPI, así que un argumento omitido llegaría como el propio `Depends`
+    # y no matchearía con ningún dueño.
+    return await read_session(session_id, session, owner_id)

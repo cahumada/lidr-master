@@ -125,9 +125,18 @@ paralelo para lo que ya hace una action.
 | `api/answer/agentic/resume/route.ts` | `POST` — retoma un thread pausado. |
 | `api/answer/agentic/[threadId]/progress/route.ts` | `GET` — progreso en vivo de los nodos. |
 | `api/answer/session/route.ts` | `POST` — crea sesión de conversación (`201`). El id lo emite el servicio, nunca el cliente. |
-| `api/answer/sessions/route.ts` | `GET` — lista de conversaciones no vacías del tenant. Reenvía `limit`/`offset` si vienen; un `[]` es éxito. |
+| `api/answer/sessions/route.ts` | `GET` — lista de conversaciones no vacías **de quien está logueado**. Reenvía `limit`/`offset` si vienen; un `[]` es éxito. |
 | `api/answer/session/[sessionId]/route.ts` | `GET` memoria + transcript (`history`, `title`, timestamps); `PATCH` renombra; `DELETE` la descarta (204, idempotente). |
 | `api/answer/session/[sessionId]/anchors/[kind]/[value]/route.ts` | `DELETE` — quita un anchor. |
+
+Las cuatro rutas de sesión **no** llevan `requireAdmin`, y es a propósito:
+`/answer` no es una pantalla de administración y cualquiera con sesión la usa.
+Lo que las acota no es el rol sino el **dueño**: el BFF manda `X-Console-User`
+con el `User.id` de Auth.js —en `lib/ai-service/base-client.ts`, el único lugar
+que habla HTTP con el servicio— y el servicio filtra por él. Un rol de
+administración no amplía lo que se ve. Sin sesión no va header, y el servicio lee
+la ausencia como «las conversaciones que tampoco tienen dueño»: la falla es no
+ver nada, nunca ver las de todos.
 
 No hay Route Handler para `POST /answer` (un solo tiro). Ese camino lo
 usa el eval del servicio, no la consola.
@@ -177,7 +186,7 @@ los módulos de cada router. Swagger en `/docs`.
 | `POST /answer/agentic/resume` | Retoma un thread. |
 | `GET /answer/agentic/{thread_id}/progress` | Eventos de nodos. |
 | `POST /answer/session` | Emite `session_id`. |
-| `GET /answer/sessions` | Lista resúmenes del tenant (`title`, `turn_count`, timestamps). Sin vacías ni vencidas. Paginado `limit`/`offset`. |
+| `GET /answer/sessions` | Lista resúmenes **del dueño que dice `X-Console-User`** (`title`, `turn_count`, timestamps). Sin vacías ni vencidas. Paginado `limit`/`offset`. |
 | `GET /answer/session/{session_id}` | Memoria (hechos, anchors, ventana) más `title`, `history` y timestamps. |
 | `PATCH /answer/session/{session_id}` | Renombra. 422 si el título queda vacío. |
 | `DELETE /answer/session/{session_id}` | 204 idempotente. |

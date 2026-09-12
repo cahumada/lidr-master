@@ -27,6 +27,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import create_engine, delete, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import get_settings
@@ -34,6 +35,7 @@ from app.foundation.persistence.database import Base, to_async_url, to_sync_url
 from app.generation.conversation.models import (
     Anchor,
     ConversationFacts,
+    ConversationSession,
     HistoryTurn,
     Turn,
 )
@@ -118,6 +120,11 @@ def run_with_store(test_schema: str) -> Callable[[Callable[[SessionStore], Await
     The table is emptied before each scenario instead of rebuilt, so order
     never matters and the cost per test is one DELETE.
 
+    The store handed over is the OWNERLESS one, which is a real caller and not
+    a placeholder: evals and scripts talk to the service with no identity and
+    see exactly the conversations they create. Ownership across owners is
+    exercised by ``run_with_owned_stores``.
+
     || Corre una corutina contra un ``conversation_sessions`` vacío. La tabla
     se vacía antes de cada escenario en vez de reconstruirse, así el orden
     nunca importa y el costo por test es un DELETE.
@@ -142,7 +149,50 @@ def run_with_store(test_schema: str) -> Callable[[Callable[[SessionStore], Await
                 async with factory() as session:
                     await session.execute(delete(ConversationSessionRow))
                     await session.commit()
-                    return await scenario(SessionStore(session, ttl_days=TTL_DAYS))
+                    return await scenario(
+                        SessionStore(session, ttl_days=TTL_DAYS, owner_id=None)
+                    )
+            finally:
+                await engine.dispose()
+
+        return asyncio.run(_main())
+
+    return _run
+
+
+@pytest.fixture
+def run_with_owned_stores(test_schema: str):
+    """Run one coroutine with a factory that builds a store per owner.
+
+    All the stores share one database session, which is what makes the
+    assertions about isolation mean something: the separation being tested is
+    the ``WHERE``, not two connections that could not see each other anyway.
+
+    || Corre una corutina con una factory que arma un store por dueño. Todos
+    comparten una sola sesión de base, que es lo que hace que las aserciones
+    de aislamiento signifiquen algo: lo que se prueba es el ``WHERE``, no dos
+    conexiones que de todos modos no se verían.
+    """
+    settings = get_settings()
+
+    def _run(scenario):
+        async def _main():
+            engine = create_async_engine(
+                to_async_url(settings.DATABASE_URL),
+                connect_args={"server_settings": {"search_path": f"{test_schema},public"}},
+            )
+            try:
+                factory = async_sessionmaker(engine, expire_on_commit=False)
+                async with factory() as session:
+                    await session.execute(delete(ConversationSessionRow))
+                    await session.commit()
+
+                    def store_for(owner_id: str | None) -> SessionStore:
+                        return SessionStore(
+                            session, ttl_days=TTL_DAYS, owner_id=owner_id
+                        )
+
+                    return await scenario(store_for)
             finally:
                 await engine.dispose()
 
@@ -332,3 +382,148 @@ def test_a_backfilled_row_exposes_history_on_get(run_with_store):
         assert found.history[0].citations == []
 
     run_with_store(scenario)
+
+
+# --------------------------------------------------------------------------
+# Ownership || Pertenencia
+#
+# The leak these fix: before `owner_id`, every person logged into the console
+# listed, reopened, renamed and deleted everybody else's conversations.
+# || La fuga que arreglan: antes de `owner_id`, cualquiera logueado en la
+# consola listaba, reabría, renombraba y borraba las de todos.
+# --------------------------------------------------------------------------
+
+
+async def _closed_conversation(store: SessionStore) -> str:
+    """A conversation with one closed turn, so it shows up in listings.
+
+    || Una conversación con un turno cerrado, para que aparezca en listados.
+    """
+    conversation = await store.create()
+    conversation.append_history(
+        HistoryTurn(
+            question="¿qué hace CA014?",
+            resolved_question="¿qué hace CA014?",
+            answer="lo que sea",
+        )
+    )
+    await store.save(conversation)
+    return conversation.session_id
+
+
+def test_the_listing_of_one_owner_never_carries_another_owners_conversation(
+    run_with_owned_stores,
+):
+    """The regression test for the leak itself, named after what it prevents.
+
+    || El test de regresión de la fuga, nombrado por lo que previene.
+    """
+
+    async def scenario(store_for):
+        ada, bruno = store_for("user_ada"), store_for("user_bruno")
+        ada_session = await _closed_conversation(ada)
+        bruno_session = await _closed_conversation(bruno)
+
+        ada_listed = await ada.list_recent(limit=50, offset=0)
+        bruno_listed = await bruno.list_recent(limit=50, offset=0)
+
+        assert [item.session_id for item in ada_listed] == [ada_session]
+        assert [item.session_id for item in bruno_listed] == [bruno_session]
+
+    run_with_owned_stores(scenario)
+
+
+def test_another_owners_conversation_reads_as_absent(run_with_owned_stores):
+    async def scenario(store_for):
+        ada, bruno = store_for("user_ada"), store_for("user_bruno")
+        bruno_session = await _closed_conversation(bruno)
+
+        assert await ada.get(bruno_session) is None
+
+    run_with_owned_stores(scenario)
+
+
+def test_another_owners_conversation_cannot_be_renamed_or_deleted(run_with_owned_stores):
+    async def scenario(store_for):
+        ada, bruno = store_for("user_ada"), store_for("user_bruno")
+        bruno_session = await _closed_conversation(bruno)
+
+        assert await ada.rename(bruno_session, "mío ahora") is None
+        assert await ada.delete(bruno_session) is False
+
+        # Still there, still Bruno's, still named what he named it.
+        # || Sigue ahí, sigue siendo de Bruno, y con su nombre.
+        survivor = await bruno.get(bruno_session)
+        assert survivor is not None
+        assert survivor.title != "mío ahora"
+
+    run_with_owned_stores(scenario)
+
+
+def test_no_identity_is_a_bucket_and_not_a_wildcard(run_with_owned_stores):
+    """The requirement that breaks most easily on a refactor.
+
+    Absence of identity must see the ownerless conversations and NOTHING else.
+    If it ever meant "no filter", the whole protection would be turned off by
+    dropping a header.
+
+    || El requisito que más fácil se rompe al refactorizar: la ausencia de
+    identidad ve las conversaciones sin dueño y NADA más.
+    """
+
+    async def scenario(store_for):
+        nobody, ada = store_for(None), store_for("user_ada")
+        orphan = await _closed_conversation(nobody)
+        ada_session = await _closed_conversation(ada)
+
+        listed = [item.session_id for item in await nobody.list_recent(limit=50, offset=0)]
+        assert listed == [orphan]
+        assert await nobody.get(ada_session) is None
+
+        # And the owner does not inherit the ownerless ones either.
+        # || Y el dueño tampoco hereda las que no tienen dueño.
+        assert await ada.get(orphan) is None
+
+    run_with_owned_stores(scenario)
+
+
+def test_saving_cannot_take_over_an_existing_conversation(run_with_owned_stores):
+    """A save under somebody else's id must not change the row's owner.
+
+    || Guardar con el id de otro no puede cambiarle el dueño a la fila.
+    """
+
+    async def scenario(store_for):
+        ada, bruno = store_for("user_ada"), store_for("user_bruno")
+        bruno_session = await _closed_conversation(bruno)
+
+        stolen = ConversationSession(session_id=bruno_session, owner_id="user_ada")
+        stolen.append_history(
+            HistoryTurn(question="mía", resolved_question="mía", answer="mía")
+        )
+        # The row already exists under another owner, so the INSERT this save
+        # falls back to collides on the primary key instead of taking it over.
+        # || La fila ya existe con otro dueño, así que el INSERT al que cae
+        # este save choca contra la PK en vez de quedársela.
+        with pytest.raises(IntegrityError):
+            await ada.save(stolen)
+
+    run_with_owned_stores(scenario)
+
+
+def test_the_ttl_sweep_reaches_every_owner(run_with_owned_stores):
+    """Expiring is the clock's business, not the caller's.
+
+    || Vencer es del reloj, no de quien pregunta.
+    """
+
+    async def scenario(store_for):
+        ada, bruno = store_for("user_ada"), store_for("user_bruno")
+        ada_session = await _closed_conversation(ada)
+        bruno_session = await _closed_conversation(bruno)
+        await _age(ada, ada_session, TTL_DAYS + 1)
+        await _age(bruno, bruno_session, TTL_DAYS + 1)
+
+        assert await ada.purge_expired() == 2
+
+    run_with_owned_stores(scenario)

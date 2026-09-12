@@ -57,17 +57,27 @@ id, never an email: the service SHALL NOT learn who anybody is to
 resolve this authorization. `owner_id` SHALL NOT appear in
 `SessionSummary` or `SessionView`.
 
-Every route that takes a `session_id` SHALL check ownership, not only
+Every route that takes a `session_id` SHALL scope by owner, not only
 the list: `GET`, `PATCH` and `DELETE` of `/answer/session/{id}`, the
 anchor `DELETE`, and both synthesis paths
 (`/answer/agentic/start` and `resume`). Posting a turn into somebody
 else's conversation is the same leak wearing a different hat.
 
-Somebody else's conversation SHALL be **404**, the same `_UNKNOWN` the
-router already returns for unknown and for expired. A 403 would
-confirm the id exists, which is information about another person's
-activity. The TTL sweep SHALL NOT filter by owner: expiring is the
-clock's business, not the caller's.
+On the session routes, somebody else's conversation SHALL be **404** —
+the same `_UNKNOWN` the router already returns for unknown and for
+expired. A 403 would confirm the id exists, which is information about
+another person's activity.
+
+On the synthesis paths a foreign `session_id` SHALL behave exactly like
+an unknown one: the turn SHALL be answered without memory and nothing
+SHALL be appended to that conversation. This keeps the contract
+`open_turn` already has for an absent or expired id, where a mid-
+conversation 404 would turn housekeeping into a dead end — and the
+property that matters (no foreign transcript is read, no foreign
+transcript is written) holds either way.
+
+The TTL sweep SHALL NOT filter by owner: expiring is the clock's
+business, not the caller's.
 
 #### Scenario: The list is the caller's own
 - **WHEN** two owners each have a conversation with closed turns
@@ -82,7 +92,7 @@ clock's business, not the caller's.
 
 #### Scenario: A turn cannot be posted into a conversation not one's own
 - **WHEN** `/answer/agentic/start` is called with another owner's `session_id`
-- **THEN** the call responds 404
+- **THEN** the turn is answered without that conversation's memory
 - **AND** no turn is appended to that conversation
 
 #### Scenario: No identity is not a wildcard

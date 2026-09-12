@@ -213,16 +213,17 @@ corpus generado. El repo trae el pipeline, no los datos.
   distingue por `source_type` pero no hay un segundo tipo todavía.
 - **Autenticación**: la consola autentica a las personas y el servicio exige un
   token compartido a quien lo llama. Eso corta el acceso **anónimo**, no el
-  gasto ni la atribución: quien tenga el token puede llamar `POST /answer` sin
-  tope, y el ledger atribuye cada llamada al portador —el BFF— y no a la persona
-  que preguntó, porque el servicio no tiene identidad de usuario.
+  gasto: quien tenga el token puede llamar `POST /answer` sin tope. La identidad
+  de quien pregunta sí llega al servicio, pero **solo para acotar conversaciones
+  por dueño** (`X-Console-User`, ver `add-conversation-ownership`); el ledger de
+  consumo sigue atribuyendo cada llamada al portador —el BFF— y no a la persona.
+  Y el tenant sigue siendo un setting del despliegue, no algo por usuario.
 - **Despliegue de las plataformas**: el aislamiento por rutas está hecho en CI
   (`dorny/paths-filter`) pero **no** en los dashboards, así que un commit que
   toca un solo proyecto todavía puede producir un deploy del otro. Es
   configuración de Railway (*Watch Paths*) y de Vercel (*Ignored Build Step*),
   no código.
-- **Próximo paso más claro**: los `openspec/changes/` en curso —cerrar la
-  autenticación de la consola y la selección de corrida del mirror—. El eval
+- **Próximo paso más claro**: los `openspec/changes/` en curso. El eval
   multi-turno está implementado, corrido y con su golden set revisado. El
   despliegue ya está verificado de punta a punta.
 
