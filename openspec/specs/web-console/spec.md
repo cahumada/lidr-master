@@ -974,3 +974,242 @@ token que hay identidad de usuario en el servicio.
 - **AND** encuentra dicho que cerrar el servicio no le da identidad de usuario
 
 <!-- Promovido de: add-console-authentication -->
+### Requirement: El turno de respuesta muestra de dónde salió el contexto de base
+El servicio devuelve `business_db` en la respuesta desde `add-business-db-context`
+y la consola hoy lo tira: `lib/ai-service/types.ts` no tiene el campo y ninguna
+pantalla lo lee. El operador no puede saber si la respuesta se apoyó en la base,
+de qué corrida, ni qué quedó afuera.
+
+La pantalla de respuesta SHALL mostrar, para el turno que trae `business_db` con
+bloque emitido, la corrida y el ambiente de los que salió, y por cada código
+anclado la cadena **código → rutinas → tablas**, con el rol de cada tabla.
+
+La cadena SHALL mostrarse colapsada por defecto: es procedencia, no la respuesta.
+Un turno sin bloque de base SHALL NOT mostrar la sección, y SHALL NOT mostrarse
+como si el bloque hubiera salido vacío.
+
+#### Scenario: La cadena es visible
+- **WHEN** un turno vuelve con `business_db` y bloque emitido
+- **THEN** el turno ofrece ver la corrida, el ambiente y los códigos anclados
+- **AND** cada tabla se ve con su rol y con las rutinas que la justifican
+
+#### Scenario: Colapsada por defecto
+- **WHEN** el turno se renderiza
+- **THEN** la cadena no está desplegada
+- **AND** desplegarla no vuelve a pedir la respuesta
+
+#### Scenario: Turno sin bloque de base
+- **WHEN** `business_db` viene ausente, o con el bloque sin emitir
+- **THEN** el turno no muestra la sección
+
+#### Scenario: Servicio anterior
+- **WHEN** la respuesta no trae el campo
+- **THEN** el turno se renderiza igual, sin la sección
+
+### Requirement: Un contexto de base incompleto se muestra como incompleto, con su causa
+Una respuesta apoyada en un catálogo recortado presentado como entero borra
+información de negocio en silencio — es el mismo defecto que el servicio ya trata
+con su vocabulario cerrado de causas, y arreglarlo solo del lado del servicio lo
+deja a medio arreglar.
+
+Cuando `business_db.complete` es false, la pantalla SHALL avisarlo con el mismo
+peso visual que el aviso de evidencia recortada, y el aviso SHALL nombrar la causa
+que vino del servicio. Un rol `unknown` SHALL verse como `unknown` y no como una
+tabla sin rol.
+
+La consola SHALL NOT traducir una causa que no conoce a un texto genérico: una
+causa nueva se muestra con su nombre, porque el vocabulario es cerrado del lado
+del servicio y una etiqueta desconocida es un despliegue desfasado, no un error
+del usuario.
+
+**`dropped_codes` también es una causa y también se nombra.** Es la única
+incompletitud que no viaja como causa de una resolución —el tope descartó esos
+códigos *antes* de resolver nada para ellos, así que no hay resolución que la
+lleve—, y leyendo solo las causas el aviso caía a un texto genérico justo en el
+caso más común. Un `complete: false` que el servicio no explique con ninguna de
+las dos vías SHALL reportarse como defecto del servicio, no como un aviso vago.
+
+#### Scenario: Contexto incompleto
+- **WHEN** un turno vuelve con `complete` en false
+- **THEN** se muestra un aviso de que el contexto de base quedó incompleto
+- **AND** el aviso nombra las causas que trajo la respuesta
+
+#### Scenario: Aristas sin construir
+- **WHEN** la causa es `edges_not_built`
+- **THEN** el aviso dice que la corrida activa no tiene las tablas por dependencia construidas
+- **AND** enlaza a la pantalla de corridas
+
+#### Scenario: Rol desconocido
+- **WHEN** una tabla viene con rol `unknown`
+- **THEN** se muestra como desconocido
+- **AND** no se muestra con el rol de otra tabla ni sin rol
+
+#### Scenario: Causa que la consola no conoce
+- **WHEN** la respuesta trae una causa que el cliente no tiene mapeada
+- **THEN** se muestra el nombre de la causa tal como vino
+
+#### Scenario: Códigos que el tope dejó afuera
+- **WHEN** el contexto viene incompleto solo porque `dropped_codes` no está vacío
+- **THEN** el aviso nombra el tope de códigos anclados
+- **AND** lista los códigos que quedaron afuera
+
+#### Scenario: Incompletitud que nadie nombra
+- **WHEN** `complete` es false y no hay ni causas ni `dropped_codes`
+- **THEN** el aviso dice que el servicio no nombró la causa
+- **AND** NO se muestra un texto genérico como si fuera una explicación
+
+### Requirement: La pantalla de corridas dice si una corrida tiene sus aristas construidas
+Las tablas por dependencia se materializan en un batch por corrida. Activar una
+corrida para la que ese batch nunca corrió deja el bloque de base sin tablas, y
+hoy nada lo anticipa: el administrador se entera cuando una respuesta sale pobre.
+
+La pantalla de corridas SHALL mostrar, por cada corrida listada, si tiene aristas
+construidas y de cuándo. Activar una corrida sin aristas SHALL pedir confirmación
+que diga qué se degrada, y SHALL NOT bloquearse: puede ser deliberado mientras el
+batch corre.
+
+#### Scenario: Estado por corrida
+- **WHEN** el administrador abre la pantalla de corridas
+- **THEN** cada fila dice si tiene aristas construidas y cuándo
+
+#### Scenario: Activar una corrida sin aristas
+- **WHEN** el administrador activa una corrida sin aristas construidas
+- **THEN** se le pide confirmación
+- **AND** el texto dice que las respuestas no van a traer tablas por dependencia
+
+#### Scenario: No se bloquea
+- **WHEN** el administrador confirma
+- **THEN** la corrida se activa
+
+### Requirement: La pantalla de flujo declara el anclaje de base como paso de la resolución
+`/agents/flow` existe para mostrar cómo resuelve el servicio, y arma sus nodos
+desde `config.flow` sin declarar nada en TypeScript. A partir del anclaje por
+dependencias la resolución tiene un paso que el diagrama no nombra: el contexto de
+base que entra al sintetizador sin pasar por un agente.
+
+La pantalla SHALL mostrar ese paso cuando el servicio lo declare en `GET /config`,
+con lo que recibe (los códigos de los hits) y lo que deja (las tablas con su rol).
+SHALL NOT dibujarlo desde una constante local: si el servicio no lo declara, la
+pantalla no lo muestra.
+
+#### Scenario: El paso sale del servicio
+- **WHEN** `GET /config` declara el paso de anclaje de base
+- **THEN** la pantalla lo muestra en el recorrido, con su par entra → sale
+
+#### Scenario: Servicio que no lo declara
+- **WHEN** `GET /config` no trae ese paso
+- **THEN** la pantalla no lo dibuja
+- **AND** el resto del flujo se muestra igual
+
+#### Scenario: No es un nodo del grafo
+- **WHEN** el usuario mira el diagrama de aristas
+- **THEN** el paso de anclaje no aparece como un especialista con vuelta al orquestador
+
+<!-- Promovido de: add-dependency-table-anchoring -->
+### Requirement: Un administrador puede ver el contexto completo que se le envió al modelo
+La consola muestra la evidencia recuperada, la memoria aplicada y el contexto de
+base, cada uno por separado y ya interpretado. El prompt real —con sus bloques
+numerados, su persona, sus guardrails y el orden en que quedaron— no lo ve nadie,
+y reconstruirlo a mano es adivinar justo lo que produce las respuestas malas.
+
+La pantalla de respuesta SHALL ofrecer, en un turno que trae `prompt_id`, abrir
+el contexto completo en un modal. El modal SHALL pedir el texto al abrirse y no
+antes: son unos 60 KB por turno y casi nunca se miran.
+
+El modal SHALL mostrar el `system` y el `user` como texto plano preformateado,
+separados y rotulados, más con qué se armaron: el modelo, el perfil y el
+presupuesto. SHALL NOT renderizarlo como markdown — el prompt se audita por lo
+que dice literalmente, y formatearlo esconde justo los caracteres que importan.
+
+#### Scenario: Abrir el contexto
+- **WHEN** un administrador abre el modal en un turno con `prompt_id`
+- **THEN** ve el `system` y el `user` tal como se enviaron, rotulados por separado
+- **AND** ve el modelo, el perfil y el presupuesto con que se armaron
+
+#### Scenario: Se pide al abrir
+- **WHEN** el turno se renderiza y el modal está cerrado
+- **THEN** el texto del prompt no se pidió
+
+#### Scenario: Literal, no markdown
+- **WHEN** el prompt contiene markdown o etiquetas
+- **THEN** se ven como texto
+- **AND** no se renderizan
+
+#### Scenario: Turno sin prompt
+- **WHEN** el turno no trae `prompt_id` —no hubo síntesis, o el snapshot no lo trajo—
+- **THEN** no se ofrece el link
+
+#### Scenario: Un prompt que ya venció
+- **WHEN** el servicio responde 404 porque la retención lo borró
+- **THEN** el modal lo dice
+- **AND** no se muestra un modal vacío como si el prompt estuviera en blanco
+
+### Requirement: El rechazo por rol DEBE estar en el servidor, no en si se pinta el link
+El prompt lleva la persona y los guardrails —cómo responde el producto— más el
+contenido íntegro del corpus recuperado. Sólo el rol `administrador` puede verlo.
+
+`/answer` NO es una pantalla de administración: cualquiera con sesión la abre. El
+gate por directorio de `(admin)/` no la alcanza, así que ocultar el link SHALL
+ser presentación y no protección. La ruta que sirve el prompt SHALL resolver la
+sesión en el servidor y SHALL responder 403 a quien no sea `administrador`,
+**antes** de llamar al servicio IA.
+
+#### Scenario: Un usuario no ve el link
+- **WHEN** un `usuario` mira un turno con `prompt_id`
+- **THEN** no se ofrece abrir el contexto
+
+#### Scenario: Un usuario que pide la ruta igual
+- **WHEN** un `usuario` llama a la ruta del prompt directamente
+- **THEN** responde 403
+- **AND** el servicio IA no se llegó a llamar
+
+#### Scenario: Sin sesión
+- **WHEN** la ruta se llama sin sesión resuelta
+- **THEN** responde 403
+
+#### Scenario: Un rol que la consola no conoce
+- **WHEN** el token trae un rol desconocido
+- **THEN** se trata como el rol menos privilegiado
+- **AND** responde 403
+
+<!-- Promovido de: add-prompt-inspection -->
+### Requirement: El diccionario de una tabla se abre desde el contexto de base
+El panel de contexto de base nombra las tablas que toca cada transacción y, con
+este change, qué es cada una. Lo que no cabe en el prompt —las columnas, sus
+descripciones, la clave primaria, las foráneas y los índices— es justamente lo
+que hace falta para entender una tabla.
+
+El nombre de cada tabla del panel SHALL abrir su diccionario. El contenido SHALL
+pedirse al abrir y no antes: una tabla puede tener 132 columnas y en un turno hay
+hasta doce tablas por código.
+
+La ficha SHALL estar disponible para cualquier sesión, sin exigir
+`administrador`: el bloque de base ya se muestra en el turno a quien sea, y la
+ficha es más de la misma autoridad. El prompt completo sigue siendo lo único
+restringido, porque lleva la persona y los guardrails.
+
+#### Scenario: Abrir el diccionario
+- **WHEN** el usuario abre una tabla del panel de contexto de base
+- **THEN** ve sus columnas con descripción y tipo, su clave primaria, sus
+  foráneas con la tabla destino, y sus índices
+
+#### Scenario: Se pide al abrir
+- **WHEN** el panel se renderiza y ninguna tabla está abierta
+- **THEN** no se pidió ningún diccionario
+
+#### Scenario: Una tabla sin ficha
+- **WHEN** el servicio responde 404 porque la corrida no tiene esa tabla
+- **THEN** la ficha lo dice
+- **AND** no se muestra vacía como si la tabla no tuviera columnas
+
+#### Scenario: Una tabla ancha sigue siendo legible
+- **WHEN** la tabla tiene más columnas de las que entran en pantalla
+- **THEN** la lista scrollea en su propio contenedor
+- **AND** se puede filtrar por nombre de columna
+
+#### Scenario: Columnas no extraídas
+- **WHEN** la corrida no extrajo las columnas de esa tabla
+- **THEN** la ficha lo dice explícitamente
+- **AND** no se muestra como una tabla sin columnas
+
+<!-- Promovido de: add-table-dictionary-panel -->

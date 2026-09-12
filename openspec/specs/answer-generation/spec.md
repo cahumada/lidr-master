@@ -90,6 +90,18 @@ localmente para todos los proveedores del catálogo.
 El presupuesto acota el bloque de contexto, no el prompt entero. El system
 prompt y la persona quedan afuera del cálculo.
 
+**Adentro de ese techo entran tres bloques, en un orden fijo**: primero la
+evidencia recuperada, después la memoria de conversación, y último el bloque de
+lo que declara la base fuente. Ninguno de los dos últimos se cobra encima del
+techo, y ninguno puede quitarle presupuesto a uno anterior. El orden vive en
+`build_budgeted_messages` y no en cada call site, para que no se pueda equivocar
+de a un llamador por vez.
+
+El orden no es arbitrario: un chunk desplazado cuesta una cita, un turno de
+memoria desplazado rompe el hilo de una conversación, y el bloque de base es el
+único de los tres que puede **declarar adentro suyo** lo que perdió — por eso es
+el que se recorta primero.
+
 #### Scenario: La evidencia entra completa
 - **WHEN** el costo en tokens de todos los hits es menor o igual al
   presupuesto
@@ -111,6 +123,18 @@ prompt y la persona quedan afuera del cálculo.
 - **WHEN** `ANSWER_MAX_CONTEXT_TOKENS` se configura en 0 o negativo
 - **THEN** la validación de `Settings` falla en el arranque
 - **AND** el valor NO se interpreta como «sin límite»
+
+#### Scenario: El orden de ajuste de los tres bloques
+- **WHEN** se arma el prompt con evidencia, memoria y bloque de base
+- **THEN** la evidencia se ajusta primero contra el presupuesto entero
+- **AND** la memoria toma lo que quede después de la evidencia
+- **AND** el bloque de base toma lo que quede después de la memoria
+
+#### Scenario: El bloque de base no desplaza nada
+- **WHEN** la evidencia y la memoria consumieron todo el presupuesto
+- **THEN** el bloque de base no se emite
+- **AND** ningún chunk ni turno se descarta para dejarlo entrar
+- **AND** la respuesta declara que el bloque quedó afuera por presupuesto
 
 ### Requirement: El descarte DEBE repartirse entre las subconsultas
 Cuando la pregunta se descompuso, los hits de todas las subconsultas se
@@ -200,10 +224,21 @@ alcanza. Cada chunk entra al user prompt con su procedencia visible —para
 que el modelo sepa qué códigos copiar al cierre—, no como texto pelado, y
 el user prompt no le pide citar en el cuerpo.
 
-Las cinco reglas siguen primero. Persona, guardrails de operador y el
-bloque de memoria (cuando hay) se appendean después y se declaran
-subordinados: no pueden pedir inventar, omitir el cierre de fuentes ni
-salir del contexto.
+Las cinco reglas siguen primero. Persona, guardrails de operador, el bloque de
+memoria (cuando hay) y el bloque de lo que declara la base (cuando hay) se
+appendean después y se declaran subordinados: no pueden pedir inventar, omitir el
+cierre de fuentes ni salir del contexto.
+
+El bloque de base entra **rotulado como otra autoridad**: no es documentación
+funcional, es lo que la base del sistema declara hoy. Ante una diferencia entre
+las dos, el prompt pide señalarla y no elegir una — y pide no afirmar que un
+catálogo está completo cuando el propio bloque declara que quedó algo afuera.
+
+Las versiones del prompt: `v1` sin memoria y sin base, `v2` con memoria, `v3` con
+bloque de base —lleve memoria o no—. `v1` y `v2` quedan congelados y siguen
+renderizando byte a byte, porque una respuesta producida con el bloque de base no
+es comparable con una producida sin él y el eval tiene que poder distinguir dos
+corridas por algo más que una esperanza.
 
 #### Scenario: El contexto lleva procedencia
 - **WHEN** se arma el prompt con un hit de `CA014` sección `Validaciones`
@@ -229,6 +264,21 @@ salir del contexto.
 - **THEN** el texto no pide citar con `[document_id · section]` en el cuerpo
 - **AND** pide el cierre `Fuentes citadas:`
 
+#### Scenario: El bloque de base elige la versión del prompt
+- **WHEN** se renderiza el prompt con bloque de base
+- **THEN** la versión renderizada es `v3`
+- **AND** una corrida sin bloque de base sigue renderizando `v1` o `v2`
+
+#### Scenario: `v3` sin bloque de base no cambia el texto
+- **WHEN** se renderiza `v3` sin bloque de base y con memoria
+- **THEN** el texto es el mismo que produce `v2` con esa memoria
+
+#### Scenario: El bloque de base se declara subordinado y con su autoridad
+- **WHEN** se renderiza `answer/v3/system.j2` con bloque de base
+- **THEN** el texto declara que ese bloque no es documentación funcional
+- **AND** pide reportar la diferencia con la especificación en vez de elegir una
+- **AND** pide no afirmar completitud cuando el bloque declara que falta algo
+- **AND** las reglas de anclaje siguen apareciendo antes
 ### Requirement: Operator guardrails append after the grounding rules
 When a synthesizer profile carries `guardrails`, the rendered system
 prompt SHALL include that text after the five grounding rules, in a
