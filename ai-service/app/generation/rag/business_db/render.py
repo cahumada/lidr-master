@@ -12,6 +12,7 @@ never loses the routines that justify it -- without them it stops being citable.
 from __future__ import annotations
 
 from app.generation.rag.business_db.models import (
+    DECLARED_TRUNCATION,
     INCOMPLETE_OUTCOMES,
     BusinessDbContext,
     CodeResolution,
@@ -375,7 +376,13 @@ def _completeness_lines(
     named = False
     for resolution in resolutions:
         for cause in resolution.causes:
-            if cause not in INCOMPLETE_OUTCOMES:
+            # Declared truncations are named here too, so a reader scanning
+            # this section does not have to re-read every table list to notice
+            # a cap -- but they do NOT make the context incomplete: the section
+            # above states the real count, and the amount is exact.
+            # || Las truncaciones declaradas se nombran acá igual, pero NO
+            # vuelven incompleto el contexto: arriba está el conteo real.
+            if cause not in INCOMPLETE_OUTCOMES and cause not in DECLARED_TRUNCATION:
                 continue
             target = resolution.table_name or resolution.code
             lines.append(f"- {target} ({resolution.code}): {_CAUSE_LINE[cause]} ({cause}).")

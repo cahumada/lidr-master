@@ -63,7 +63,17 @@ const ROLE_CLASS: Record<DependencyTable["role"], string> = {
 
 /** Causes the service counts as incompleteness. Kept as a list so a cause the
  * console does not know still shows up in the notice.
- * || Causas que el servicio cuenta como incompletitud. */
+ *
+ * `dependency_tables_capped` is deliberately NOT here: it is a DECLARED
+ * truncation — the section states "Tablas que toca: 17, se muestran 12" and the
+ * twelve are the highest-coverage ones — while the causes below are mute
+ * absences. Measured, the cap bit 26% of the codes that have tables and a turn
+ * anchors about ten, so counting it raised the notice on nearly every answer,
+ * and a notice that always fires is one nobody reads.
+ *
+ * || `dependency_tables_capped` NO está acá a propósito: es un recorte
+ * DECLARADO con su conteo exacto, no una ausencia muda. Medido, mordía el 26%
+ * de los códigos y el aviso saltaba en casi toda respuesta. */
 const INCOMPLETE: ResolutionOutcome[] = [
   "table_not_in_dictionary",
   "table_not_loaded",
@@ -72,7 +82,6 @@ const INCOMPLETE: ResolutionOutcome[] = [
   "date_unparsed",
   "dropped_by_budget",
   "edges_not_built",
-  "dependency_tables_capped",
 ]
 
 function causeText(cause: ResolutionOutcome): string {

@@ -78,6 +78,21 @@ DECLARED_ABSENT: frozenset[ResolutionOutcome] = frozenset(
         # a catalog that arrived short. It is visible, and it is not a loss.
         # || Un rol que las reglas no derivaron es un «no sé» declarado.
         "role_unknown",
+        # A DECLARED truncation, and that is what separates it from the causes
+        # below. The section says, in words, "Tablas que toca: 17, se muestran
+        # 12", and the twelve are the highest-coverage ones: nothing is hidden,
+        # the amount is exact and the order is known. `table_not_loaded` and
+        # `edges_not_built` are mute absences -- you cannot tell what you lost.
+        #
+        # Measured, the cap bit 26% of the codes that have tables, and a turn
+        # anchors about ten of them, so treating it as incompleteness raised
+        # the alarm on nearly every answer. An alarm that always fires teaches
+        # the operator to ignore it, and then `edges_not_built` goes unread on
+        # the day it matters.
+        # || Un recorte DECLARADO: el bloque dice «toca 17, se muestran 12» y
+        # las 12 son las de mayor cobertura. Medido, mordía el 26% de los
+        # códigos y el aviso saltaba en casi toda respuesta.
+        "dependency_tables_capped",
     }
 )
 
@@ -96,8 +111,17 @@ INCOMPLETE_OUTCOMES: frozenset[ResolutionOutcome] = frozenset(
         # run whose edges were never built cannot degrade an answer in silence.
         # || El batch nunca corrió para la corrida activa: había algo y no llegó.
         "edges_not_built",
-        "dependency_tables_capped",
     }
+)
+
+# Truncations the block states inline, with the real count. They are NOT
+# incompleteness -- see `DECLARED_ABSENT` -- but the closing section still
+# names them, so a reader scanning "what could not be brought" does not have to
+# re-read every table list to notice a cap.
+# || Recortes que el bloque declara inline con su conteo real. NO son
+# incompletitud, pero la sección de cierre igual los nombra.
+DECLARED_TRUNCATION: frozenset[ResolutionOutcome] = frozenset(
+    {"dependency_tables_capped"}
 )
 
 ValidityMechanism = Literal["status", "period", "both", "none"]

@@ -120,7 +120,52 @@ class TestTrim:
         resolution = rendered.resolutions[0]
         if len(resolution.dependency_tables) < 8:
             assert "dependency_tables_capped" in resolution.causes
-            assert rendered.complete is False
+
+
+class TestACapIsDeclaredNotIncomplete:
+    """A stated, counted, ordered truncation is not a mute absence.
+
+    The section says "Tablas que toca: 17, se muestran 12" and the twelve are
+    the highest-coverage ones. Measured, the cap bit 26% of the codes that have
+    tables and a turn anchors about ten of them, so counting it as
+    incompleteness raised the notice on nearly every answer -- and then
+    `edges_not_built` goes unread on the day it matters.
+
+    || Un recorte declarado, contado y ordenado no es una ausencia muda.
+    """
+
+    def _capped(self) -> BusinessDbContext:
+        return _context([_table("COVER")], total=17)
+
+    def test_a_cap_alone_leaves_the_context_complete(self) -> None:
+        context = self._capped()
+        context.resolutions[0].causes.append("dependency_tables_capped")
+
+        assert context.with_completeness().complete is True
+
+    def test_the_cap_is_still_named_in_the_closing_section(self) -> None:
+        # Not incompleteness, and still not silent: a reader scanning the
+        # section should not have to re-read every table list.
+        # || No es incompletitud, y tampoco es silencio.
+        context = self._capped()
+        context.resolutions[0].causes.append("dependency_tables_capped")
+        text = block_text(render_block(context, budget=4096)) or ""
+
+        assert "dependency_tables_capped" in text
+
+    def test_a_mute_absence_still_raises_it(self) -> None:
+        context = self._capped()
+        context.resolutions[0].causes.append("edges_not_built")
+
+        assert context.with_completeness().complete is False
+
+    def test_the_two_sets_do_not_overlap(self) -> None:
+        from app.generation.rag.business_db.models import (
+            DECLARED_TRUNCATION,
+            INCOMPLETE_OUTCOMES,
+        )
+
+        assert not (DECLARED_TRUNCATION & INCOMPLETE_OUTCOMES)
 
 
 class TestDroppedCodesAreNamed:

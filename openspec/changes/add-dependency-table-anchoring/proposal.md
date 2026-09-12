@@ -117,6 +117,14 @@ justamente lo que hace auditable la respuesta.
   `code_too_short_to_anchor`, `dependency_tables_capped`, `role_unknown`. El
   primero es el que importa operativamente — activar una corrida cuyas aristas
   nunca se construyeron no puede degradar la respuesta en silencio.
+- **`dependency_tables_capped` NO cuenta como incompletitud**, y eso es una
+  corrección medida sobre la marcha. Es un recorte **declarado**: la sección dice
+  *«toca 17, se muestran 12»* y las doce son las de mayor cobertura, mientras que
+  `edges_not_built` y `table_not_loaded` son ausencias mudas. El tope de 12
+  recorta el 26% de los 460 códigos con tablas y un turno ancla unos diez, así
+  que contarlo encendía el aviso en casi toda respuesta — y un aviso que salta
+  siempre deja de leerse. Sigue viajando en `causes` y sigue nombrándose en el
+  cierre del bloque.
 - **`NG_IDENTI` no se toca.** Sigue siendo el camino del tipo 10 y las dos vías
   conviven: son autoridades distintas sobre cosas distintas.
 - **La consola refleja el flujo real.** Tres pantallas: el turno de respuesta

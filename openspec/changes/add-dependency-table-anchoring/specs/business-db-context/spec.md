@@ -249,6 +249,35 @@ justifican: si el techo no alcanza para eso, se recorta el código entero.
 - **WHEN** la sección de tablas se recorta por presupuesto
 - **THEN** se registra como `dependency_tables_capped`
 - **AND** la sección lleva el conteo real, no el de lo mostrado
+- **AND** eso NO vuelve incompleto el contexto
+
+### Requirement: Un recorte declarado NO DEBE contar como incompletitud
+`dependency_tables_capped` no es una ausencia muda: la sección dice con todas
+las letras *«Tablas que toca: 17, se muestran 12»* y las doce son las de mayor
+cobertura. El conteo es exacto y el orden es conocido, así que un lector sabe
+cuánto le falta y de qué clase.
+
+Eso lo separa de `edges_not_built` y de `table_not_loaded`, donde no se puede
+saber qué se perdió. Medido sobre la corrida activa, el tope de 12 recorta el
+**26% de los 460 códigos que tienen tablas**, y un turno ancla unos diez: contarlo
+como incompletitud encendía el aviso en casi toda respuesta. Un aviso que salta
+siempre enseña a ignorarlo, y entonces `edges_not_built` pasa desapercibido el
+día que importa.
+
+La causa SHALL seguir viajando en `causes` y SHALL seguir nombrándose en la
+sección de cierre. Lo que NO SHALL hacer es volver incompleto el contexto.
+
+#### Scenario: Solo un recorte declarado
+- **WHEN** la única causa fuera de lo esperado es `dependency_tables_capped`
+- **THEN** el contexto se declara completo
+
+#### Scenario: El recorte igual se nombra
+- **WHEN** una lista de tablas se recortó
+- **THEN** la sección de cierre la nombra con su causa
+
+#### Scenario: Una ausencia muda sí lo vuelve incompleto
+- **WHEN** la causa es `edges_not_built` o `table_not_loaded`
+- **THEN** el contexto se declara incompleto
 
 #### Scenario: Una fila no se parte
 - **WHEN** la siguiente fila no entra completa en lo que queda
