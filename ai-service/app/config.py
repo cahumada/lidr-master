@@ -292,9 +292,13 @@ class Settings(BaseSettings):
     # ANSWER_MAX_CONTEXT_TOKENS and never on top of it. Fitted last: evidence,
     # then memory, then this. A 0 does NOT mean "no limit" — it would mean an
     # empty block, and Settings rejects it.
+    # 3072 and not 2048: with the table descriptions the block measured 2,353
+    # tokens on a real turn (3 codes with tables, 36 tables), so the old ceiling
+    # would have started trimming tables the day the descriptions landed.
     # || Techo del bloque de base, cobrado ADENTRO de ANSWER_MAX_CONTEXT_TOKENS
-    # y nunca encima. Se ajusta último. Un 0 NO significa «sin límite».
-    BUSINESS_DB_CONTEXT_MAX_TOKENS: int = Field(default=2048, ge=1)
+    # y nunca encima. Se ajusta último. Un 0 NO significa «sin límite». 3072 y
+    # no 2048: con las descripciones el bloque midió 2.353 en un turno real.
+    BUSINESS_DB_CONTEXT_MAX_TOKENS: int = Field(default=3072, ge=1)
 
     # How many catalog rows to fetch per table (the query asks for this + 1
     # so overflow is visible). A 0 is an empty catalog, not "no limit".

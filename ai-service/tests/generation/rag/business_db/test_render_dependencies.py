@@ -172,3 +172,26 @@ def test_the_code_cap_matches_the_answer_limit() -> None:
     limit = AnswerRequest.model_fields["limit"].default
 
     assert cap >= limit
+
+
+class TestTableDescription:
+    """A name alone does not inform: CESSION_NPR vs CESSION_PR is the answer.
+
+    || Un nombre solo no informa: CESSION_NPR contra CESSION_PR es la respuesta.
+    """
+
+    def test_a_table_with_a_dictionary_entry_says_what_it_is(self) -> None:
+        table = _table("CESSION_NPR")
+        table.description = "Cesiones de primas no proporcionales de reaseguro."
+        text = block_text(render_block(_context([table]), budget=4096)) or ""
+
+        assert "Cesiones de primas no proporcionales de reaseguro." in text
+
+    def test_a_table_without_one_is_still_emitted(self) -> None:
+        # The dependency is declared either way; silence would lose a fact.
+        # || La dependencia está declarada igual; callarla perdería un hecho.
+        table = _table("SIN_FICHA")
+        table.description = None
+        text = block_text(render_block(_context([table]), budget=4096)) or ""
+
+        assert "SIN_FICHA" in text

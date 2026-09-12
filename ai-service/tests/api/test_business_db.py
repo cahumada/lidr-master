@@ -314,3 +314,79 @@ def test_a_build_with_no_edges_is_still_a_build(client, store):
 
     assert row["tables_built"] is True
     assert row["table_edge_count"] == 0
+
+
+@pytest.fixture
+def dictionary(monkeypatch):
+    """The reader stubbed at its seam; the SQL is tested against Postgres.
+
+    || El reader stubbeado en su costura; el SQL se prueba contra Postgres.
+    """
+    from app.generation.rag.business_db.models import (
+        DictionaryColumn,
+        DictionaryForeignKey,
+        TableDictionaryDetail,
+    )
+
+    known = {
+        "CLAIM_NPR": TableDictionaryDetail(
+            table_name="CLAIM_NPR",
+            description_es="Cesiones de siniestro no proporcional",
+            columns=[
+                DictionaryColumn(
+                    name="NCLAIM",
+                    description="Número que identifica al siniestro.",
+                    data_type="NUMBER",
+                    nullable=False,
+                    is_primary_key=True,
+                ),
+                DictionaryColumn(name="NNUMBER", is_primary_key=True, is_foreign_key=True),
+            ],
+            primary_key=["NCLAIM", "NNUMBER"],
+            foreign_keys=[
+                DictionaryForeignKey(
+                    name="REF_CONTRNPRO",
+                    columns=["NNUMBER"],
+                    references_table="CONTRNPRO",
+                )
+            ],
+            run_id=LOADED,
+            env="PROD",
+        )
+    }
+
+    def _read(database_url, tenant, env, run_id, table_name, schema="visualtime"):
+        return known.get(table_name)
+
+    monkeypatch.setattr("app.api.business_db.read_table_dictionary_full", _read)
+    return known
+
+
+def test_the_dictionary_carries_columns_keys_and_marks(client, dictionary):
+    body = client.get("/business-db/tables/CLAIM_NPR").json()
+
+    assert body["description_es"] == "Cesiones de siniestro no proporcional"
+    assert body["primary_key"] == ["NCLAIM", "NNUMBER"]
+    assert body["foreign_keys"][0]["references_table"] == "CONTRNPRO"
+    marks = {c["name"]: (c["is_primary_key"], c["is_foreign_key"]) for c in body["columns"]}
+    assert marks["NCLAIM"] == (True, False)
+    assert marks["NNUMBER"] == (True, True)
+
+
+def test_a_table_the_run_does_not_have_is_a_404(client, dictionary):
+    response = client.get("/business-db/tables/NO_EXISTE")
+
+    assert response.status_code == 404
+    assert "NO_EXISTE" in response.json()["detail"]
+
+
+def test_without_an_active_run_the_dictionary_is_a_409(client, store, dictionary):
+    """The dictionary only lives in the mirror: no run, no fallback.
+
+    || El diccionario solo vive en el mirror: sin corrida, sin caída.
+    """
+    store.active = ActiveRun(run_id=None, env="PROD", origin="none", reason="nadie eligió")
+
+    response = client.get("/business-db/tables/CLAIM_NPR")
+
+    assert response.status_code == 409

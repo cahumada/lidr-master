@@ -905,6 +905,47 @@ export interface CorpusStampInfo {
   matches_active: boolean;
 }
 
+/** One column as the active run declares it, with its key marks.
+ * || Una columna como la declara la corrida activa. */
+export interface DictionaryColumn {
+  name: string;
+  description: string | null;
+  data_type: string | null;
+  nullable: boolean | null;
+  is_primary_key: boolean;
+  is_foreign_key: boolean;
+}
+
+export interface DictionaryForeignKey {
+  name: string;
+  columns: string[];
+  references_table: string | null;
+}
+
+export interface DictionaryIndex {
+  name: string;
+  unique: boolean;
+  columns: string[];
+}
+
+/** Everything the active run declares about one table. Fetched on demand from
+ * `GET /api/business-db/tables/{name}`: 12 tables in this shape are ~16k
+ * tokens, so it never travels in a prompt.
+ * || Todo lo que declara la corrida de una tabla. Se pide a demanda. */
+export interface TableDictionaryDetail {
+  table_name: string;
+  description_es: string | null;
+  description_en: string | null;
+  /** `null` = the run did not extract them; `[]` = the table has none. Not the
+   * same fact. || `null` = no se extrajeron; `[]` = no tiene. */
+  columns: DictionaryColumn[] | null;
+  primary_key: string[];
+  foreign_keys: DictionaryForeignKey[];
+  indexes: DictionaryIndex[];
+  run_id: string;
+  env: string;
+}
+
 /** Response of `GET /business-db/runs`. || Respuesta de `GET /business-db/runs`. */
 export interface ExtractionRunList {
   active: ActiveRunInfo;

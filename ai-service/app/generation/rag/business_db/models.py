@@ -168,6 +168,68 @@ class DependencyTable(BaseModel):
     )
 
 
+class DictionaryColumn(BaseModel):
+    """One column as the run declares it, with its key marks.
+
+    || Una columna como la declara la corrida, con sus marcas de clave.
+    """
+
+    name: str = Field(description="Physical column name. || Nombre físico.")
+    description: str | None = Field(
+        default=None, description="Business prose. || Prosa de negocio."
+    )
+    data_type: str | None = Field(default=None, description="Oracle type. || Tipo Oracle.")
+    nullable: bool | None = Field(
+        default=None, description="Whether it admits nulls. || Si admite nulos."
+    )
+    is_primary_key: bool = Field(default=False, description="In the PK. || Está en la PK.")
+    is_foreign_key: bool = Field(default=False, description="In an FK. || Está en una FK.")
+
+
+class DictionaryForeignKey(BaseModel):
+    """One declared foreign key and where it points.
+
+    || Una clave foránea declarada y a dónde apunta.
+    """
+
+    name: str
+    columns: list[str] = Field(default_factory=list)
+    references_table: str | None = None
+
+
+class DictionaryIndex(BaseModel):
+    """One index, its columns in order. || Un índice y sus columnas en orden."""
+
+    name: str
+    unique: bool = False
+    columns: list[str] = Field(default_factory=list)
+
+
+class TableDictionaryDetail(BaseModel):
+    """Everything the run declares about one table.
+
+    Served on its own and NOT in the prompt: measured, 12 tables in this shape
+    are 15,969 tokens against a 16,384-token context ceiling that already
+    spends ~7,000 on evidence.
+
+    || Todo lo que la corrida declara de una tabla. Se sirve aparte y NO va al
+    prompt: 12 tablas así son 15.969 tokens.
+    """
+
+    table_name: str
+    description_es: str | None = None
+    description_en: str | None = None
+    # None = the run did not extract them; [] = the table has none. Not the
+    # same fact, and §12 of the domain note says so.
+    # || None = no se extrajeron; [] = la tabla no tiene. No es lo mismo.
+    columns: list[DictionaryColumn] | None = None
+    primary_key: list[str] = Field(default_factory=list)
+    foreign_keys: list[DictionaryForeignKey] = Field(default_factory=list)
+    indexes: list[DictionaryIndex] = Field(default_factory=list)
+    run_id: str
+    env: str
+
+
 class CodeResolution(BaseModel):
     """What the mirror said about one anchored transaction code.
 

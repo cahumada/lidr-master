@@ -1,5 +1,6 @@
 "use client"
 
+import { TableDictionary } from "./table-dictionary"
 import type {
   BusinessDbContextView,
   CodeResolution,
@@ -81,24 +82,39 @@ function causeText(cause: ResolutionOutcome): string {
 function TableRow({ table }: { table: DependencyTable }) {
   return (
     <li className="border-l pl-3">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="font-mono text-xs font-medium">{table.table_name}</span>
-        <span
-          className={`rounded border px-1.5 py-0.5 text-[10px] ${ROLE_CLASS[table.role]}`}
-          title={table.role_reason}
-        >
-          {ROLE_LABEL[table.role]}
-        </span>
-        <span className="text-muted-foreground text-[11px]">
-          {table.routine_hits}/{table.routine_total} rutinas
-        </span>
-      </div>
-      {table.description && (
-        <p className="text-muted-foreground mt-0.5 text-[11px]">{table.description}</p>
-      )}
-      <p className="text-muted-foreground mt-0.5 font-mono text-[10px] break-words">
-        vía {table.via_routines.join(", ")}
-      </p>
+      {/* The whole row opens the dictionary: columns, keys and indexes are what
+          a reader needs and what the prompt cannot afford.
+          || La fila entera abre el diccionario: columnas, claves e índices son
+          lo que hace falta leer y lo que el prompt no puede pagar. */}
+      <TableDictionary
+        tableName={table.table_name}
+        summary={
+          <>
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="font-mono text-xs font-medium underline decoration-dotted underline-offset-2">
+                {table.table_name}
+              </span>
+              <span
+                className={`rounded border px-1.5 py-0.5 text-[10px] ${ROLE_CLASS[table.role]}`}
+                title={table.role_reason}
+              >
+                {ROLE_LABEL[table.role]}
+              </span>
+              <span className="text-muted-foreground text-[11px]">
+                {table.routine_hits}/{table.routine_total} rutinas
+              </span>
+            </div>
+            {table.description && (
+              <p className="text-muted-foreground mt-0.5 text-[11px]">
+                {table.description}
+              </p>
+            )}
+            <p className="text-muted-foreground mt-0.5 font-mono text-[10px] break-words">
+              vía {table.via_routines.join(", ")}
+            </p>
+          </>
+        }
+      />
     </li>
   )
 }
