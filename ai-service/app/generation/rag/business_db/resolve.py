@@ -12,9 +12,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date
+from typing import TYPE_CHECKING
 
 import structlog
 
+from app.generation.rag.business_db.dependencies import MIN_ANCHOR_LENGTH
 from app.generation.rag.business_db.models import (
     BusinessDbContext,
     CodeResolution,
@@ -23,8 +25,10 @@ from app.generation.rag.business_db.models import (
 )
 from app.generation.rag.business_db.reader import (
     read_catalog_rows,
+    read_dependency_tables,
     read_run_created_at,
     read_table_dictionary,
+    run_has_edges,
 )
 from app.generation.rag.business_db.validity import (
     STATUS_ACTIVE_EQUALS_ONE,
@@ -34,7 +38,15 @@ from app.generation.rag.business_db.validity import (
     declared_mechanism,
 )
 from app.generation.rag.navigation import GENERAL_TABLE_WINDOW_TYPE, NavigationTree
-from app.generation.rag.schemas import SearchHit
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    # `schemas` imports `business_db.models`, so importing SearchHit at runtime
+    # closes a cycle: anything that reaches `schemas` first (alembic's env.py
+    # does, through `store.models`) fails on a partially initialised module.
+    # || `schemas` importa `business_db.models`, así que importar SearchHit en
+    # runtime cierra un ciclo: lo que llegue primero a `schemas` —el env.py de
+    # alembic lo hace— falla sobre un módulo a medio inicializar.
+    from app.generation.rag.schemas import SearchHit
 
 log = structlog.get_logger()
 
@@ -93,6 +105,8 @@ def resolve_context(
     max_rows: int,
     as_of_override: str | None = None,
     schema: str = "visualtime",
+    with_tables: bool = False,
+    max_tables: int = 0,
 ) -> BusinessDbContext:
     """Resolve each anchored code against one run. Sync, like the tree.
 
@@ -101,21 +115,37 @@ def resolve_context(
     as_of = _as_of(
         database_url, tenant, env, run_id, as_of_override, schema=schema
     )
+    has_edges = run_has_edges(database_url, tenant, env, run_id) if with_tables else False
     resolutions: list[CodeResolution] = []
     for code in codes:
-        resolutions.append(
-            _resolve_one(
-                code,
+        resolution = _resolve_one(
+            code,
+            database_url=database_url,
+            tenant=tenant,
+            env=env,
+            run_id=run_id,
+            tree=tree,
+            max_rows=max_rows,
+            as_of=as_of,
+            schema=schema,
+        )
+        if with_tables:
+            # An independent path: NG_IDENTI answers "what does this window
+            # maintain?" and the dependency graph answers "what does it touch?".
+            # A code absent from WINDOWS can still have routines, so this runs
+            # even for `not_in_run`.
+            # || Camino independiente: NG_IDENTI responde qué mantiene la
+            # ventana y el grafo qué toca. Corre incluso para `not_in_run`.
+            resolution = _attach_tables(
+                resolution,
                 database_url=database_url,
                 tenant=tenant,
                 env=env,
                 run_id=run_id,
-                tree=tree,
-                max_rows=max_rows,
-                as_of=as_of,
-                schema=schema,
+                max_tables=max_tables,
+                has_edges=has_edges,
             )
-        )
+        resolutions.append(resolution)
     context = BusinessDbContext(
         run_id=run_id,
         env=env,
@@ -136,10 +166,83 @@ def resolve_context(
             validity_discrepancy=resolution.validity_discrepancy_count,
             status_normalized_from_4=resolution.status_normalized_from_4,
             mechanism=resolution.mechanism,
+            dependency_tables=len(resolution.dependency_tables),
+            dependency_tables_total=resolution.dependency_tables_total,
             run_id=run_id,
             env=env,
         )
     return context
+
+
+def _attach_tables(
+    resolution: CodeResolution,
+    *,
+    database_url: str,
+    tenant: str,
+    env: str,
+    run_id: str,
+    max_tables: int,
+    has_edges: bool,
+) -> CodeResolution:
+    """Add the dependency-graph tables, or the cause that says why there are none.
+
+    Every branch ends in a named cause from the closed vocabulary. The order
+    matters: `edges_not_built` is checked FIRST, because without the batch every
+    other answer would be indistinguishable from "this code touches nothing".
+
+    || Agrega las tablas del grafo, o la causa que dice por qué no hay. Cada
+    rama termina en una causa nombrada. `edges_not_built` se chequea PRIMERO.
+    """
+    updated = resolution.model_copy(deep=True)
+    if not has_edges:
+        _add(updated, "edges_not_built")
+        return _repick(updated)
+    if len(resolution.code) < MIN_ANCHOR_LENGTH:
+        _add(updated, "code_too_short_to_anchor")
+        return _repick(updated)
+
+    tables, total, routines = read_dependency_tables(
+        database_url, tenant, env, run_id, resolution.code, max_tables
+    )
+    updated.dependency_tables = list(tables)
+    updated.dependency_tables_total = total
+    updated.dependency_routines = list(routines)
+    if not total:
+        # No edge at all: either no routine names this code, or its routines
+        # depend on no table. The two are different facts and the read cannot
+        # tell them apart, so the narrower one is not claimed.
+        # || Sin ninguna arista. Las dos causas son hechos distintos y la
+        # lectura no las distingue, así que no se afirma la más específica.
+        _add(updated, "no_dependency_routine")
+        return _repick(updated)
+    if total > len(tables):
+        _add(updated, "dependency_tables_capped")
+    if any(table.role == "unknown" for table in tables):
+        _add(updated, "role_unknown")
+    return _repick(updated)
+
+
+def _add(resolution: CodeResolution, cause: ResolutionOutcome) -> None:
+    if cause not in resolution.causes:
+        resolution.causes.append(cause)
+
+
+def _repick(resolution: CodeResolution) -> CodeResolution:
+    """Name an incompleteness as the outcome when one is present.
+
+    The closed vocabulary is what a reader greps for, so the outcome field
+    always carries the worst thing that happened.
+
+    || Nombra una incompletitud como outcome cuando la hay.
+    """
+    from app.generation.rag.business_db.models import INCOMPLETE_OUTCOMES
+
+    if resolution.outcome in INCOMPLETE_OUTCOMES:
+        return resolution
+    incomplete = [cause for cause in resolution.causes if cause in INCOMPLETE_OUTCOMES]
+    if incomplete:
+        resolution.outcome = incomplete[0]
+    return resolution
 
 
 def _as_of(

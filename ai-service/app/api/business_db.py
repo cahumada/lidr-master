@@ -28,13 +28,17 @@ from app.domain.business_db_store import (
     MirrorRun,
     RunNotLoaded,
     RunOrigin,
+    TableBuild,
     activate_run,
     find_mirror_run,
     get_stamp,
     list_mirror_runs,
+    list_table_builds,
     resolve_active_run,
 )
 from app.foundation.persistence.database import get_async_session
+from app.generation.rag.business_db.models import TableDictionaryDetail
+from app.generation.rag.business_db.reader import read_table_dictionary_full
 
 router = APIRouter(prefix="/business-db", tags=["business-db"])
 
@@ -70,6 +74,21 @@ class ExtractionRunItem(BaseModel):
     can_activate: bool = Field(
         description="False when `loaded_data` is false: the navigation tree comes from "
         "`business_data`. || False cuando `loaded_data` es false.",
+    )
+    tables_built: bool = Field(
+        default=False,
+        description="Whether the transaction-table edges were built for this run. False "
+        "means answers from it carry no tables, and the console warns before activating. "
+        "|| Si se construyeron las aristas de tablas por transacción para esta corrida.",
+    )
+    tables_built_at: datetime | None = Field(
+        default=None,
+        description="When the batch last ran for this run. || Cuándo corrió el batch.",
+    )
+    table_edge_count: int = Field(
+        default=0,
+        description="Edges the batch produced. A build with 0 is still a build. "
+        "|| Aristas que produjo el batch. Un build con 0 sigue siendo un build.",
     )
 
 
@@ -154,7 +173,13 @@ class ActivateRunResponse(BaseModel):
     active: ActiveRunInfo
 
 
-def _item(run: MirrorRun, *, active_run_id: str | None, active_env: str | None) -> ExtractionRunItem:
+def _item(
+    run: MirrorRun,
+    *,
+    active_run_id: str | None,
+    active_env: str | None,
+    build: TableBuild | None = None,
+) -> ExtractionRunItem:
     return ExtractionRunItem(
         run_id=run.run_id,
         env=run.env,
@@ -167,6 +192,12 @@ def _item(run: MirrorRun, *, active_run_id: str | None, active_env: str | None) 
         manifest_sha256=run.manifest_sha256,
         is_active=run.run_id == active_run_id and run.env == active_env,
         can_activate=run.loaded_data,
+        # Presence of the row, not a non-zero count: a build that produced
+        # nothing still ran, and conflating them hides a deployment gap.
+        # || La presencia de la fila, no un conteo distinto de cero.
+        tables_built=build is not None,
+        tables_built_at=build.built_at if build else None,
+        table_edge_count=build.edge_count if build else 0,
     )
 
 
@@ -199,6 +230,7 @@ async def list_runs(
     active = await resolve_active_run(session, settings, tenant_id)
     runs = await list_mirror_runs(session, tenant_id)
     stamp_row = await get_stamp(session, tenant_id, settings.DOC_VERSION)
+    builds = await list_table_builds(session, tenant_id)
 
     stamp = None
     if stamp_row is not None:
@@ -216,7 +248,15 @@ async def list_runs(
     return ExtractionRunList(
         active=_active_info(active),
         stamp=stamp,
-        runs=[_item(run, active_run_id=active.run_id, active_env=active.env) for run in runs],
+        runs=[
+            _item(
+                run,
+                active_run_id=active.run_id,
+                active_env=active.env,
+                build=builds.get((run.env, run.run_id)),
+            )
+            for run in runs
+        ],
     )
 
 
@@ -286,3 +326,53 @@ def _declared_by(body: ActivateRunRequest | None) -> str | None:
         return None
     declared = body.activated_by.strip()
     return declared or None
+
+
+@router.get("/tables/{table_name}", response_model=TableDictionaryDetail)
+async def read_table(
+    table_name: str,
+    session: AsyncSession = Depends(get_async_session),  # noqa: B008
+) -> TableDictionaryDetail:
+    """Everything the ACTIVE run declares about one table.
+
+    Served apart from the answer on purpose: measured, 12 tables in this shape
+    are 15,969 tokens against a 16,384-token context ceiling that already
+    spends ~7,000 on evidence. What the prompt carries is the description; the
+    columns are read when somebody asks for them.
+
+    Two refusals, each with its own code:
+
+    * **409** -- no active run. The dictionary only lives in the mirror, and
+      falling through to the newest run would answer about another snapshot.
+    * **404** -- the run has no such table.
+
+    || Todo lo que declara la corrida ACTIVA sobre una tabla. Se sirve aparte
+    del prompt a propósito: 12 tablas así son 15.969 tokens. El prompt lleva la
+    descripción; las columnas se leen cuando alguien las pide.
+    """
+    settings = get_settings()
+    active = await resolve_active_run(session, settings, settings.TENANT_ID)
+    if not active.run_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "No active run: the dictionary only lives in the mirror. "
+                "|| No hay corrida activa: el diccionario solo vive en el mirror."
+            ),
+        )
+    detail = read_table_dictionary_full(
+        settings.DATABASE_URL,
+        settings.TENANT_ID,
+        active.env,
+        active.run_id,
+        table_name,
+    )
+    if detail is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Run {active.run_id!r} has no table {table_name!r}. "
+                f"|| La corrida {active.run_id!r} no tiene la tabla {table_name!r}."
+            ),
+        )
+    return detail

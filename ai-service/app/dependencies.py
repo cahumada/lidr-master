@@ -106,6 +106,8 @@ def resolve_business_db_context(
         tree=tree,
         max_rows=settings.BUSINESS_DB_CONTEXT_MAX_ROWS,
         as_of_override=settings.BUSINESS_DB_CONTEXT_AS_OF or None,
+        with_tables=settings.BUSINESS_DB_DEPENDENCY_TABLES_ENABLED,
+        max_tables=settings.BUSINESS_DB_DEPENDENCY_MAX_TABLES,
     )
 
 

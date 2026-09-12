@@ -56,6 +56,21 @@ function LoadFlags({ run }: { run: ExtractionRunItem }) {
       <Badge variant={run.loaded_data ? "secondary" : "outline"}>
         datos {run.loaded_data ? "sí" : "no"}
       </Badge>
+      {/* Absence of the build, not a zero count: a batch that produced nothing
+          still ran, and collapsing the two hides a deployment gap.
+          || La ausencia del build, no un conteo en cero. */}
+      <Badge
+        variant={run.tables_built ? "secondary" : "outline"}
+        title={
+          run.tables_built
+            ? `${run.table_edge_count ?? 0} aristas${
+                run.tables_built_at ? ` · ${formatWhen(run.tables_built_at)}` : ""
+              }`
+            : "Corré scripts/build_transaction_tables.py para esta corrida."
+        }
+      >
+        tablas {run.tables_built ? "sí" : "no"}
+      </Badge>
     </div>
   )
 }

@@ -355,7 +355,9 @@ La pantalla de respuesta SHALL presentar un hilo: cada envío appendea el
 mensaje del usuario y el turno del asistente, sin pisar los turnos
 anteriores de la misma sesión. El compositor SHALL quedar al pie. Cada turno
 SHALL seguir siendo una corrida agentica independiente
-(`POST /answer/agentic/start` + sondeo de progreso).
+(`POST /answer/agentic/start` + sondeo de progreso). Un 502 o un fallo de
+red en un sondeo SHALL reintentarse; el turno solo SHALL marcarse fallido
+cuando ese fallo persiste más de tres minutos desde el envío.
 
 El hilo SHALL estar respaldado por una sesión del servicio: la pantalla pide
 un `session_id` a `POST /answer/session` en la primera pregunta (perezoso) y
@@ -434,6 +436,12 @@ a su llamador con un token compartido, y un token no es una persona.
 - **WHEN** alguien sin sesión de consola pide la pantalla de respuesta
 - **THEN** es redirigido a `/login`
 - **AND** no se crea ninguna sesión de conversación en el servicio
+
+#### Scenario: un 502 transitorio del sondeo no aborta el turno
+- **WHEN** un poll de `/progress` responde 502 mientras el grafo sigue
+  corriendo y el turno lleva menos de tres minutos
+- **THEN** la pantalla reintenta el sondeo
+- **AND** no marca el turno como fallido
 
 ### Requirement: La respuesta del asistente se muestra como markdown
 La pantalla de respuesta SHALL renderizar el texto del asistente como

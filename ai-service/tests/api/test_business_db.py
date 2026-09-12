@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from app.domain.business_db_store import ActiveRun, MirrorRun, RunNotLoaded
+from app.domain.business_db_store import ActiveRun, MirrorRun, RunNotLoaded, TableBuild
 from app.foundation.persistence.database import get_async_session
 from app.main import app
 
@@ -67,6 +67,19 @@ class FakeStore:
         self.runs = list(MIRROR)
         self.stamp = None
         self.activations: list[tuple[str, str | None]] = []
+        # Only the active run has its edges built. That asymmetry is the point:
+        # the listing has to make the other two distinguishable.
+        # || Solo la corrida activa tiene aristas. Esa asimetría es el punto.
+        self.builds: dict[tuple[str, str], TableBuild] = {
+            ("PROD", LOADED): TableBuild(
+                env="PROD",
+                run_id=LOADED,
+                edge_count=4873,
+                code_count=460,
+                doc_version="DW Funtionals 2026.1",
+                built_at=datetime(2026, 9, 11, tzinfo=UTC),
+            )
+        }
 
     async def resolve(self, session, settings, tenant_id=None) -> ActiveRun:
         return self.active
@@ -93,6 +106,9 @@ class FakeStore:
     async def stamp_of(self, session, tenant_id, doc_version):
         return self.stamp
 
+    async def table_builds(self, session, tenant_id):
+        return dict(self.builds)
+
 
 @pytest.fixture
 def store(monkeypatch) -> FakeStore:
@@ -102,6 +118,7 @@ def store(monkeypatch) -> FakeStore:
     monkeypatch.setattr("app.api.business_db.find_mirror_run", fake.find)
     monkeypatch.setattr("app.api.business_db.activate_run", fake.activate)
     monkeypatch.setattr("app.api.business_db.get_stamp", fake.stamp_of)
+    monkeypatch.setattr("app.api.business_db.list_table_builds", fake.table_builds)
     return fake
 
 
@@ -248,3 +265,128 @@ def test_no_stamp_at_all_is_absent_rather_than_false(client, store):
     body = client.get("/business-db/runs").json()
 
     assert body["stamp"] is None
+
+
+def test_the_listing_says_which_runs_have_their_table_edges_built(client, store):
+    # Activating a run whose batch never ran leaves the block with no tables,
+    # and nothing else would say why.
+    # || Activar una corrida sin batch deja el bloque sin tablas, y nada más lo
+    # diría.
+    body = client.get("/business-db/runs").json()
+
+    built = {run["run_id"]: run["tables_built"] for run in body["runs"]}
+    assert built == {LOADED: True, NOT_LOADED: False, DEV_RUN: False}
+
+
+def test_a_built_run_reports_what_the_batch_produced(client, store):
+    body = client.get("/business-db/runs").json()
+    row = next(run for run in body["runs"] if run["run_id"] == LOADED)
+
+    assert row["table_edge_count"] == 4873
+    assert row["tables_built_at"] is not None
+
+
+def test_an_unbuilt_run_reports_zero_without_claiming_a_build(client, store):
+    body = client.get("/business-db/runs").json()
+    row = next(run for run in body["runs"] if run["run_id"] == NOT_LOADED)
+
+    assert row["tables_built"] is False
+    assert row["table_edge_count"] == 0
+    assert row["tables_built_at"] is None
+
+
+def test_a_build_with_no_edges_is_still_a_build(client, store):
+    # Zero edges from a batch that ran is a fact about the run; zero because the
+    # batch never ran is a deployment gap. The flag is the row, not the count.
+    # || Cero aristas de un batch que corrió es un hecho; cero porque nunca
+    # corrió es un hueco de despliegue.
+    store.builds[("PROD", NOT_LOADED)] = TableBuild(
+        env="PROD",
+        run_id=NOT_LOADED,
+        edge_count=0,
+        code_count=0,
+        doc_version="DW Funtionals 2026.1",
+        built_at=datetime(2026, 9, 11, tzinfo=UTC),
+    )
+
+    body = client.get("/business-db/runs").json()
+    row = next(run for run in body["runs"] if run["run_id"] == NOT_LOADED)
+
+    assert row["tables_built"] is True
+    assert row["table_edge_count"] == 0
+
+
+@pytest.fixture
+def dictionary(monkeypatch):
+    """The reader stubbed at its seam; the SQL is tested against Postgres.
+
+    || El reader stubbeado en su costura; el SQL se prueba contra Postgres.
+    """
+    from app.generation.rag.business_db.models import (
+        DictionaryColumn,
+        DictionaryForeignKey,
+        TableDictionaryDetail,
+    )
+
+    known = {
+        "CLAIM_NPR": TableDictionaryDetail(
+            table_name="CLAIM_NPR",
+            description_es="Cesiones de siniestro no proporcional",
+            columns=[
+                DictionaryColumn(
+                    name="NCLAIM",
+                    description="Número que identifica al siniestro.",
+                    data_type="NUMBER",
+                    nullable=False,
+                    is_primary_key=True,
+                ),
+                DictionaryColumn(name="NNUMBER", is_primary_key=True, is_foreign_key=True),
+            ],
+            primary_key=["NCLAIM", "NNUMBER"],
+            foreign_keys=[
+                DictionaryForeignKey(
+                    name="REF_CONTRNPRO",
+                    columns=["NNUMBER"],
+                    references_table="CONTRNPRO",
+                )
+            ],
+            run_id=LOADED,
+            env="PROD",
+        )
+    }
+
+    def _read(database_url, tenant, env, run_id, table_name, schema="visualtime"):
+        return known.get(table_name)
+
+    monkeypatch.setattr("app.api.business_db.read_table_dictionary_full", _read)
+    return known
+
+
+def test_the_dictionary_carries_columns_keys_and_marks(client, dictionary):
+    body = client.get("/business-db/tables/CLAIM_NPR").json()
+
+    assert body["description_es"] == "Cesiones de siniestro no proporcional"
+    assert body["primary_key"] == ["NCLAIM", "NNUMBER"]
+    assert body["foreign_keys"][0]["references_table"] == "CONTRNPRO"
+    marks = {c["name"]: (c["is_primary_key"], c["is_foreign_key"]) for c in body["columns"]}
+    assert marks["NCLAIM"] == (True, False)
+    assert marks["NNUMBER"] == (True, True)
+
+
+def test_a_table_the_run_does_not_have_is_a_404(client, dictionary):
+    response = client.get("/business-db/tables/NO_EXISTE")
+
+    assert response.status_code == 404
+    assert "NO_EXISTE" in response.json()["detail"]
+
+
+def test_without_an_active_run_the_dictionary_is_a_409(client, store, dictionary):
+    """The dictionary only lives in the mirror: no run, no fallback.
+
+    || El diccionario solo vive en el mirror: sin corrida, sin caída.
+    """
+    store.active = ActiveRun(run_id=None, env="PROD", origin="none", reason="nadie eligió")
+
+    response = client.get("/business-db/tables/CLAIM_NPR")
+
+    assert response.status_code == 409

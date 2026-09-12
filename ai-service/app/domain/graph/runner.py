@@ -54,6 +54,7 @@ def thread_config(
     reranker: Any,
     persona: str | None = None,
     guardrails: str | None = None,
+    profile_id: str | None = None,
 ) -> dict:
     """Runnable config for one graph thread. || Config del runnable para un hilo del grafo."""
     return {
@@ -64,6 +65,11 @@ def thread_config(
             "reranker": reranker,
             "persona": persona,
             "guardrails": guardrails,
+            # Travels so a stored prompt can name which profile composed it.
+            # The persona and guardrails are already here as TEXT; the id says
+            # which named profile they came from.
+            # || Viaja para que un prompt guardado pueda nombrar el perfil.
+            "profile_id": profile_id,
         }
     }
 
@@ -298,6 +304,7 @@ def completed_result(values: dict, fallback_question: str) -> dict:
         "dropped_hits": int(values.get("dropped_hits") or 0),
         "answer_truncated": bool(values.get("answer_truncated")),
         "usage": values.get("usage") or usage_payload(),
+        "prompt_id": values.get("prompt_id"),
         "business_db": values.get("business_db"),
     }
 
@@ -324,6 +331,7 @@ def paused_result(values: dict, fallback_question: str, reasons: list[str]) -> d
         "dropped_hits": int(values.get("dropped_hits") or 0),
         "answer_truncated": bool(values.get("answer_truncated")),
         "usage": values.get("usage") or usage_payload(),
+        "prompt_id": values.get("prompt_id"),
         "business_db": values.get("business_db"),
     }
 
@@ -338,6 +346,7 @@ async def _stream_and_log(
     reranker: Any,
     persona: str | None = None,
     guardrails: str | None = None,
+    profile_id: str | None = None,
     conversation=None,
     active_run: ActiveRun | None = None,
 ):
@@ -353,6 +362,7 @@ async def _stream_and_log(
         reranker=reranker,
         persona=persona,
         guardrails=guardrails,
+        profile_id=profile_id,
     )
 
     seed = initial_state(body, conversation, active_run)
@@ -407,6 +417,7 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
                 reranker=reranker,
                 persona=runtime.persona,
                 guardrails=runtime.guardrails,
+                profile_id=body.profile_id,
                 conversation=conversation,
                 active_run=await resolve_active_run(session, settings),
             )

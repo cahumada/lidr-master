@@ -310,3 +310,145 @@ class ProcessMapEdgeRow(Base):
         Index("ix_process_map_edges_source", "tenant_id", "doc_version", "source", "edge_type"),
         Index("ix_process_map_edges_target", "tenant_id", "doc_version", "target", "edge_type"),
     )
+
+
+class TransactionTableEdge(Base):
+    """One table a transaction touches, as Oracle's dependency graph declares it.
+
+    Keyed by the MIRROR's ``run_id`` and not by ``doc_version``, unlike
+    :class:`ProcessMapEdge`. What this row asserts is what Oracle declared in
+    one extraction run: activating another run has to be able to bring other
+    edges. The corpus version only decides which codes were looked up.
+
+    Materialized by ``scripts/build_transaction_tables.py`` instead of resolved
+    per request, for a reason that is about correctness and not only cost: the
+    first hop matches a ``document_id`` inside a routine name, and 184 codes are
+    substrings of another code. Disambiguating needs the whole universe of
+    codes, which a request does not have -- ``CA013`` would arrive without
+    ``CA013A`` in sight and walk off with ``INSPOSTCA013A``.
+
+    || Una tabla que toca una transacción, como la declara el grafo de
+    dependencias de Oracle. Va por el ``run_id`` del MIRROR y no por
+    ``doc_version``: lo que la fila afirma es lo que Oracle declaró en esa
+    corrida. Se materializa en batch porque desambiguar el salto por nombre
+    necesita el universo entero de códigos, que en un request no está.
+    """
+
+    __tablename__ = "transaction_table_edges"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+
+    # The mirror's coordinates, not the corpus'. || Las coordenadas del mirror.
+    tenant: Mapped[str] = mapped_column(String(100), nullable=False)
+    env: Mapped[str] = mapped_column(String(32), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    # `document_id` of the functional spec == `WINDOWS.SCODISPL`.
+    # || `document_id` de la especificación == `WINDOWS.SCODISPL`.
+    transaction_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    table_name: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    # 'reference' | 'historical' | 'message' | 'validation' | 'unknown'.
+    # A closed vocabulary with no catch-all: `unknown` carries its reason rather
+    # than being replaced by a default, same rule as the code taxonomy.
+    #
+    # There is deliberately no 'core'. Measured against the four transactions
+    # the repo owner annotated, no declared signal separates the table the
+    # analyst calls core from the rest, and the one the plan proposed -- a low
+    # global fan-in -- runs backwards: COVER (1,037), CLIENT (1,925) and
+    # CERTIFICAT (1,989) are the annotated ones, while NOPAYROLL (44) and
+    # CUR_ALLOW (30) are not. A central entity is touched by everything BECAUSE
+    # it is central. Asserting `core` from that would be an inference dressed as
+    # a declared fact.
+    # || No hay 'core' a propósito: ninguna señal declarada lo separa, y el
+    # fan-in bajo que proponía el plan corre al revés.
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    role_reason: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # The routines the dependency came from, comma-separated and ordered. This
+    # is the provenance: a table asserted without saying why it entered is the
+    # same defect as a chunk without its document.
+    # || Las rutinas de las que salió la dependencia. Es la procedencia.
+    via_routines: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # How many routines in the WHOLE run depend on this table. CERTIFICAT has
+    # 1,910: that a transaction touches it does not inform. Stored so the role
+    # decision can be revisited without rebuilding the edges.
+    # || Cuántas rutinas de TODA la corrida dependen de esta tabla.
+    fan_in: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # How many of THIS transaction's routines reach the table, over how many it
+    # has. Two declared counts, not a fitted score -- coverage is the ordering
+    # signal precisely because it needs no threshold to mean something.
+    # || Cuántas rutinas DE ESTA transacción llegan a la tabla, sobre cuántas
+    # tiene. Dos conteos declarados, no un puntaje calibrado.
+    routine_hits: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    routine_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Which path produced it, so any edge can be audited back. Today only
+    # 'dependency_graph'; the field exists because §5.2 and §5.3 of the domain
+    # note describe other paths that would arrive as indicios, not facts.
+    # || Qué camino la produjo, para poder auditarla.
+    origin: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant", "env", "run_id", "transaction_code", "table_name",
+            name="uq_transaction_table_edges_identity",
+        ),
+        # One index, on the code: the read is always "what does this code
+        # touch?". The reverse question -- who touches this table -- is not a
+        # use case yet, and an index nobody queries is a write cost.
+        # || Un solo índice, por código: la lectura es siempre «¿qué toca este
+        # código?». La pregunta inversa todavía no es un caso de uso.
+        Index(
+            "ix_transaction_table_edges_code",
+            "tenant", "env", "run_id", "transaction_code",
+        ),
+    )
+
+
+class TransactionTableBuild(Base):
+    """One row per run whose edges were built: the answer to "does this run have edges?".
+
+    Without it, that question is a ``COUNT`` over ``transaction_table_edges`` on
+    every request, and -- worse -- zero edges would be indistinguishable from a
+    build that ran and found nothing. A run with a row here and no edges built
+    fine; a run with no row never built.
+
+    || Una fila por corrida cuyas aristas se construyeron. Sin ella, cero
+    aristas sería indistinguible de un batch que corrió y no encontró nada.
+    """
+
+    __tablename__ = "transaction_table_builds"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+
+    tenant: Mapped[str] = mapped_column(String(100), nullable=False)
+    env: Mapped[str] = mapped_column(String(32), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    # What the build produced, so the console can show it without counting.
+    # || Lo que produjo el batch, para que la consola no tenga que contar.
+    edge_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    code_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Which corpus version supplied the codes. The edges are keyed by the
+    # mirror run; this records which document set was looked up against it.
+    # || Qué versión del corpus aportó los códigos.
+    doc_version: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    built_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant", "env", "run_id",
+            name="uq_transaction_table_builds_identity",
+        ),
+    )

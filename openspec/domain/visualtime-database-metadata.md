@@ -245,9 +245,43 @@ falta también la cobertura por documento.
 Descartando los de largo 4 quedan **578 documentos y 1.622 pares**. Encadenando
 con `business_dependencies` da **documento → rutina → tablas**.
 
+`[VALIDADO-BD]` Reproducido el 2026-09-11 sobre la corrida `20260909_214921`
+solamente: **561 documentos y 1.556 pares**. La diferencia con 578 / 1.622 es
+que aquella medición no filtraba por corrida. Con las dos guardas de abajo
+aplicadas quedan **460 documentos y 957 pares**.
+
 `[HIPÓTESIS]` Los de largo ≥ 7, donde el `document_id` **es** el nombre del objeto
 Oracle, son los que `taxonomy.py` clasifica como `interface`; pendiente de
 contrastar contra `transaction_type`.
+
+#### El substring solo no alcanza: dos trampas medidas `[VALIDADO-BD]`
+
+Medido el 2026-09-11 sobre la corrida `20260909_214921` al implementar
+`add-dependency-table-anchoring`, contra los 2.176 documentos del corpus.
+
+**1. Los códigos se solapan entre sí.** **184 `document_id` de largo ≥ 5 son
+substring de otro `document_id`**, en tres familias: variante (`CA013` ⊂
+`CA013A`, `CA017` ⊂ `CA017A`, `CA028` ⊂ `CA028_1`), solicitud de clave (`AG001`
+⊂ `AG001_K`, `BC003` ⊂ `BC003_K`) y prefijo de módulo (`AG001` ⊂ `MAG001`,
+`AM002` ⊂ `MAM002`). Sin desambiguar, `INSPOSTCA013A` le cuelga sus tablas a
+`CA013`: **55 pares así, sobre 31 documentos**. El código más largo se queda con
+la rutina.
+
+**2. El prefijo verbal fabrica códigos que no son.** `INSCA001PKG` **contiene
+`SCA001`** —la `S` de `INS` se junta con `CA001`— y `SCA001` es un
+`document_id` real. Como es más largo, el munch máximo se lo lleva: en la
+práctica **`SCA001` se quedó con las 30 rutinas de `CA001`**. El match solo vale
+donde la convención `<prefijo verbal><código><sufijo>` pone un código: precedido
+por nada, por un no-alfanumérico, o por un prefijo verbal conocido.
+
+**Costo de las dos guardas, medido:** de 550 documentos anclados se baja a
+**460**, y de 5.907 aristas a **4.873**. Es el precio de no afirmar de más — §5.4.
+
+`[TÁCITO]` Ojo con `CA001`: el dueño del repo lo nombra como transacción, pero
+**no es un `document_id` del corpus**. Existen `CA001A`, `CA001M`, `CA001k` y
+`SCA001`. Las rutinas `INSCA001PKG` y `REACA001` nombran un `CA001` que no tiene
+especificación funcional, así que ningún hit puede anclarlas. Pendiente de
+aclarar a cuál se refería.
 
 ### 5.4 Qué es un hecho y qué es un indicio
 

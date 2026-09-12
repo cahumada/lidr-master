@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from time import perf_counter
 
@@ -16,6 +17,7 @@ from app.dependencies import business_db_for_run, resolve_navigation_tree
 from app.domain.graph.privilege import record_model_action
 from app.domain.schemas import AnswerAgentState
 from app.foundation.llm.wrapper import usage_payload
+from app.foundation.persistence.prompts import save_prompt
 from app.generation.conversation.budget import render_memory
 from app.generation.conversation.models import (
     Anchor,
@@ -194,8 +196,31 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
             "agent_contributions": [contribution],
         }
 
-    completion = llm.complete(system=system, user=user)
+    # `complete()` is a blocking HTTP call (often 40–50s for Claude). This
+    # node is async, so calling it on the event loop freezes FastAPI and
+    # `GET /progress` times out as a 502 in the console.
+    # || `complete()` es HTTP bloqueante. Este nodo es async: llamarlo en el
+    # event loop congela FastAPI y `GET /progress` termina en 502.
+    completion = await asyncio.to_thread(llm.complete, system=system, user=user)
     answer = completion.text
+    # Stored right where it was sent, off the event loop like the call itself.
+    # A later re-render would show a prompt that never existed: persona,
+    # guardrails, memory and the active run all move in between.
+    # || Guardado donde se envió, fuera del event loop como la llamada. Un
+    # re-render posterior mostraría un prompt que nunca existió.
+    prompt_id = await asyncio.to_thread(
+        save_prompt,
+        tenant_id=settings.TENANT_ID,
+        agent="answer_synthesizer",
+        model=getattr(llm, "model", "?"),
+        system_text=system,
+        user_text=user,
+        context_budget=budgeted.budget,
+        retention_days=settings.ANSWER_PROMPT_RETENTION_DAYS,
+        profile_id=deps.get("profile_id"),
+        thread_id=_thread_id(config),
+        session_id=(str(state.get("session_id")) if state.get("session_id") else None),
+    )
     contribution = record_model_action(
         "answer_synthesizer",
         "synthesize_answer",
@@ -234,8 +259,20 @@ async def answer_synthesizer(state: AnswerAgentState, config: RunnableConfig) ->
         "pending_resynthesis": False,
         "pending_revalidation": was_resynthesis,
         "usage": usage_payload(completion.usage),
+        "prompt_id": prompt_id,
         "agent_contributions": [contribution],
     }
+
+
+def _thread_id(config: dict | None) -> str | None:
+    """The graph thread, so a stored prompt can be tied back to its run.
+
+    || El thread del grafo, para poder atar el prompt a su corrida.
+    """
+    if not config:
+        return None
+    value = (config.get("configurable") or {}).get("thread_id")
+    return str(value) if value else None
 
 
 def _empty_business_db(env: str | None, run_id: object) -> dict:

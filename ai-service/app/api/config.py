@@ -328,6 +328,25 @@ class FlowEdgeView(BaseModel):
     target: str
 
 
+class FlowContextStepView(BaseModel):
+    """A step of the resolution that runs outside the graph.
+
+    It carries no `tools` and no edges on purpose: it is not a specialist, and
+    a screen that drew it as one would assert a topology the compiled graph
+    does not have.
+
+    || Un paso de la resolución que corre fuera del grafo. No lleva tools ni
+    aristas a propósito: no es un especialista.
+    """
+
+    key: str
+    label: str
+    kind: str
+    role: str
+    explanation: str
+    example: NodeExampleView
+
+
 class GraphFlowView(BaseModel):
     """Topology served so the console does not declare the graph again.
 
@@ -336,6 +355,12 @@ class GraphFlowView(BaseModel):
 
     nodes: list[FlowNodeView]
     edges: list[FlowEdgeView]
+    context_steps: list[FlowContextStepView] = Field(
+        default_factory=list,
+        description="Resolution steps that are not graph nodes. Empty when the service "
+        "declares none, and the screen then draws none. || Pasos de la resolución que no "
+        "son nodos del grafo. Vacío cuando el servicio no declara ninguno.",
+    )
     ladder: list[str] = Field(
         description="The orchestrator's fallback order. || La escalera de fallback del orquestador."
     )

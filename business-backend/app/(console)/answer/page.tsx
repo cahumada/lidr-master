@@ -1,5 +1,7 @@
+import { auth } from "@/auth"
 import { serviceConfig } from "@/lib/ai-service/config"
 import { facets } from "@/lib/ai-service/search"
+import { asRole } from "@/lib/auth/roles"
 
 import { AnswerConsole } from "./answer-console"
 
@@ -19,9 +21,10 @@ export default async function AnswerPage(props: {
         ? raw[0].trim()
         : null
 
-  const [initialFacets, config] = await Promise.all([
+  const [initialFacets, config, session] = await Promise.all([
     facets().catch(() => ({ modules: [], window_types: [] })),
     serviceConfig().catch(() => null),
+    auth(),
   ])
   const synthesizer = config?.agents.find((agent) => agent.key === "answer_synthesizer")
 
@@ -30,6 +33,7 @@ export default async function AnswerPage(props: {
       initialFacets={initialFacets}
       profiles={synthesizer?.profiles ?? []}
       initialSessionId={initialSessionId}
+      role={asRole(session?.user?.role)}
     />
   )
 }

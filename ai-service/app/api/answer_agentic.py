@@ -157,6 +157,13 @@ class AnswerAgenticResponse(BaseModel):
         "quedo incompleta.",
     )
     usage: TokenUsage = Field(default_factory=TokenUsage)
+    prompt_id: str | None = Field(
+        default=None,
+        description="Id of the prompt exactly as it went to the model, readable for a "
+        "short window at GET /answer/prompts/{id}. The text is NOT inlined: ~60 KB with "
+        "the corpus, the persona and the guardrails. || Id del prompt tal como salió al "
+        "modelo. El texto NO viaja acá: son ~60 KB.",
+    )
     business_db: BusinessDbContext | None = None
 
 
@@ -183,6 +190,13 @@ class AnswerAgenticPausedResponse(BaseModel):
     dropped_hits: int = Field(default=0, ge=0)
     answer_truncated: bool = False
     usage: TokenUsage = Field(default_factory=TokenUsage)
+    prompt_id: str | None = Field(
+        default=None,
+        description="Id of the prompt exactly as it went to the model, readable for a "
+        "short window at GET /answer/prompts/{id}. The text is NOT inlined: ~60 KB with "
+        "the corpus, the persona and the guardrails. || Id del prompt tal como salió al "
+        "modelo. El texto NO viaja acá: son ~60 KB.",
+    )
     business_db: BusinessDbContext | None = None
 
 
@@ -237,6 +251,13 @@ class AnswerAgenticProgress(BaseModel):
     dropped_hits: int | None = None
     answer_truncated: bool | None = None
     usage: TokenUsage = Field(default_factory=TokenUsage)
+    prompt_id: str | None = Field(
+        default=None,
+        description="Id of the prompt exactly as it went to the model, readable for a "
+        "short window at GET /answer/prompts/{id}. The text is NOT inlined: ~60 KB with "
+        "the corpus, the persona and the guardrails. || Id del prompt tal como salió al "
+        "modelo. El texto NO viaja acá: son ~60 KB.",
+    )
     business_db: BusinessDbContext | None = None
     error: str | None = Field(
         default=None, description="Set only when status='failed'. || Solo cuando status='failed'."
@@ -280,8 +301,14 @@ def _completed_response(thread_id: str, values: dict) -> AnswerAgenticResponse:
         dropped_hits=int(values.get("dropped_hits") or 0),
         answer_truncated=bool(values.get("answer_truncated")),
         usage=token_usage_from_state(values),
+        prompt_id=_str_or_none(values.get("prompt_id")),
         business_db=_business_db_from_state(values),
     )
+
+
+def _str_or_none(value: object) -> str | None:
+    """A state value as a string, or ``None``. || Un valor del estado como texto."""
+    return str(value) if value else None
 
 
 def _business_db_from_state(values: dict) -> BusinessDbContext | None:
@@ -308,6 +335,7 @@ def _paused_response(thread_id: str, question: str, values: dict, reasons: list[
         dropped_hits=int(values.get("dropped_hits") or 0),
         answer_truncated=bool(values.get("answer_truncated")),
         usage=token_usage_from_state(values),
+        prompt_id=_str_or_none(values.get("prompt_id")),
         business_db=_business_db_from_state(values),
     )
 
@@ -373,6 +401,7 @@ async def answer_agentic(
         reranker=reranker,
         persona=runtime.persona,
         guardrails=runtime.guardrails,
+        profile_id=body.profile_id,
     )
 
     store = SessionStore(session, ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS)
@@ -442,6 +471,7 @@ async def answer_agentic_resume(
         reranker=get_reranker(),
         persona=runtime.persona,
         guardrails=runtime.guardrails,
+        profile_id=body.profile_id,
     )
 
     snapshot = await graph.aget_state(config)
@@ -610,5 +640,6 @@ async def answer_agentic_progress(thread_id: str):
         dropped_hits=result.get("dropped_hits"),
         answer_truncated=result.get("answer_truncated"),
         usage=token_usage_from_state(result),
+        prompt_id=_str_or_none(result.get("prompt_id")),
         business_db=_business_db_from_state(result),
     )

@@ -75,7 +75,16 @@ def test_the_block_names_its_run_and_is_another_authority():
 
 
 def test_drop_order_is_rows_then_columns_then_table():
-    assert DROP_ORDER == ("rows_tail", "column_descriptions", "table_description")
+    # Dependency tables are trimmed before rows: a table has no catalog to
+    # lose, and the coverage order makes the tail the least informative thing
+    # in the block. The rest of the order is unchanged.
+    # || Las tablas por dependencia se recortan antes que las filas.
+    assert DROP_ORDER == (
+        "dependency_tables_tail",
+        "rows_tail",
+        "column_descriptions",
+        "table_description",
+    )
 
     full = BusinessDbContext(
         run_id="r",

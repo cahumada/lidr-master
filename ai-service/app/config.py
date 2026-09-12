@@ -239,6 +239,16 @@ class Settings(BaseSettings):
     # vacío.
     ANSWER_MAX_CONTEXT_TOKENS: int = Field(default=16384, ge=1)
 
+    # How long a sent prompt stays readable, for diagnosing a bad answer against
+    # what actually produced it. Short on purpose: a stored prompt carries the
+    # retrieved corpus in full plus the persona and the guardrails, which is the
+    # most sensitive material the service handles. The sweep rides along with
+    # each write, so this needs no scheduled job to be honoured.
+    # || Cuánto queda legible un prompt enviado. Corto a propósito: lleva el
+    # corpus recuperado entero más la persona y los guardrails. El barrido viaja
+    # con cada escritura, así que no hace falta una tarea programada.
+    ANSWER_PROMPT_RETENTION_DAYS: int = Field(default=7, ge=0)
+
     # --- Memoria conversacional || Conversation memory ---------------------
 
     # How many (question, answer) pairs the sliding window holds. Four, not the
@@ -282,9 +292,13 @@ class Settings(BaseSettings):
     # ANSWER_MAX_CONTEXT_TOKENS and never on top of it. Fitted last: evidence,
     # then memory, then this. A 0 does NOT mean "no limit" — it would mean an
     # empty block, and Settings rejects it.
+    # 3072 and not 2048: with the table descriptions the block measured 2,353
+    # tokens on a real turn (3 codes with tables, 36 tables), so the old ceiling
+    # would have started trimming tables the day the descriptions landed.
     # || Techo del bloque de base, cobrado ADENTRO de ANSWER_MAX_CONTEXT_TOKENS
-    # y nunca encima. Se ajusta último. Un 0 NO significa «sin límite».
-    BUSINESS_DB_CONTEXT_MAX_TOKENS: int = Field(default=2048, ge=1)
+    # y nunca encima. Se ajusta último. Un 0 NO significa «sin límite». 3072 y
+    # no 2048: con las descripciones el bloque midió 2.353 en un turno real.
+    BUSINESS_DB_CONTEXT_MAX_TOKENS: int = Field(default=3072, ge=1)
 
     # How many catalog rows to fetch per table (the query asks for this + 1
     # so overflow is visible). A 0 is an empty catalog, not "no limit".
@@ -293,8 +307,34 @@ class Settings(BaseSettings):
     BUSINESS_DB_CONTEXT_MAX_ROWS: int = Field(default=50, ge=1)
 
     # How many distinct hit `document_id`s to resolve. A 0 resolves nothing.
-    # || Cuántos `document_id` distintos de los hits resolver. Un 0 no resuelve nada.
-    BUSINESS_DB_CONTEXT_MAX_CODES: int = Field(default=8, ge=1)
+    #
+    # Matched to the answer path's default `limit=10` with `max_per_document=1`:
+    # ten hits are ten distinct documents, so a cap of 8 dropped two codes on
+    # EVERY answer and marked the context incomplete every time. A notice that
+    # fires on every turn trains the operator to ignore it, which costs more
+    # than the two codes did. The block's own ceiling
+    # (BUSINESS_DB_CONTEXT_MAX_TOKENS) still bounds the cost: more codes share
+    # the same tokens, they do not add any.
+    # || Alineado con el `limit=10` y `max_per_document=1` del camino de
+    # respuesta: diez hits son diez documentos distintos, así que un tope de 8
+    # recortaba dos códigos en TODAS las respuestas y marcaba el contexto
+    # incompleto siempre. Un aviso que salta siempre enseña a ignorarlo.
+    BUSINESS_DB_CONTEXT_MAX_CODES: int = Field(default=10, ge=1)
+
+    # Whether the block carries the tables a transaction touches, read from
+    # `transaction_table_edges`. Off by default until the annotated set of
+    # `evals/golden_transaction_tables.json` says the ordering holds: a code
+    # reaches 8 tables at the median and 185 at the worst, and an unmeasured
+    # order is a block that says too much.
+    # || Si el bloque lleva las tablas que toca la transacción. Apagado hasta
+    # que el set anotado diga que el orden se sostiene.
+    BUSINESS_DB_DEPENDENCY_TABLES_ENABLED: bool = False
+
+    # How many tables per code the block may carry, highest coverage first. A 0
+    # carries none; the overflow is reported as `dependency_tables_capped`.
+    # || Cuántas tablas por código puede llevar el bloque, mayor cobertura
+    # primero. Un 0 no lleva ninguna; el desborde se reporta.
+    BUSINESS_DB_DEPENDENCY_MAX_TABLES: int = Field(default=12, ge=0)
 
     # Reference date for the period predicate, ISO calendar date. Empty = the
     # active run's `created_at_utc`. Never falls through to `now()`: a snapshot

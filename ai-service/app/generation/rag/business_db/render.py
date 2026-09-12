@@ -1,9 +1,10 @@
 """The single renderer for the business-db block.
 
-What is measured is what is sent, same reason as `render_hit_block`. The
-drop order is declared: rows from the tail, then column descriptions, then
-the table description. The window declaration is never trimmed. A row is
-never split in half.
+What is measured is what is sent, same reason as `render_hit_block`. The drop
+order is declared: dependency tables from the tail of the coverage order, then
+rows from the tail, then column descriptions, then the table description. The
+window declaration is never trimmed, a row is never split in half, and a table
+never loses the routines that justify it -- without them it stops being citable.
 
 || El único renderer del bloque de base. Lo que se mide es lo que se manda.
 """
@@ -11,6 +12,7 @@ never split in half.
 from __future__ import annotations
 
 from app.generation.rag.business_db.models import (
+    DECLARED_TRUNCATION,
     INCOMPLETE_OUTCOMES,
     BusinessDbContext,
     CodeResolution,
@@ -18,7 +20,18 @@ from app.generation.rag.business_db.models import (
 )
 from app.generation.rag.chunking.base import count_tokens
 
-DROP_ORDER = ("rows_tail", "column_descriptions", "table_description")
+# Tables first, from the tail of the coverage-ordered list, so the least-covered
+# go first and the best-covered survives. There is no role that is exempt: with
+# no `core` to protect (see `roles.py`), coverage IS the protection, and it is
+# two declared counts rather than a threshold.
+# || Primero las tablas, desde la cola del orden por cobertura. Sin `core` que
+# proteger, la cobertura ES la protección, y son dos conteos declarados.
+DROP_ORDER = (
+    "dependency_tables_tail",
+    "rows_tail",
+    "column_descriptions",
+    "table_description",
+)
 
 _AUTHORITY = (
     "Este bloque NO es documentación funcional: es lo que la base del sistema "
@@ -40,6 +53,22 @@ _CAUSE_LINE: dict[ResolutionOutcome, str] = {
     "no_validity_mechanism": "no tiene mecanismo de vigencia declarado",
     "validity_discrepancy": "tiene filas donde estado y período discrepan",
     "resolved": "se resolvió",
+    "edges_not_built": (
+        "la corrida activa no tiene construidas las tablas por dependencia"
+    ),
+    "no_dependency_routine": "ninguna rutina de la base la nombra",
+    "routine_without_tables": "sus rutinas no dependen de ninguna tabla",
+    "code_too_short_to_anchor": "el código es demasiado corto para anclar (largo < 5)",
+    "dependency_tables_capped": "toca más tablas que el tope configurado",
+    "role_unknown": "hay tablas cuyo rol no se pudo derivar de una regla declarada",
+}
+
+_ROLE_LABEL = {
+    "reference": "referencia",
+    "historical": "histórica",
+    "message": "mensajes",
+    "validation": "validación",
+    "unknown": "rol no declarado",
 }
 
 
@@ -76,6 +105,12 @@ def render_block(context: BusinessDbContext, *, budget: int) -> BusinessDbContex
     def _text() -> str:
         return _compose(context, working, include_columns, include_table)
 
+    while (
+        working
+        and any(len(item.dependency_tables) > 1 for item in working)
+        and count_tokens(_text()) > budget
+    ):
+        _drop_one_table(working)
     while working and any(item.rows for item in working) and count_tokens(_text()) > budget:
         _drop_one_row(working)
     if count_tokens(_text()) > budget:
@@ -119,6 +154,24 @@ def block_text(context: BusinessDbContext) -> str | None:
     include_columns = not any(item.dropped_column_descriptions for item in context.resolutions)
     include_table = not any(item.dropped_table_description for item in context.resolutions)
     return _compose(context, context.resolutions, include_columns, include_table)
+
+
+def _drop_one_table(resolutions: list[CodeResolution]) -> None:
+    """Drop the lowest-coverage table of the resolution that has the most.
+
+    Never below one: a code that kept nothing would read as "touches no tables",
+    which is a different fact and already has its own cause. The dropped table
+    is counted, so the section can say how many it is hiding.
+
+    || Saca la tabla de menor cobertura de la resolución que más tenga. Nunca
+    por debajo de una: un código sin ninguna se leería como «no toca tablas».
+    """
+    candidates = [item for item in resolutions if len(item.dependency_tables) > 1]
+    if not candidates:
+        return
+    target = max(candidates, key=lambda item: len(item.dependency_tables))
+    target.dependency_tables = target.dependency_tables[:-1]
+    _add_cause(target, "dependency_tables_capped")
 
 
 def _drop_one_row(resolutions: list[CodeResolution]) -> None:
@@ -183,15 +236,18 @@ def _resolution_lines(
     ]
     if resolution.outcome == "not_in_run":
         lines.append("Este código no está en WINDOWS de la corrida.")
+        lines.extend(_table_lines(resolution))
         return lines
     if resolution.outcome == "no_maintained_table":
         lines.append("La base no declara una tabla que esta transacción mantenga.")
+        lines.extend(_table_lines(resolution))
         return lines
     if resolution.outcome == "ng_identi_ignored_by_type":
         lines.append(
             f"Declara NG_IDENTI={resolution.ng_identi} pero el tipo no es 10 "
             "(Tabla general); el valor se ignora."
         )
+        lines.extend(_table_lines(resolution))
         return lines
     if resolution.table_name:
         lines.append(f"Tabla que mantiene: {resolution.table_name}.")
@@ -227,6 +283,8 @@ def _resolution_lines(
             "filas, sin decidir cuál gana."
         )
 
+    lines.extend(_table_lines(resolution))
+
     if resolution.rows:
         shown = resolution.rows_shown
         valid = resolution.rows_valid
@@ -241,6 +299,55 @@ def _resolution_lines(
             for row in resolution.rows:
                 cells = [_cell(row.values, header) for header in headers]
                 lines.append("| " + " | ".join(cells) + " |")
+    return lines
+
+
+def _table_lines(resolution: CodeResolution) -> list[str]:
+    """The tables this transaction touches, with the routines that justify each.
+
+    The routine list is never trimmed: without it the table stops being citable
+    and becomes an assertion with no origin.
+
+    || Las tablas que toca, con las rutinas que justifican cada una. La lista de
+    rutinas no se recorta nunca.
+    """
+    if not resolution.dependency_tables:
+        if "no_dependency_routine" in resolution.causes:
+            return ["Ninguna rutina de la base nombra este código."]
+        if "edges_not_built" in resolution.causes:
+            return [
+                (
+                    "Las tablas por dependencia no están construidas para esta "
+                    "corrida; no se sabe qué tablas toca."
+                )
+            ]
+        return []
+    shown = len(resolution.dependency_tables)
+    total = resolution.dependency_tables_total
+    header = (
+        f"Tablas que toca (grafo de dependencias de Oracle): {total}"
+        if shown >= total
+        else f"Tablas que toca (grafo de dependencias de Oracle): {total}, se muestran {shown}"
+    )
+    lines = [
+        (
+            f"{header}. El orden es por cuántas rutinas de la transacción llegan "
+            "a cada una; no es una jerarquía de importancia declarada."
+        ),
+    ]
+    for table in resolution.dependency_tables:
+        label = _ROLE_LABEL.get(table.role, table.role)
+        via = ", ".join(table.via_routines)
+        detail = f"{table.routine_hits}/{table.routine_total} rutinas"
+        lines.append(f"- {table.table_name} [{label}] — {detail}; vía {via}.")
+        if table.description:
+            lines.append(f"  {table.description}")
+    if any(table.role == "unknown" for table in resolution.dependency_tables):
+        lines.append(
+            "Un rol «no declarado» significa que ninguna regla lo derivó: la "
+            "transacción toca la tabla, pero en qué carácter no está declarado. "
+            "No lo supongas."
+        )
     return lines
 
 
@@ -269,7 +376,13 @@ def _completeness_lines(
     named = False
     for resolution in resolutions:
         for cause in resolution.causes:
-            if cause not in INCOMPLETE_OUTCOMES:
+            # Declared truncations are named here too, so a reader scanning
+            # this section does not have to re-read every table list to notice
+            # a cap -- but they do NOT make the context incomplete: the section
+            # above states the real count, and the amount is exact.
+            # || Las truncaciones declaradas se nombran acá igual, pero NO
+            # vuelven incompleto el contexto: arriba está el conteo real.
+            if cause not in INCOMPLETE_OUTCOMES and cause not in DECLARED_TRUNCATION:
                 continue
             target = resolution.table_name or resolution.code
             lines.append(f"- {target} ({resolution.code}): {_CAUSE_LINE[cause]} ({cause}).")

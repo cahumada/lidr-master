@@ -1,0 +1,31 @@
+{
+  "about": "Tablas que un analista funcional nombra como las que procesa cada transaccion. Anotado a mano por el dueno del repo; la base no declara esta distincion en ninguna columna, por eso el set existe. || Tables a functional analyst names as the ones a transaction processes. Annotated by hand: the database declares this nowhere.",
+  "run_id": "20260909_214921",
+  "doc_version": "DW Funtionals 2026.1",
+  "how_to_extend": "Agregar una entrada por transaccion con las tablas que el analista nombraria sin mirar la base. Usar el nombre FISICO de la tabla (CLIENT, no CLIENTS). Una entrada con `tables: []` significa 'no toca ninguna', que es distinto de no estar en el set.",
+  "annotated_by": "cahumada",
+  "annotated_on": "2026-09-11",
+  "cases": [
+    {
+      "code": "CA014",
+      "tables": ["COVER"],
+      "note": "Semilla verificada al planear el change."
+    },
+    {
+      "code": "CA025",
+      "tables": ["ROLES", "CLIENT"],
+      "note": "Anotado como ROLES + CLIENTS; el nombre fisico es CLIENT."
+    },
+    {
+      "code": "CA001",
+      "tables": ["POLICY", "CERTIFICAT", "POLICY_HIS"],
+      "note": "NO ANCLABLE: `CA001` no es un document_id del corpus. Los que existen son CA001A, CA001M, CA001k y SCA001. Las rutinas INSCA001PKG / REACA001 nombran un CA001 que no tiene especificacion funcional, asi que ningun hit puede anclarlas. Pendiente: que el dueno diga a cual de las variantes se referia. Se deja en el set para que el eval lo siga reportando en vez de que desaparezca."
+    },
+    {
+      "code": "CA048",
+      "tables": ["POLICY", "CERTIFICAT", "POLICY_HIS"],
+      "note": "Semilla verificada al planear el change."
+    }
+  ],
+  "pending": "Faltan ~16 casos para llegar a los 20 que pide el change. Hasta entonces el numero que sale de aqui NO habilita BUSINESS_DB_DEPENDENCY_TABLES_ENABLED: cuatro puntos no miden un orden."
+}
