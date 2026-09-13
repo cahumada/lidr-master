@@ -34,7 +34,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.dependencies import get_activity_log, get_embedder, get_reranker
+from app.dependencies import get_activity_log, get_embedder, get_reranker, resolve_console_user
 from app.domain.business_db_store import resolve_active_run
 from app.domain.graph.runner import (
     THREAD_PREFIX as _THREAD_PREFIX,
@@ -365,6 +365,7 @@ async def answer_agentic(
     body: AnswerRequest,
     request: Request,
     session: AsyncSession = Depends(get_async_session),  # noqa: B008
+    owner_id: str | None = Depends(resolve_console_user),
 ):
     """Run the agentic answer graph for ``body.question``.
 
@@ -404,7 +405,9 @@ async def answer_agentic(
         profile_id=body.profile_id,
     )
 
-    store = SessionStore(session, ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS)
+    store = SessionStore(
+        session, ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS, owner_id=owner_id
+    )
     conversation = await open_turn(store, body)
 
     try:
@@ -447,6 +450,7 @@ async def answer_agentic_resume(
     body: AnswerAgenticResumeRequest,
     request: Request,
     session: AsyncSession = Depends(get_async_session),  # noqa: B008
+    owner_id: str | None = Depends(resolve_console_user),
 ):
     """Resume a paused graph with a human decision.
 
@@ -524,21 +528,33 @@ async def answer_agentic_resume(
     # || El turno que la pausa dejó abierto cierra ACÁ, y solo acá. La corrida
     # pausada no escribió nada a propósito: lo que la sesión registra es la
     # respuesta que el revisor aceptó, no el borrador que se detuvo en el gate.
-    await _close_resumed_turn(session, values)
+    await _close_resumed_turn(session, values, owner_id=owner_id)
 
     return _completed_response(bare_thread, values)
 
 
-async def _close_resumed_turn(session: AsyncSession, values: dict) -> None:
-    """Record the resumed turn on its session, if the run had one.
+async def _close_resumed_turn(
+    session: AsyncSession, values: dict, *, owner_id: str | None
+) -> None:
+    """Record the resumed turn on its session, if the run had one AND it is theirs.
 
-    || Registra en su sesión el turno resumido, si la corrida tenía una.
+    A resumed run carries the ``session_id`` of the run that paused, which the
+    client sent. Scoping the store means a resumed turn cannot be steered into
+    somebody else's conversation: ``get`` returns ``None`` and ``close_turn``
+    no-ops, exactly as it already does for an unknown or expired id.
+
+    || Registra en su sesión el turno resumido, si la corrida tenía una y es
+    suya. Acotar el store evita que un turno resumido se meta en la
+    conversación de otro: ``get`` devuelve ``None`` y ``close_turn`` no hace
+    nada, igual que con un id desconocido o vencido.
     """
     session_id = values.get("session_id")
     if not session_id:
         return
     settings = get_settings()
-    store = SessionStore(session, ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS)
+    store = SessionStore(
+        session, ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS, owner_id=owner_id
+    )
     conversation = await store.get(str(session_id))
     await close_turn(
         store,
@@ -559,6 +575,7 @@ async def answer_agentic_start(
     body: AnswerRequest,
     request: Request,
     session: AsyncSession = Depends(get_async_session),  # noqa: B008
+    owner_id: str | None = Depends(resolve_console_user),
 ):
     """Schedule the agentic answer graph in the background and return at once.
 
@@ -581,7 +598,9 @@ async def answer_agentic_start(
             ) from exc
     thread_id = str(uuid4())
 
-    task = asyncio.create_task(run_agentic_background(thread_id, body, graph))
+    task = asyncio.create_task(
+        run_agentic_background(thread_id, body, graph, owner_id=owner_id)
+    )
     _BACKGROUND_RUNS.add(task)
     task.add_done_callback(_BACKGROUND_RUNS.discard)
 

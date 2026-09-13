@@ -441,3 +441,53 @@ def require_service_token(
             detail="Service token required. || Se requiere el token del servicio.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+# The header the console's BFF uses to say who is asking.
+# || El header con el que el BFF de la consola dice quién pregunta.
+CONSOLE_USER_HEADER = "X-Console-User"
+
+# An id longer than this is not a console user id; it is somebody probing.
+# || Un id más largo que esto no es un id de usuario de la consola.
+_MAX_OWNER_ID_CHARS = 64
+
+
+def resolve_console_user(
+    x_console_user: Annotated[str | None, Header()] = None,
+) -> str | None:
+    """Who the BFF says is asking, or ``None`` when nobody said.
+
+    Trustworthy for the same reason the service token is: ``add-service-
+    authentication`` left the BFF as the only holder of ``SERVICE_TOKEN``, and
+    this header travels inside that same request. It adds no surface — whoever
+    can send it can already send the token.
+
+    ``None`` is NOT "anyone": it is its own bucket of ownerless conversations,
+    enforced by ``SessionStore``. Making absence mean "no filter" would turn the
+    protection off by dropping a header.
+
+    An over-long value is refused rather than truncated: truncating would make
+    two different ids collide into one owner, which is the failure this exists
+    to prevent.
+
+    || Quién dice el BFF que pregunta, o ``None`` si nadie lo dijo. Es confiable
+    por la misma razón que el token: el BFF es su único portador y este header
+    viaja adentro del mismo request. ``None`` NO es «cualquiera»: es su propio
+    balde de conversaciones sin dueño. Un valor demasiado largo se rechaza y no
+    se trunca — truncar haría colisionar dos ids distintos en un mismo dueño,
+    que es justamente la falla que esto viene a evitar.
+    """
+    if x_console_user is None:
+        return None
+    owner_id = x_console_user.strip()
+    if not owner_id:
+        return None
+    if len(owner_id) > _MAX_OWNER_ID_CHARS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=(
+                f"{CONSOLE_USER_HEADER} is longer than {_MAX_OWNER_ID_CHARS} characters. "
+                f"|| {CONSOLE_USER_HEADER} supera los {_MAX_OWNER_ID_CHARS} caracteres."
+            ),
+        )
+    return owner_id

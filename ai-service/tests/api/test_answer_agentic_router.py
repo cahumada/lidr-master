@@ -11,6 +11,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import app.api.answer_agentic as answer_agentic_module
 from app.api.answer import router as answer_router
 from app.api.answer_agentic import router as answer_agentic_router
 from app.api.corpus import router as corpus_router
@@ -179,3 +180,77 @@ def test_without_filters_the_field_is_empty_not_absent(client):
     body = client.post("/answer/agentic", json={"question": "test"}).json()
 
     assert body["effective_filters"] == []
+
+
+# --------------------------------------------------------------------------
+# Ownership || Pertenencia
+#
+# The session routes are not the only door into a conversation: a turn posted
+# with somebody else's `session_id` would read their memory and append to their
+# transcript. What has to hold here is that the caller's identity reaches the
+# store this router builds — the store is what refuses the foreign id, and
+# `tests/generation/conversation/test_store.py` proves that part.
+#
+# || Las rutas de sesión no son la única puerta a una conversación: un turno
+# mandado con el `session_id` de otro leería su memoria y escribiría en su
+# transcript. Acá lo que tiene que valer es que la identidad de quien llama
+# LLEGUE al store que arma este router.
+# --------------------------------------------------------------------------
+
+
+def _owners_seen(monkeypatch) -> list[str | None]:
+    """Record the ``owner_id`` every ``SessionStore`` in this router is built with.
+
+    || Registra el ``owner_id`` con el que se arma cada ``SessionStore``.
+    """
+    seen: list[str | None] = []
+
+    class RecordingStore:
+        """Records the owner and behaves like a store with nothing in it.
+
+        Returning ``None`` from ``get`` is not a shortcut: it is exactly what
+        the real store does for an id that is not this owner's, and it is the
+        behavior that keeps the turn from touching the conversation.
+
+        || Registra el dueño y se comporta como un store vacío. Devolver
+        ``None`` en ``get`` no es un atajo: es justo lo que hace el store real
+        con un id que no es de este dueño.
+        """
+
+        def __init__(self, session, *, ttl_days, owner_id):
+            seen.append(owner_id)
+
+        async def get(self, session_id):
+            return None
+
+        async def save(self, conversation):
+            raise AssertionError("a foreign conversation must never be written")
+
+    monkeypatch.setattr(answer_agentic_module, "SessionStore", RecordingStore)
+    return seen
+
+
+def test_a_turn_carries_the_callers_identity_into_the_store(client, monkeypatch):
+    seen = _owners_seen(monkeypatch)
+
+    client.post(
+        "/answer/agentic",
+        json={"question": "test", "session_id": "no-importa"},
+        headers={"X-Console-User": "user_ada"},
+    )
+
+    assert seen == ["user_ada"]
+
+
+def test_a_turn_without_identity_does_not_reach_an_owned_conversation(
+    client, monkeypatch
+):
+    """No header means the ownerless bucket, not everybody's conversations.
+
+    || Sin header se cae al balde sin dueño, no a las conversaciones de todos.
+    """
+    seen = _owners_seen(monkeypatch)
+
+    client.post("/answer/agentic", json={"question": "test", "session_id": "no-importa"})
+
+    assert seen == [None]

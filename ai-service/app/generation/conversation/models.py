@@ -242,6 +242,12 @@ class ConversationSession(BaseModel):
     """
 
     session_id: str = Field(default_factory=lambda: str(uuid4()))
+    # Internal only: it never reaches ``SessionSummary`` or ``SessionView``.
+    # The service does not publish whose anything is — translating an id into a
+    # name is the BFF's job, because the BFF is the one with the users table.
+    # || Solo interno: no llega a ``SessionSummary`` ni a ``SessionView``. El
+    # servicio no publica de quién es nada.
+    owner_id: str | None = None
     title: str | None = None
     facts: ConversationFacts = Field(default_factory=ConversationFacts)
     anchors: list[Anchor] = Field(default_factory=list)

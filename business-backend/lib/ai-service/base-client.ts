@@ -1,5 +1,8 @@
 import "server-only";
 
+import { auth } from "@/auth";
+import { consoleUserHeaderFor } from "@/lib/ai-service/console-user";
+
 /**
  * The ONLY layer that speaks HTTP to the AI service.
  * || La ÚNICA capa que habla HTTP con el servicio IA.
@@ -122,6 +125,43 @@ async function detailOf(response: Response): Promise<string> {
   }
 }
 
+/**
+ * Who is asking, for the service to scope a conversation by.
+ *
+ * The console's `User.id` and never the email: the service resolves ownership
+ * by comparing strings and has no business learning who anybody is.
+ *
+ * Trustworthy for the same reason the token is -- this module is the only
+ * holder of both, and they travel in the same request. Sending it from here
+ * covers every conversation route at once, which is the point: a per-route
+ * header is a header some future route forgets.
+ *
+ * No session means NO header, never an invented value. The service reads
+ * absence as "the conversations that have no owner either", so the failure
+ * mode is seeing nothing rather than seeing everybody's. That is the direction
+ * this should fail in.
+ *
+ * || Quién pregunta, para que el servicio acote una conversación. El `User.id`
+ * de la consola y nunca el email: el servicio resuelve la pertenencia
+ * comparando cadenas y no tiene por qué aprender quién es nadie. Es confiable
+ * por la misma razón que el token —este módulo es el único que tiene los dos, y
+ * viajan en el mismo request—. Sin sesión NO va header y nunca un valor
+ * inventado: el servicio lee la ausencia como «las que tampoco tienen dueño»,
+ * así que la falla es no ver nada en vez de ver las de todos.
+ */
+async function consoleUserHeader(): Promise<Record<string, string>> {
+  try {
+    const session = await auth();
+    return consoleUserHeaderFor(session?.user?.id);
+  } catch {
+    // `auth()` needs a request scope. Outside one there is no user to name,
+    // and guessing would be worse than saying nothing.
+    // || `auth()` necesita un request. Fuera de uno no hay usuario que nombrar,
+    // y adivinar sería peor que no decir nada.
+    return {};
+  }
+}
+
 async function call(
   path: string,
   init: RequestInit & { timeoutMs?: number } = {},
@@ -139,7 +179,11 @@ async function call(
       // || El token va ACÁ y en ningún otro lado: es el único lugar donde la
       // consola hace `fetch` contra el servicio, así una línea cubre todas las
       // llamadas y ninguna pantalla ni Route Handler toca el secreto.
-      headers: { ...authHeader(), ...(rest.headers ?? {}) },
+      headers: {
+        ...authHeader(),
+        ...(await consoleUserHeader()),
+        ...(rest.headers ?? {}),
+      },
       signal,
       // Never cached: every one of these is either a live query or a mutation.
       // || Nunca cacheado: cada uno de estos es una consulta viva o una mutación.

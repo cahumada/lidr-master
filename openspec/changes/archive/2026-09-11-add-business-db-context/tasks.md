@@ -226,7 +226,7 @@
   **2026-09-11**: 20 specs, 4 domain, 1 change, 57 archived — 0 errores.
 - [x] 9.4 Sin cambios en `app-routes.md`: este change no agrega ninguna ruta. Si
   al implementar aparece una, es señal de que el alcance se corrió.
-- [ ] 9.5 Anotar en `openspec/domain/visualtime-database-metadata.md` §13 qué
+- [x] 9.5 Anotar en `openspec/domain/visualtime-database-metadata.md` §13 qué
   huecos cierra este change y cuáles siguen abiertos. **No** convertir nada de
   `domain/` en requirement: sigue siendo referencia.
   **Primera mitad hecha el 2026-09-11, antes de implementar**, y anotada como tal:

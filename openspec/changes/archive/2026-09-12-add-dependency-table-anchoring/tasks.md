@@ -137,4 +137,6 @@ dueño pidió PR único (2026-09-11). El grupo 7 toca `business-backend/`.
       cifras por corrida (561 / 1.556, y 460 / 957 con las guardas), la colisión
       de códigos por substring, la trampa del prefijo verbal que fabrica
       `SCA001`, y que `CA001` no es un `document_id`. Con su marca de evidencia.
-- [ ] 8.4 `add-business-db-context` se archiva **antes** que este change.
+- [x] 8.4 `add-business-db-context` se archiva **antes** que este change.
+  **2026-09-12**: archivado como `2026-09-11-add-business-db-context`, y sus
+  deltas integrados en `specs/business-db-context/` antes que los de acá.

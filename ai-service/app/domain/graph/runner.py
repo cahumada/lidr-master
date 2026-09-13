@@ -374,8 +374,20 @@ async def _stream_and_log(
     return await graph.aget_state(config)
 
 
-async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any) -> None:
+async def run_agentic_background(
+    thread_id: str, body: AnswerRequest, graph: Any, *, owner_id: str | None
+) -> None:
     """Run the graph end-to-end (or to its first pause) with live activity.
+
+    ``owner_id`` travels explicitly rather than being read from the request
+    again: this runs after the request returned, so there are no headers left
+    to read. Carrying it is what keeps a background turn from writing into a
+    conversation that is not the asker's.
+
+    || ``owner_id`` viaja explícito y no se vuelve a leer del request: esto
+    corre después de que el request terminó y ya no hay headers que leer.
+    Llevarlo es lo que evita que un turno en background escriba en una
+    conversación ajena.
 
     Opens its OWN database session: the request that scheduled this as a
     background task returns before FastAPI would close the session it
@@ -398,7 +410,11 @@ async def run_agentic_background(thread_id: str, body: AnswerRequest, graph: Any
             runtime = await synthesizer_runtime(
                 session, settings, profile_id=body.profile_id
             )
-            store = SessionStore(session, ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS)
+            store = SessionStore(
+                session,
+                ttl_days=settings.CONVERSATION_SESSION_TTL_DAYS,
+                owner_id=owner_id,
+            )
             conversation = await open_turn(store, body)
             llm = llm_with_accounting(
                 runtime.llm,

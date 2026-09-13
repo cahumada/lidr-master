@@ -27,29 +27,59 @@ from app.main import app
 
 
 class FakeStore:
-    """In-memory stand-in for ``SessionStore``. || Doble en memoria."""
+    """In-memory stand-in for ``SessionStore``, scoped to one owner.
 
-    def __init__(self) -> None:
-        self.sessions: dict[str, ConversationSession] = {}
-        self.expired_ids: set[str] = set()
+    It reproduces the ownership rule rather than ignoring it, because the thing
+    the router tests need to prove is exactly that the scope reaches every
+    route. A double that saw everything would make those tests pass while the
+    leak stayed open.
+
+    Rows live in ``world``, shared across the owners of one test, so "Ada
+    cannot see Bruno's" is a real statement about one store of data.
+
+    || Doble en memoria de ``SessionStore``, acotado a UN dueño. Reproduce la
+    regla de pertenencia en vez de ignorarla: lo que los tests de router tienen
+    que probar es justamente que el alcance llega a todas las rutas. Un doble
+    que viera todo los dejaría pasar con la fuga abierta.
+    """
+
+    def __init__(self, world: dict, expired_ids: set[str], owner_id: str | None) -> None:
+        # `sessions` is the SHARED dict on purpose: writing into it is how a
+        # test plants a row, and every read below filters by owner. A private
+        # per-owner dict would make the isolation an artifact of the double.
+        # || `sessions` es el dict COMPARTIDO a propósito: escribir ahí es cómo
+        # un test planta una fila, y cada lectura de abajo filtra por dueño.
+        self.sessions = world
+        self.world = world
+        self.expired_ids = expired_ids
+        self.owner_id = owner_id
+
+    def _mine(self) -> dict[str, ConversationSession]:
+        """Only what this owner can see. || Solo lo que este dueño ve."""
+        return {
+            session_id: item
+            for session_id, item in self.world.items()
+            if item.owner_id == self.owner_id
+        }
 
     async def create(self) -> ConversationSession:
-        conversation = ConversationSession()
-        self.sessions[conversation.session_id] = conversation
+        conversation = ConversationSession(owner_id=self.owner_id)
+        self.world[conversation.session_id] = conversation
         return conversation
 
     async def get(self, session_id: str) -> ConversationSession | None:
         if session_id in self.expired_ids:
             return None
-        return self.sessions.get(session_id)
+        return self._mine().get(session_id)
 
     async def save(self, conversation: ConversationSession) -> None:
-        self.sessions[conversation.session_id] = conversation
+        conversation.owner_id = self.owner_id
+        self.world[conversation.session_id] = conversation
 
     async def list_recent(self, *, limit: int, offset: int) -> list[ConversationSession]:
         items = [
             item
-            for item in self.sessions.values()
+            for item in self._mine().values()
             if item.history and item.session_id not in self.expired_ids
         ]
         items.sort(key=lambda item: item.updated_at, reverse=True)
@@ -63,14 +93,28 @@ class FakeStore:
         return conversation
 
     async def delete(self, session_id: str) -> bool:
-        return self.sessions.pop(session_id, None) is not None
+        if session_id not in self._mine():
+            return False
+        return self.world.pop(session_id, None) is not None
 
 
 @pytest.fixture
 def store(monkeypatch) -> FakeStore:
-    fake = FakeStore()
-    monkeypatch.setattr("app.api.answer_session._store", lambda session: fake)
-    return fake
+    """The ownerless store, which is what a request with no header gets.
+
+    || El store sin dueño, que es lo que recibe un request sin header.
+    """
+    world: dict[str, ConversationSession] = {}
+    expired: set[str] = set()
+    stores: dict[str | None, FakeStore] = {}
+
+    def _for(session, owner_id):
+        if owner_id not in stores:
+            stores[owner_id] = FakeStore(world, expired, owner_id)
+        return stores[owner_id]
+
+    monkeypatch.setattr("app.api.answer_session._store", _for)
+    return _for(None, None)
 
 
 @pytest.fixture
@@ -279,3 +323,102 @@ def test_rename_rejects_a_blank_title(client, store):
     assert empty.status_code == 422
     assert spaces.status_code == 422
     assert missing.status_code == 422
+
+
+# --------------------------------------------------------------------------
+# Ownership || Pertenencia
+# --------------------------------------------------------------------------
+
+ADA = {"X-Console-User": "user_ada"}
+BRUNO = {"X-Console-User": "user_bruno"}
+
+
+def _closed_session(client, headers) -> str:
+    session_id = client.post("/answer/session", headers=headers).json()["session_id"]
+    client.patch(f"/answer/session/{session_id}", json={"title": "suya"}, headers=headers)
+    return session_id
+
+
+def test_the_listing_never_carries_another_users_session(client, store):
+    """The regression test for the leak, named after what it prevents.
+
+    || El test de regresión de la fuga, nombrado por lo que previene.
+    """
+    ada_session = _closed_session(client, ADA)
+    _closed_session(client, BRUNO)
+    for conversation in store.world.values():
+        conversation.append_history(
+            HistoryTurn(question="q", resolved_question="q", answer="a")
+        )
+
+    listed = client.get("/answer/sessions", headers=ADA).json()
+
+    assert [item["session_id"] for item in listed] == [ada_session]
+
+
+def test_reading_another_users_session_is_404_and_not_403(client):
+    """404 and not 403: a 403 would confirm the id exists.
+
+    || 404 y no 403: un 403 confirmaría que ese id existe.
+    """
+    bruno_session = _closed_session(client, BRUNO)
+
+    response = client.get(f"/answer/session/{bruno_session}", headers=ADA)
+
+    assert response.status_code == 404
+
+
+def test_another_users_session_cannot_be_renamed_or_deleted(client, store):
+    bruno_session = _closed_session(client, BRUNO)
+
+    renamed = client.patch(
+        f"/answer/session/{bruno_session}", json={"title": "mío ahora"}, headers=ADA
+    )
+    deleted = client.delete(f"/answer/session/{bruno_session}", headers=ADA)
+
+    assert renamed.status_code == 404
+    # A DELETE is idempotent by design, so it does not 404 — what has to hold
+    # is that the row survived.
+    # || Un DELETE es idempotente a propósito, así que no da 404 — lo que tiene
+    # que valer es que la fila sobrevivió.
+    assert deleted.status_code == 204
+    assert bruno_session in store.world
+    assert store.world[bruno_session].title == "suya"
+
+
+def test_an_anchor_of_another_user_cannot_be_unpinned(client):
+    bruno_session = _closed_session(client, BRUNO)
+
+    response = client.delete(
+        f"/answer/session/{bruno_session}/anchors/module_code/CA", headers=ADA
+    )
+
+    assert response.status_code == 404
+
+
+def test_a_request_without_identity_sees_only_the_ownerless_ones(client, store):
+    """Absence of identity is a bucket, never a wildcard.
+
+    || La ausencia de identidad es un balde, nunca un comodín.
+    """
+    orphan = client.post("/answer/session").json()["session_id"]
+    ada_session = _closed_session(client, ADA)
+    for conversation in store.world.values():
+        conversation.append_history(
+            HistoryTurn(question="q", resolved_question="q", answer="a")
+        )
+
+    listed = client.get("/answer/sessions").json()
+
+    assert [item["session_id"] for item in listed] == [orphan]
+    assert client.get(f"/answer/session/{ada_session}").status_code == 404
+
+
+def test_an_over_long_identity_is_refused_and_not_truncated(client):
+    """Truncating would collide two different ids into one owner.
+
+    || Truncar haría colisionar dos ids distintos en un mismo dueño.
+    """
+    response = client.get("/answer/sessions", headers={"X-Console-User": "x" * 65})
+
+    assert response.status_code == 422
